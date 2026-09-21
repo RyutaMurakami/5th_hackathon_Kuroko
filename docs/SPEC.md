@@ -1232,7 +1232,7 @@ Memory Bank（スコープ = 会社・チーム）
 
 ## 14. 参考資料
 
-- [PLAN.md](PLAN.md) — 初期コンセプト
+- [PLAN.md](PLAN.md) — 概要（課題・コンセプト・スコープ・競合との差分）
 - [DESIGN.md](../DESIGN.md) — Web Dashboard のビジュアルデザインとコンポーネント規約（参考: [Refero Styles](https://styles.refero.design/)）
 - [review/2026-09-13_KUROKO_review.md](review/2026-09-13_KUROKO_review.md) — 初回レビュー、審査基準ごとの見立て
 - [review/2026-09-13_KUROKO_review_02_scenario.md](review/2026-09-13_KUROKO_review_02_scenario.md) — シナリオ、帰りやすさ・按分の設計、インジェクション対策、AP2の最初の検討

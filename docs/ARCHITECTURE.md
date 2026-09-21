@@ -37,7 +37,7 @@
 | [SPEC.md](SPEC.md) | 何を作るか。機能、データモデル（3章）、ツール契約（4章）、Policy Gate（6章）、支払い（8章）まで含む。**旧 `DESIGN.md`（API・データモデル・エージェント設計）は SPEC.md の 3〜4章に統合済み** |
 | [DESIGN.md](../DESIGN.md)（**リポジトリ直下**。`docs/` には置かない） | **UI デザインの仕様**（Web Dashboard の色・文字・余白・部品の規約）。旧 `DESIGN.md`（API・データモデル・エージェント設計。SPEC 3〜4章に統合済み）とは別物 |
 | **ARCHITECTURE.md（本書）** | どう配置するか。サービス構成、コード配置、公開範囲、権限、データの置き場、デプロイ |
-| [PLAN.md](PLAN.md) | 初期コンセプトと、**競合（幹事Pay）との差分**（16章。提出用の説明文の土台）。SPEC と食い違う場合は SPEC が正 |
+| [PLAN.md](PLAN.md) | 概要（課題・コンセプト・スコープ）と、**競合（幹事Pay）との差分**（16章。提出用の説明文の土台）。SPEC と食い違う場合は SPEC が正 |
 
 ---
 
@@ -640,7 +640,7 @@ Cloud Run の IAM は**サービス単位**でしか呼び出し元を絞れな�
 | D22 | **Web が主導線、Slack は Human-in-the-loop。幹事の作業（チャットでの依頼と対話、予約画面・領収書のアップロード、確認、状況の把握、アプリ内通知）は `kuroko-dashboard`（Web アプリ）と `kuroko-api` の Web 向けの入口（`/api/dashboard/organizer/*`）で行う。Slack（`kuroko-gateway`）は、出欠・委任・按分の承認・銀行での承認の依頼・予算超過の最終確認・振り返りの回答（人の判断・同意）とその通知に使う。お金の権限に触れる操作（委任・承認・取り消し・振込）は Slack だけで、Web にルートを作らない。Web の本人確認は Firebase の UID（`organizer_web_uid`）で行い、Slack ユーザーIDの対応づけは不要にする。Web の依頼は、受け付けたらすぐに返し、処理は Cloud Tasks で非同期に行って、進み具合をタイムラインに書く** | ユーザー指定（Slack を HITL の手段に位置づけ、領収書のアップロードなどは Web で行う。ハッカソンの審査員が実際に触って体験できることを狙う）。D19（幹事の事務の確認）を拡張する。「署名検証済みの Slack 操作だけが委任に署名できる」（D3）は変えない。Web の書き込みの権限は、Firebase の UID と `organizer_web_uid` の一致（API で強制）。アップロードは署名付きURLで Cloud Storage に直接送り（短い期限・種類・サイズの検査）、読み取り（Gemini。エージェントではない）の結果は幹事が確認してから使う | SPEC 1.1・1.2・3章・4.3・7章・7.3・7.5・9.5・10章 |
 | D23 | **審査員（ゲスト）が触れる導線。匿名認証の `guest` 役割。サンドボックスの会社（架空）で、自分が作った `sandbox` のイベントだけを読み書きできる（`guest_owner_uid`。API で強制）。作成から7日で削除する（Cloud Scheduler）。上限（イベント・メッセージ・アップロード）と全体のキルスイッチ（`guest_enabled`）を置く。参加者・承認者の HITL は、(A) `sandbox` のイベントだけ、専用の実行主体 `sa-demo-runner` の「デモ用の代行」（`payment-api` の `POST /demo/mandates`、`kuroko-api` の `POST /tasks/demo/approve`。`sa-demo-runner` だけを受け付け、`sandbox` が `true` でなければ拒否。Policy Gate は全項目を検査）、または (B) 審査員が Slack に参加して承認者として承認、のどちらでも進められる** | ユーザー指定（審査員が実際に触って体験できること）。一人で最後まで体験できるようにするには、Slack の署名検証済み操作の代わりになる経路が要る。ただし、これは D3 の「唯一の例外」になるので、**`sandbox` に限定し、専用の identity と専用のルートに閉じ、Policy Gate は省略せず、判断ログに `demo-runner` を残し、LLM は呼べない**。本番のイベントでは拒否する。**要レビュー**（SPEC 13章）。共有の sunabar 口座を複数のゲストが同時に使うと、明細の照合が混ざるので、振込の付加情報に `payment_id` を載せ、同時に `payment` に入れるゲストのイベントを1件に制限する（V10・V14） | SPEC 1.2・3章・7.6・10章・12章・13章 |
 
-### テンプレートから変える点（実装時に対応する。タスク化は PLAN の担当）
+### テンプレートから変える点（実装時に対応する。タスクは [TASKS.md](TASKS.md) の T0）
 
 | 対象 | 現状（テンプレート） | 本構成で必要な変更 |
 |---|---|---|
@@ -685,7 +685,7 @@ SPEC 13章の要検証事項とは別に、本構成がこれらのマネージ�
 
 - [SPEC.md](SPEC.md) — 仕様（正）。未解決・要検証事項は13章
 - [DESIGN.md](../DESIGN.md)（リポジトリ直下）— UI デザインの仕様（Web Dashboard のデザインシステム）
-- [PLAN.md](PLAN.md) — 初期コンセプトと、**競合（幹事Pay）との差分**（16章）
+- [PLAN.md](PLAN.md) — 概要と、**競合（幹事Pay）との差分**（16章）
 - [review/](review/) — 壁打ちレビュー00〜04（経緯・比較検討）。**レビュー03（銀行振込案）は、D17 により再び有効**
 - [policies/company_rules.yaml](../policies/company_rules.yaml) — 会社規程データ（RAG の抽出結果を検証する正解データとフォールバック。SPEC 9.7）
 - `.agents/rules/{backend,frontend,infra}.md` — 各領域の詳細規約

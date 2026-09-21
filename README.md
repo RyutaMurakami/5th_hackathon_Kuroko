@@ -9,12 +9,13 @@ AkakuraのAI Agentを活用したWeb開発のテンプレートリポジトリ�
 このテンプレートは「**AIエージェントとユーザーが対話しながら実装を進める**」ことを前提に設計している。エージェントがいきなりコードを書き始めるのではなく、次の流れで進むことを想定する。
 
 ```
-docs/SPEC.md          課題・ユーザー・要件をヒアリングしながら埋める
-                      （API・データモデル・エージェント設計もここで合意する）
+docs/PLAN.md          概要。課題・ユーザー・コンセプト・スコープをヒアリングしながら埋める
    ↓
-docs/ARCHITECTURE.md  合意内容をシステム構成として整理する
+docs/SPEC.md          仕様。要件・API・データモデル・エージェント設計を合意する
    ↓
-docs/PLAN.md          タスクに分解する
+docs/ARCHITECTURE.md  アーキテクチャ。合意内容をシステム構成として整理する
+   ↓
+docs/TASKS.md         エージェントの実装タスク（人間のタスクは docs/human_task.md）
    ↓
 実装（backend / frontend / infra）
 ```
@@ -35,7 +36,7 @@ docs/PLAN.md          タスクに分解する
 
 1. このリポジトリをコピー（またはテンプレートとして使用）してプロジェクトを開始する。
 2. Claude Code / Antigravity（Gemini CLI）などのAIコーディングエージェントを起動する。どのツールも `AGENTS.md` を読み込む前提（`CLAUDE.md` / `GEMINI.md` は `@AGENTS.md` で取り込む各ツール向けのラッパー。下記「エージェント向け設定ファイル」参照）。
-3. エージェントと対話しながら `docs/SPEC.md` → `ARCHITECTURE.md` → `PLAN.md` を埋める。
+3. エージェントと対話しながら `docs/PLAN.md` → `SPEC.md` → `ARCHITECTURE.md` を埋め、`TASKS.md` に実装タスクを分ける。
 4. 合意した設計をもとに `backend/` `frontend/` `infra/` を実装する。各ファイルの `TODO` コメントが実装対象の目印。
 5. Getting Started（下記）でローカル起動して動作確認する。
 
@@ -55,10 +56,11 @@ docs/PLAN.md          タスクに分解する
 ├── AGENTS.md / CLAUDE.md / GEMINI.md  # AIエージェント向け指示（上表参照）
 ├── DESIGN.md              # UI デザインの仕様（Web Dashboard の色・文字・余白・部品）
 ├── docs/                  # 企画・設計ドキュメント（対話で埋めるスケルトン）
-│   ├── SPEC.md            # 課題・要件・API・データモデル・エージェント設計
-│   ├── ARCHITECTURE.md    # システム構成（サービス・コード配置・権限・デプロイ）
-│   ├── human_task.md      # AIが実装する前に人間がやるタスク（アカウント・申請・提出）
-│   └── PLAN.md            # マイルストーン・タスク分解
+│   ├── PLAN.md            # 概要（課題・コンセプト・スコープ・競合との差分）
+│   ├── SPEC.md            # 仕様（要件・API・データモデル・エージェント設計）
+│   ├── ARCHITECTURE.md    # アーキテクチャ（サービス・コード配置・権限・デプロイ）
+│   ├── TASKS.md           # エージェントの実装タスク
+│   └── human_task.md      # 人間のタスク（アカウント・申請・承認・提出）
 ├── frontend/               # Next.js (App Router)
 │   ├── app/                # ルーティング・ページ
 │   ├── components/         # UIコンポーネント

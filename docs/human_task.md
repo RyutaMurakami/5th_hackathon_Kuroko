@@ -1,12 +1,13 @@
 # 人間が先にやるタスク（human_task）
 
-> エージェントへ: AI が実装に着手する前に、人間が済ませておくタスクの一覧。着手する作業に対応する項目（各項目の「止まる実装」）が完了しているかを、実装の前にユーザーへ確認する。未完了のまま仮実装で進めない。**トークン・キーなどの秘密の値は、ユーザーにチャットへ貼らせない**（置き場所は「受け渡し」節に従う）。項目が完了したらチェックを付け、日付と結果（ID・URLなど秘密でないもの）を書き込む。
+> エージェントへ: AI が実装に着手する前に、人間が済ませておくタスクの一覧（**AI 側のタスクは [TASKS.md](TASKS.md)**。本書は人間のタスクだけ）。着手する作業に対応する項目（各項目の「止まる実装」）が完了しているかを、実装の前にユーザーへ確認する。未完了のまま仮実装で進めない。**トークン・キーなどの秘密の値は、ユーザーにチャットへ貼らせない**（置き場所は「受け渡し」節に従う）。項目が完了したらチェックを付け、日付と結果（ID・URLなど秘密でないもの）を書き込む。
 
 - 作成日: 2026-09-19 / 最終更新: 2026-09-20（提出締切 2026-10-15 23:59 まで **残り約25日**）
 - 根拠: [SPEC.md](SPEC.md) 13章（要準備・要検証）、[ARCHITECTURE.md](ARCHITECTURE.md) 12章（D1〜D21）・13章（V1〜V12）、[DESIGN.md](../DESIGN.md)、ハッカソンの提出要件
 - 2026-09-20 の更新内容（1回目）: ツールを MCP 経由にし API 自身が MCP サーバーを兼ねる構成、Agent Gateway × Model Armor への一本化、隔離抽出エージェント（`extract-agent`）、Web Dashboard を幹事・開発者向けの4点に絞ったこと、DESIGN.md の新設を反映した。**Agent Gateway が使えるかの確認（H21）を、Agent Runtime の実験（H11）より先にした**
 - 2026-09-20 の更新内容（2回目）: **送金を、AP2 サンプルの模擬決済役から、KUROKO 自身が銀行API（sunabar）で実行する形に変えた**（D17。幹事Pay など外部の集金・決済サービスは使わない）。**規程の参照を RAG Engine にした**（D18）。**Web Dashboard を幹事の主導線にし、事務の確認を Web で行えるようにした**（D19）。これに伴い、**sunabar の口座開設と疎通（H22・H23・H25）、規程の文書の用意（H24）を追加**し、`ap2-mock` に関する項目（H16・P7・S4・S5）を差し替えた。**H22（口座開設）はリードタイムがあるので最優先**
 - 2026-09-20 の更新内容（3回目）: **按分の内訳を Web に出す**（D21）、**振り返り・記憶を作る**（**Agent Platform の Memory Bank**。D20）、**Web の事務の確認**（振り返りのまとめの確認を含む）が決まった。これに伴い、**Memory Bank の疎通（H26。V12）と、過去のイベントの記憶（seed）の用意（H27）を追加**し、H1・H2 を更新した。**H2 の「要レビュー」から、決まった3点を外した**
+- 2026-09-21 の更新内容（5回目）: **AI の実装タスクを [TASKS.md](TASKS.md) に分けた**（「人間の作業を待たずに AI が始められる実装」の節は TASKS.md の T1 へ移した）。PLAN=概要、SPEC=仕様、ARCHITECTURE=アーキテクチャ、TASKS=AI のタスク、human_task=人間のタスク、という分け方にした。
 - 2026-09-21 の更新内容（4回目）: **思想の変更（Webが主導線、Slackは Human-in-the-loop）**。幹事の作業（依頼・領収書と予約画面のアップロード・確認）は Web で行い、**審査員が実際に触って体験できる**ことを狙う（D22・D23、SPEC 7.5・7.6）。これに伴い、**審査員向けの準備（H28：サンプルの領収書・予約画面と「サンプル商事」の初期データ、H29：デモ用 Slack の招待リンク）を追加**し、Firebase の匿名認証（H10）、H17・H18・H26・H27・P6・P8・P10・S1 を更新した。あわせて、**Memory Bank を統括エージェントにアタッチして読み取る**方式に変えた（D20。MCP ツール `recall_memory` は廃止）
 
 ### 種別の見方
@@ -29,22 +30,9 @@
 
 ---
 
-## 人間の作業を待たずに AI が始められる実装
+## AI の実装タスクは TASKS.md
 
-H1・H1b・H2（合意）さえ済めば、次は外部のアカウントや申請なしで進められる。人間の作業待ちで AI が止まらないよう、先に着手してよい。
-
-- 按分計算 `calculate_split`、承認者の決定 `determine_approver` と、そのユニットテスト（SPEC 12.1）
-- Policy Gate 6.1 / 6.2 / 6.3 の判定ロジックと、通過・拒否のテスト
-- 委任状の検証ロジック（テスト用の鍵で。KMS はまだ使わない）
-- `policies/company_rules.yaml` の読み込みと、Pydantic スキーマ（SPEC 3章）
-- 隔離抽出の**出力の検証**（型・語彙・長さ。`extract-agent` の呼び出しはまだ作らず、値の検証だけ）と、LLM 可のツールの公開一覧（`routers/mcp.py`）に `llm_must_not` が含まれないことのテスト
-- **銀行アダプタのインターフェース定義とスタブ**（`bank_adapter/`。sunabar には接続せず、`payment_api/` から見た口座番号を出さない API の形だけ）と、`payment_api/` の支払いの状態遷移（`pending → awaiting_bank_approval → completed / blocked / failed`）・承認待ちのポーリング・期限切れの作り直し（最大2回）・「入金を明細で確認できたときだけ完了」のテスト（SPEC 12.1）。**H25（疎通）の結果を待たずに進められる**
-- **規程から抽出した値の検証**（型と範囲。RAG は呼ばず、`company_rules.yaml` の値との照合テストだけ。SPEC 9.7）
-- **振り返りの集計**（`summarize_retrospective`。LLM なし）、**記憶の保存の Policy Gate 6.4**（Memory Bank はスタブで。SPEC 12.1 の「記憶の保存のテスト」と「記憶が金額に影響しないことのテスト」）、**統括エージェントのツールに書き込み系の記憶ツールが含まれないこと・`load_memory` が企画・店舗提案の段階だけ通ること**のテスト（コールバック）
-- **按分の内訳の画面**（Split Table）、**振り返りの画面**（Retro Summary Card）、**店舗候補の選択**（Venue Choice Card）のダミーデータでの実装（[DESIGN.md](../DESIGN.md)。**H1b の合意後**）と、按分の内訳の API（`SplitResult` の値をそのまま返す）
-- **Web のチャット・アップロード・確認・通知の画面**（Chat Panel・Upload Dropzone・Slack Handoff Card・Activity Timeline・Notification Bell・Guest Banner。ダミーデータで。[DESIGN.md](../DESIGN.md)。**H1b の合意後**）と、Web 向けの API（SPEC 4.3。`organizer_web_uid` と `guest` の権限の検査、アップロードの種類・サイズ・枚数の検査、ゲストの上限とキルスイッチ、`sandbox` の削除）と、そのテスト（SPEC 12.1）
-- **デモ用の代行のルートの権限のテスト**（`sa-demo-runner` だけを受け付ける・`sandbox` が `false` なら拒否・Policy Gate は省略されない。実際の Cloud Tasks・銀行には接続せず、スタブで）
-- Web Dashboard の画面と `globals.css`（[DESIGN.md](../DESIGN.md) のトークン。ダミーデータで。全体フローのステッパー、送金の表、承諾リスト、状態のピルの対応表 `frontend/lib/status.ts`）。**H1b の合意後**
+AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md) に分けた。本書は**人間のタスクだけ**を持つ。人間の作業を待たずに AI が始められる実装は、TASKS.md の「T1. 人間待ちのない実装（先行可）」にある（**H1・H1b・H2 の合意さえ済めば着手できる**）。各タスクが依存する人間のタスクは、TASKS.md の「人間の依存」欄に H・P・S 番号で書いてある。
 
 ---
 
@@ -75,7 +63,7 @@ H1・H1b・H2（合意）さえ済めば、次は外部のアカウントや申�
 - [ ] **H3【決】役割分担を決める**
   - 最低限、「Slack ワークスペース」「GCP プロジェクトと課金」「各APIキー」の契約・管理の担当者を決める（SPEC 冒頭のとおり、機能の分担は固定しない）
 - [ ] **H4【人】未コミットの変更を整理してコミットする**
-  - 対象: `DESIGN.md`（リポジトリ直下）、`docs/`（SPEC・ARCHITECTURE・PLAN・human_task・mock・review）、`policies/`、`.claude/`、`backend/uv.lock`、`AGENTS.md` `CLAUDE.md` `GEMINI.md` `README.md`、`.agents/rules/`、`backend/src/db/firestore.py`
+  - 対象: `DESIGN.md`（リポジトリ直下）、`docs/`（PLAN・SPEC・ARCHITECTURE・TASKS・human_task・mock・review）、`policies/`、`.claude/`、`backend/uv.lock`、`AGENTS.md` `CLAUDE.md` `GEMINI.md` `README.md`、`.agents/rules/`、`backend/src/db/firestore.py`
   - 止まる実装: なし（ただし AI が作業ブランチを切るために、`main` がきれいな状態であることが望ましい）。AI は依頼がない限りコミットしない
 
 ### B. ハッカソンへの登録
