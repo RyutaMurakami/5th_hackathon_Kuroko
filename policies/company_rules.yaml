@@ -1,0 +1,149 @@
+# KUROKO が参照する会社規程データ
+# ハッカソンのデモ用に設定した架空の規程であり、実在する企業の規程ではない。
+# LLMは本ファイルを「判断の根拠」として参照し、金額計算・承認者の決定・振込先の解決は
+# 本ファイルを読み込んだ決定論的なコードが行う。
+
+policy_id: sample-co-social-event
+version: "1.0.0"
+effective_from: "2026-10-01"
+company_name: サンプル株式会社（架空）
+owner_department: 総務部
+
+# 出席者の負担区分。上から順に評価し、最初に一致した区分を適用する。
+member_classes:
+  - id: director
+    label: 部長
+    match:
+      role: 部長
+    rank: 4
+    weight: 2.0
+    consent_cap_yen: 12000
+  - id: manager
+    label: 課長
+    match:
+      role: 課長
+    rank: 3
+    weight: 1.5
+    consent_cap_yen: 9000
+  - id: new_hire
+    label: 入社1年未満
+    match:
+      role: 一般
+      tenure_months_less_than: 12
+    rank: 1
+    weight: 0.5
+    consent_cap_yen: 3000
+  - id: staff
+    label: 一般
+    match:
+      role: 一般
+    rank: 2
+    weight: 1.0
+    consent_cap_yen: 6000
+
+event_types:
+  welcome_farewell:
+    label: 歓送迎会
+    guests_of_honor:
+      # 主役は負担なし。主役の分は会社補助の後、他の出席者が負担係数で按分する。
+      share_yen: 0
+    company_subsidy:
+      per_attendee_yen: 3000
+      include_guests_of_honor: true
+      max_per_event_yen: 60000
+      eligible_employment_types:
+        - 正社員
+        - 契約社員
+      # 幹事が店に立て替えて支払い、後日経費精算で会社に申請する。
+      claimed_by: organizer
+      claim_record_items:
+        - event_date
+        - venue_name
+        - venue_address
+        - attendees
+        - attendee_count
+        - total_amount
+        - receipt_image
+        - split_table
+        - approval_history
+    budget:
+      target_per_person_yen:
+        min: 4000
+        max: 6000
+      hard_limit_per_person_yen: 7000
+      over_hard_limit: require_organizer_confirmation
+    venue_access:
+      # 全員がこの時間以内に来られる駅の周辺を優先する。
+      max_travel_minutes: 45
+      relax_step_minutes: 15
+      relax_limit_minutes: 75
+      # 平均待ち時間探索。ハッカソン用のアクセスキーではダイヤ探索を使えない。
+      route_search_type: plain
+
+split:
+  # 按分の対象額 = 会計金額 - 会社補助
+  base: total_minus_subsidy
+  rounding:
+    unit_yen: 100
+    method: floor
+  # 端数の不足分は承認者が負担する。
+  shortfall_to: approver
+  # 幹事も区分どおり負担する。幹事本人の負担分は振込を作らない。
+  organizer_pays_own_share: true
+
+approval:
+  required: true
+  channel: slack
+  # 上から順に比較し、必ず1名に決まるようにする。
+  approver_selection:
+    - highest_weight
+    - highest_rank
+    - earliest_hire_date
+    - lowest_employee_id
+
+payment:
+  # 参加者の支払いエージェントが、本人の委任状（AP2のOpen Mandate）の範囲内で幹事に支払う。
+  method: agent_payment_ap2
+  # 支払先は幹事に固定する。LLMの出力やチャットの発言からは変更できない。
+  payee: organizer
+  payee_change_allowed_via:
+    - admin_settings
+  payer_mandate:
+    # 出欠の回答時に、参加者本人が委任状に署名する。
+    timing: rsvp
+    cap_source: member_classes.consent_cap_yen
+    # 委任状の有効期限（開催日から数えた日数）
+    expires_after_event_days: 7
+    # 支払いが実行されるまでは、本人が取り消せる。
+    revocable_until_execution: true
+  execution:
+    # 按分方針の承認をきっかけに、本人の操作なしで支払う（human-not-present）。
+    trigger: split_approved
+    # 負担額が委任の上限を超えた場合は自動で支払わず、本人に確認する。
+    over_cap: require_payer_confirmation
+    # 支払い後に本人へ通知する。
+    notify_payer_after: slack_dm
+  due_business_days_after_event: 3
+  fee_paid_by: payer
+
+privacy:
+  nearest_station:
+    used_by:
+      - route_tool
+    organizer_view: aggregate_only
+    delete_after: event_completed
+  dietary_restrictions:
+    used_by:
+      - venue_tool
+    organizer_view: aggregate_only
+    ask_reason: false
+    delete_after: event_completed
+
+audit:
+  record_policy_version_in_decision_log: true
+  llm_must_not:
+    - calculate_amounts
+    - choose_approver
+    - choose_payee
+    - modify_policy
+    - sign_mandates
