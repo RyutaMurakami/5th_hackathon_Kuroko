@@ -1,2 +1,16 @@
-project_id = "your-gcp-project-id"
-region     = "us-central1"
+project_id        = "your-gcp-project-id"
+region            = "us-central1"
+github_repository = "owner/repo"
+
+# Firebase Hosting のドメイン（https://<site>.web.app など）と、ローカル開発のオリジン
+cors_allowed_origins = [
+  "https://your-gcp-project-id.web.app",
+  "https://your-gcp-project-id.firebaseapp.com",
+  "http://localhost:3000",
+]
+
+# Secret Manager の値を登録したら true にする（human_task P3）
+wire_secrets = false
+
+# 呼び先のルート（TASKS B17）ができたら false にする
+scheduler_paused = true

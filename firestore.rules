@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// Web（ブラウザ）から Firestore を直接読み書きさせない（ARCHITECTURE D2）。
+// データは kuroko-api の API 経由でだけ返す。サーバー（サービスアカウント）はこのルールの対象外。
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

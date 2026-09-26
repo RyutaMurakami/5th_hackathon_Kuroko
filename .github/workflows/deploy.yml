@@ -1,23 +1,149 @@
 name: Deploy
 
+# main への push で、変更があったサービスだけをデプロイする（TASKS I11）。
+# Cloud Run の設定（SA・環境変数・公開範囲）は Terraform が持ち、ここではイメージだけを差し替える。
+# terraform apply は CI に入れない（手動。human_task P1）。
+# GitHub の Variables（human_task P2）が未登録のあいだは、どのジョブも動かない。
+# エージェント（Agent Runtime）のデプロイは TASKS I8 で足す。
+
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write # Workload Identity Federation
 
-jobs:
-  deploy-backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      # TODO: google-github-actions/auth (WIF) -> build & push image -> deploy to Cloud Run
-      # See infra/terraform/iam_wif.tf for the pool/provider/service account this authenticates against.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
 
-  deploy-frontend:
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION }}
+  REGISTRY: ${{ vars.GCP_ARTIFACT_REGISTRY }}
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    if: vars.GCP_WORKLOAD_IDENTITY_PROVIDER != ''
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      payment_api: ${{ steps.filter.outputs.payment_api }}
+      bank_adapter: ${{ steps.filter.outputs.bank_adapter }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'policies/**'
+            payment_api:
+              - 'payment_api/**'
+            bank_adapter:
+              - 'bank_adapter/**'
+            frontend:
+              - 'frontend/**'
+              - 'firebase.json'
+
+  # backend/ は1回ビルドして、kuroko-gateway と kuroko-api に同じイメージを載せる（ARCHITECTURE 10章）
+  # TODO(TASKS E2): ビルドコンテキストをリポジトリルートにして policies/ を同梱する
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # TODO: npm run build -> firebase deploy --only hosting
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - name: Build and push
+        run: |
+          IMAGE="${REGISTRY}/backend:${GITHUB_SHA}"
+          docker build -t "$IMAGE" -f backend/Dockerfile backend
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Deploy kuroko-api and kuroko-gateway
+        run: |
+          for svc in kuroko-api kuroko-gateway; do
+            gcloud run services update "$svc" --image "$IMAGE" --region "$REGION" --project "$PROJECT_ID" --quiet
+          done
+
+  payment-api:
+    needs: changes
+    if: needs.changes.outputs.payment_api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - run: |
+          IMAGE="${REGISTRY}/payment-api:${GITHUB_SHA}"
+          docker build -t "$IMAGE" payment_api
+          docker push "$IMAGE"
+          gcloud run services update payment-api --image "$IMAGE" --region "$REGION" --project "$PROJECT_ID" --quiet
+
+  bank-adapter:
+    needs: changes
+    if: needs.changes.outputs.bank_adapter == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - run: |
+          IMAGE="${REGISTRY}/bank-adapter:${GITHUB_SHA}"
+          docker build -t "$IMAGE" bank_adapter
+          docker push "$IMAGE"
+          gcloud run services update bank-adapter --image "$IMAGE" --region "$REGION" --project "$PROJECT_ID" --quiet
+
+  # Firebase の設定値（NEXT_PUBLIC_*）はビルド時に埋め込む。秘密ではないので Variables に置く
+  # TODO(TASKS E6): frontend/Dockerfile を用意する
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - name: Build and push
+        run: |
+          IMAGE="${REGISTRY}/dashboard:${GITHUB_SHA}"
+          docker build -t "$IMAGE" \
+            --build-arg NEXT_PUBLIC_FIREBASE_API_KEY="${{ vars.NEXT_PUBLIC_FIREBASE_API_KEY }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="${{ vars.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID="${{ vars.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="${{ vars.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="${{ vars.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_APP_ID="${{ vars.NEXT_PUBLIC_FIREBASE_APP_ID }}" \
+            frontend
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - run: gcloud run services update kuroko-dashboard --image "$IMAGE" --region "$REGION" --project "$PROJECT_ID" --quiet
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Deploy Firebase Hosting (rewrite to kuroko-dashboard)
+        run: npx --yes firebase-tools@latest deploy --only hosting --project "$PROJECT_ID" --non-interactive
+      - name: Check the rewrite
+        run: curl -fsS -o /dev/null -w "%{http_code}\n" "https://${PROJECT_ID}.web.app/"
