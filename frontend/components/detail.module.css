@@ -1,0 +1,571 @@
+/* Event Summary / Tabs / KUROKO Panel / Toast。DESIGN.md「Components」「Motion」 */
+
+/* ---------- Event Summary ---------- */
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-24);
+}
+
+.summaryHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-8) var(--spacing-24);
+}
+
+.summaryTitle {
+  font-size: var(--text-heading);
+  line-height: var(--leading-heading);
+  font-weight: var(--font-weight-bold);
+  font-feature-settings: "palt";
+}
+
+@media (max-width: 640px) {
+  .summaryTitle {
+    font-size: var(--text-heading-sm);
+    line-height: var(--leading-heading-sm);
+  }
+}
+
+.summaryMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-4) var(--spacing-16);
+  margin-top: var(--spacing-8);
+  font-size: var(--text-body-sm);
+  color: var(--color-slate-blue);
+  font-variant-numeric: tabular-nums;
+}
+
+.organizerRow {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing-8) + var(--spacing-4));
+}
+
+/* Highlight Card（Navy Tint）の上では、アバターの地を白にして埋もれさせない */
+.organizerRow > span:first-child {
+  background: var(--color-pure-white);
+}
+
+.organizerName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-8);
+  font-size: var(--text-body);
+  font-weight: var(--font-weight-bold);
+}
+
+.divider {
+  height: var(--border-width);
+  background: var(--color-pure-white);
+  border: none;
+  margin: 0;
+}
+
+.stageTitle {
+  font-size: var(--text-heading-sm);
+  line-height: var(--leading-heading-sm);
+  font-weight: var(--font-weight-bold);
+  font-feature-settings: "palt";
+  margin-bottom: var(--spacing-16);
+}
+
+.nextStep {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  font-size: var(--text-body-sm);
+  color: var(--color-slate-blue);
+}
+
+.miniStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-8);
+}
+
+@media (max-width: 640px) {
+  .miniStats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.miniStat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+  min-height: var(--control-height);
+  padding: calc(var(--spacing-8) + var(--spacing-4)) var(--spacing-16);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-cards);
+  background: var(--color-pure-white);
+  color: var(--color-ink-navy);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.miniStat:hover {
+  border-color: var(--color-input-border);
+  transform: translateY(calc(var(--spacing-4) / -2));
+}
+
+.miniStatLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  font-size: var(--text-label);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-steel-text);
+}
+
+.miniStatValue {
+  font-size: var(--text-heading-sm);
+  line-height: var(--leading-heading-sm);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.miniStatUnit {
+  margin-left: var(--spacing-4);
+  font-size: var(--text-caption);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-steel-text);
+}
+
+/* ---------- Tabs ---------- */
+.tabs {
+  display: flex;
+  gap: var(--spacing-4);
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: var(--spacing-4);
+  margin: calc(var(--spacing-4) * -1);
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  position: relative;
+  flex: none;
+  min-height: var(--control-height);
+  padding: 0 calc(var(--spacing-16) + var(--spacing-4));
+  border: none;
+  border-radius: var(--radius-tabs);
+  background: none;
+  color: var(--color-steel-text);
+  font-size: var(--text-body-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.tab:hover:not(.tabSelected) {
+  background: var(--color-cream-subtle);
+  color: var(--color-ink-navy);
+}
+
+.tabSelected {
+  color: var(--color-cream-text);
+}
+
+.tabIndicator {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-tabs);
+  background: var(--color-ink-navy);
+}
+
+.tabLabel {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  white-space: nowrap;
+}
+
+.tabMeta {
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.tabDot {
+  width: var(--dot-size-lg);
+  height: var(--dot-size-lg);
+  border-radius: var(--radius-full);
+}
+
+.tabDot-sun {
+  background: var(--color-sun-signal);
+}
+
+.tabDot-navy {
+  background: var(--color-navy-text);
+}
+
+.tabDot-lagoon {
+  background: var(--color-lagoon-done);
+}
+
+.tabDot-coral {
+  background: var(--color-coral-alert);
+}
+
+.tabDot-slate {
+  background: var(--color-mist-blue);
+}
+
+.tabsSm .tab {
+  min-height: calc(var(--spacing-32) + var(--spacing-4));
+  padding: 0 var(--spacing-16);
+}
+
+.tabPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-24);
+}
+
+.tabBar {
+  position: sticky;
+  top: var(--header-height);
+  z-index: 10;
+  padding: var(--spacing-8) 0;
+  background: var(--surface-canvas);
+}
+
+/* ---------- KUROKO Launcher / Panel ---------- */
+.launcher {
+  position: fixed;
+  right: var(--gutter);
+  bottom: var(--spacing-24);
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing-8) + var(--spacing-4));
+  height: var(--launcher-height);
+  padding: 0 var(--spacing-24) 0 calc(var(--spacing-8) + var(--spacing-4));
+  border: none;
+  border-radius: var(--radius-buttons);
+  background: var(--color-ink-navy);
+  color: var(--color-cream-text);
+  font-size: var(--text-body);
+  font-weight: var(--font-weight-bold);
+  box-shadow: var(--shadow-popover);
+  cursor: pointer;
+}
+
+.launcher:hover {
+  background: var(--color-navy-hover);
+}
+
+:global(body[data-demo-toolbar="true"]) .launcher {
+  bottom: calc(var(--demo-toolbar-height) + var(--spacing-16));
+}
+
+.launcherIcon {
+  width: calc(var(--spacing-32));
+  height: calc(var(--spacing-32));
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  flex: none;
+}
+
+.launcherBadge {
+  position: absolute;
+  top: calc(var(--spacing-4) * -1);
+  right: calc(var(--spacing-4) * -1);
+  min-width: var(--check-size);
+  height: var(--check-size);
+  padding: 0 var(--spacing-4);
+  border-radius: var(--radius-full);
+  border: var(--border-width-input) solid var(--color-ink-navy);
+  background: var(--color-cream-text);
+  color: var(--color-ink-navy);
+  font-size: var(--text-caption);
+  font-weight: var(--font-weight-bold);
+  line-height: calc(var(--check-size) - var(--border-width-input) * 2);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.scrim {
+  position: fixed;
+  inset: var(--header-height) 0 0 0;
+  z-index: 46;
+  background: var(--color-cream-wash);
+  opacity: 0.4;
+}
+
+@media (min-width: 1025px) {
+  .scrim {
+    display: none;
+  }
+}
+
+.panel {
+  position: fixed;
+  top: var(--header-height);
+  right: 0;
+  bottom: 0;
+  z-index: 47;
+  display: flex;
+  flex-direction: column;
+  width: var(--panel-width);
+  max-width: 100vw;
+  background: var(--color-pure-white);
+  border-left: var(--border-width) solid var(--color-hairline);
+  box-shadow: var(--shadow-popover);
+}
+
+:global(body[data-demo-toolbar="true"]) .panel {
+  bottom: var(--demo-toolbar-height);
+}
+
+@media (max-width: 640px) {
+  /* スマホでは Demo Toolbar が2段に折り返すので、シートを一番下まで出して上に重ねる */
+  :global(body[data-demo-toolbar="true"]) .panel {
+    bottom: 0;
+    z-index: 50;
+  }
+}
+
+@media (max-width: 640px) {
+  .panel {
+    top: auto;
+    left: 0;
+    width: 100%;
+    height: 85vh;
+    border-left: none;
+    border-top: var(--border-width) solid var(--color-hairline);
+    border-radius: var(--radius-cards) var(--radius-cards) 0 0;
+  }
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-16);
+  padding: var(--spacing-16) var(--spacing-24) calc(var(--spacing-8) + var(--spacing-4));
+}
+
+.panelTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  font-size: var(--text-subheading);
+  font-weight: var(--font-weight-bold);
+}
+
+.panelTabs {
+  padding: 0 var(--spacing-24) calc(var(--spacing-8) + var(--spacing-4));
+  border-bottom: var(--border-width) solid var(--color-hairline);
+}
+
+.panelBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-16) var(--spacing-24) var(--spacing-24);
+}
+
+.iconButton {
+  display: grid;
+  place-items: center;
+  width: calc(var(--spacing-32) + var(--spacing-4));
+  height: calc(var(--spacing-32) + var(--spacing-4));
+  border: none;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--color-slate-blue);
+  cursor: pointer;
+  flex: none;
+}
+
+.iconButton:hover {
+  background: var(--color-cream-subtle);
+  color: var(--color-ink-navy);
+}
+
+/* ---------- Toast ---------- */
+.toastViewport {
+  position: fixed;
+  right: var(--gutter);
+  bottom: calc(var(--spacing-24) + var(--launcher-height) + var(--spacing-16));
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--spacing-8);
+  width: min(var(--popover-width), calc(100vw - var(--spacing-32)));
+  pointer-events: none;
+}
+
+:global(body[data-demo-toolbar="true"]) .toastViewport {
+  bottom: calc(var(--demo-toolbar-height) + var(--spacing-16) + var(--launcher-height) + var(--spacing-16));
+}
+
+/* KUROKO Panel が開いている間は、パネルの左に出して入力欄に重ねない */
+@media (min-width: 641px) {
+  :global(body[data-kuroko-panel="open"]) .toastViewport {
+    right: calc(var(--panel-width) + var(--spacing-16));
+  }
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-8);
+  width: 100%;
+  padding: calc(var(--spacing-8) + var(--spacing-4)) var(--spacing-16);
+  background: var(--color-pure-white);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-cards);
+  box-shadow: var(--shadow-popover);
+  pointer-events: auto;
+}
+
+.toastBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+  flex: 1;
+  min-width: 0;
+}
+
+.toastText {
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+/* ---------- Start (hero) ---------- */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--spacing-32);
+}
+
+@media (max-width: 640px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.heroImage {
+  width: calc(var(--spacing-80) * 2.5);
+  height: calc(var(--spacing-80) * 2.5);
+  border-radius: var(--radius-largecards);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+@media (max-width: 640px) {
+  .heroImage {
+    order: -1;
+    width: calc(var(--spacing-80) * 1.5);
+    height: calc(var(--spacing-80) * 1.5);
+  }
+}
+
+/* ---------- Agent Status ---------- */
+.workers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+}
+
+.worker {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--spacing-8) + var(--spacing-4));
+  padding: var(--spacing-8) calc(var(--spacing-8) + var(--spacing-4));
+  background: var(--color-pure-white);
+  border-radius: var(--radius-smallelements);
+}
+
+.workerDot {
+  flex: none;
+  width: var(--dot-size-lg);
+  height: var(--dot-size-lg);
+  margin-top: calc(var(--spacing-8) + var(--spacing-4) / 2);
+  border-radius: var(--radius-full);
+}
+
+/* 動いている: 墨紺のドットがゆっくり明滅する。待っている: 月の黄。済んだ: 青緑 */
+.workerDot-running {
+  background: var(--color-ink-navy);
+  animation: blink 1.2s ease-in-out infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.workerDot-waiting {
+  background: var(--color-sun-signal);
+}
+
+.workerDot-done {
+  background: var(--color-lagoon-done);
+}
+
+/* 種類の印。エージェントは墨紺の塗り、仕組み（コード）は枠だけ */
+.kindAgent,
+.kindSystem {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: var(--badge-height);
+  margin-top: var(--spacing-4);
+  padding: 0 var(--spacing-8);
+  border-radius: var(--radius-smallelements);
+  font-size: var(--text-label);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.kindAgent {
+  background: var(--color-ink-navy);
+  color: var(--color-cream-text);
+}
+
+.kindSystem {
+  background: none;
+  color: var(--color-slate-blue);
+  box-shadow: inset 0 0 0 var(--border-width) var(--color-input-border);
+}
+
+.workerBody {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing-4) / 2);
+  min-width: 0;
+}
+
+.workerText {
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-ink-navy);
+}
+
+.workerRole {
+  font-size: var(--text-caption);
+  color: var(--color-steel-text);
+}

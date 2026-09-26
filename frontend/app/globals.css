@@ -1,17 +1,258 @@
+/*
+ * KUROKO Web Dashboard のデザイントークン。
+ * 値の正はリポジトリ直下の DESIGN.md（Quick Start の CSS Custom Properties）。
+ * ここの値を変えるときは、先に DESIGN.md を直す。部品側では var(--...) だけを使う。
+ * ダークテーマは作らない（DESIGN.md）。
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Colors */
+  --color-ink-navy: #141d2e;
+  --color-slate-blue: #435068;
+  --color-steel-text: #5a6478;
+  --color-mist-blue: #9aa1af;
+  --color-hairline: #e6e2d8;
+  --color-input-border: #838da1;
+  --color-cream-wash: #f8f5ee;
+  --color-pure-white: #ffffff;
+  --color-cream-subtle: #fbf9f4;
+  --color-navy-tint: #e8ecf4;
+  --color-cream-text: #fdfbf4;
+  --color-navy-hover: #2b3852;
+  --color-navy-text: #2b3a5c;
+  --color-sun-signal: #f8c450;
+  --color-sun-soft: #fff3d6;
+  --color-sun-text: #7a4e00;
+  --color-lagoon-done: #12a594;
+  --color-lagoon-text: #0b6b5e;
+  --color-lagoon-soft: #e0f8f3;
+  --color-coral-alert: #e5484d;
+  --color-coral-text: #b3261e;
+  --color-coral-soft: #ffedee;
+
+  /* Typography — Font Families（Inter / Noto Sans JP は next/font が付けた変数を先頭に置く） */
+  --font-sans: var(--font-inter), var(--font-noto-sans-jp), "Inter", "Noto Sans JP", "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Typography — Scale */
+  --text-caption: 12px;
+  --leading-caption: 1.5;
+  --text-label: 12px;
+  --leading-label: 1.5;
+  --text-body-sm: 14px;
+  --leading-body-sm: 1.6;
+  --text-body: 16px;
+  --leading-body: 1.7;
+  --text-body-lg: 18px;
+  --leading-body-lg: 1.6;
+  --text-subheading: 20px;
+  --leading-subheading: 1.5;
+  --text-heading-sm: 24px;
+  --leading-heading-sm: 1.4;
+  --text-heading: 32px;
+  --leading-heading: 1.3;
+  --text-stat: 40px;
+  --leading-stat: 1.15;
+  --text-mono: 12px;
+  --leading-mono: 1.6;
+
+  /* Typography — Weights */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 700;
+
+  /* Spacing */
+  --spacing-unit: 8px;
+  --spacing-4: 4px;
+  --spacing-8: 8px;
+  --spacing-16: 16px;
+  --spacing-24: 24px;
+  --spacing-32: 32px;
+  --spacing-40: 40px;
+  --spacing-48: 48px;
+  --spacing-56: 56px;
+  --spacing-64: 64px;
+  --spacing-80: 80px;
+
+  /* Layout */
+  --page-max-width: 1200px;
+  --section-gap: 48px;
+  --card-padding: 24px;
+  --element-gap: 16px;
+  --gutter: 24px;
+  --header-height: 64px;
+  --row-height-dense: 40px;
+  --row-height: 48px;
+
+  /* Border Radius */
+  --radius-buttons: 56px;
+  --radius-tabs: 56px;
+  --radius-full: 999px;
+  --radius-cards: 20px;
+  --radius-largecards: 32px;
+  --radius-smallelements: 10px;
+  --radius-checkbox: 6px;
+
+  /* Shadows */
+  --shadow-md: 0 1px 2px rgba(18, 35, 63, 0.04), 0 4px 16px rgba(18, 35, 63, 0.06);
+  --shadow-popover: 0 8px 24px -8px rgba(18, 35, 63, 0.18);
+  --shadow-focus: 0 0 0 2px #ffffff, 0 0 0 4px #141d2e;
+
+  /* Component sizes */
+  --control-height: 44px;
+  --pill-height: 24px;
+  --badge-height: 22px;
+  --avatar-size: 56px;
+  --avatar-size-sm: 40px;
+  --icon-size: 20px;
+  --icon-size-sm: 16px;
+  --icon-stroke: 1.5px;
+  --dot-size: 6px;
+  --dot-size-lg: 8px;
+  --check-size: 20px;
+  --stepper-dot: 32px;
+  --progress-height: 8px;
+  --stripe-width: 4px;
+  --stripe-width-sm: 3px;
+  --line-width: 2px;
+  --border-width: 1px;
+  --border-width-input: 1.5px;
+  --popover-width: 360px;
+  --demo-toolbar-height: 64px;
+  --panel-width: 440px;
+  --launcher-height: 56px;
+
+  /* Motion（JS 側は lib/motion.ts） */
+  --motion-fast: 150ms;
+  --motion-base: 240ms;
+  --motion-slow: 400ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Surfaces */
+  --surface-canvas: #f8f5ee;
+  --surface-card: #ffffff;
+  --surface-band: #e8ecf4;
+  --surface-subtle: #fbf9f4;
+
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
+@media (max-width: 640px) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --gutter: 16px;
+    --card-padding: 16px;
   }
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: system-ui, -apple-system, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--surface-canvas);
+  color: var(--color-ink-navy);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  font-weight: var(--font-weight-regular);
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+body[data-demo-toolbar="true"] {
+  padding-bottom: var(--demo-toolbar-height);
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--text-heading);
+  line-height: var(--leading-heading);
+  font-weight: var(--font-weight-bold);
+  font-feature-settings: "palt";
+}
+
+h2 {
+  font-size: var(--text-subheading);
+  line-height: var(--leading-subheading);
+  font-weight: var(--font-weight-bold);
+}
+
+a {
+  color: var(--color-azure-text);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* スケルトンの光（DESIGN.md「Empty / Loading / Error」） */
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
