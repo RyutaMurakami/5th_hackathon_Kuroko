@@ -5,10 +5,10 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useDemoHref, useDemoRole } from "@/lib/demo";
 import { Icon } from "./Icon";
 import { NotificationBell } from "./NotificationBell";
-import { OutlinePill, Pill } from "./ui";
+import { Pill } from "./ui";
 import styles from "./shell.module.css";
 
-const ROLE_LABEL = { organizer: "幹事", guest: "ゲスト", developer: "開発者" } as const;
+const ROLE_LABEL = { organizer: "幹事", guest: "ゲスト" } as const;
 
 export function AppHeader() {
   const role = useDemoRole();
@@ -40,11 +40,6 @@ export function AppHeader() {
         {signedIn && (
         <div className={styles.right}>
           <Pill tone="navy">{ROLE_LABEL[role]}</Pill>
-          {role === "developer" && (
-            <span className={styles.hideSm}>
-              <OutlinePill>仮名表示</OutlinePill>
-            </span>
-          )}
           <NotificationBell />
           <span className={styles.account}>
             <Icon name="user" label="アカウント" />

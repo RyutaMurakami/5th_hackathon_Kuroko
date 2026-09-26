@@ -92,7 +92,7 @@ export function Pill({ tone, children }: { tone: Tone; children: React.ReactNode
   );
 }
 
-/** 「sunabar（サンドボックス）」「仮名表示」など、状態ではない印 */
+/** 「sunabar（サンドボックス）」など、状態ではない印 */
 export function OutlinePill({ children }: { children: React.ReactNode }) {
   return <span className={`${styles.pill} ${styles.outlinePill}`}>{children}</span>;
 }

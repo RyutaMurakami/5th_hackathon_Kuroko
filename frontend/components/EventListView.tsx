@@ -17,14 +17,10 @@ export function EventListView() {
         <div>
           <h1 className={styles.pageTitle}>イベント</h1>
           <p className={styles.pageMeta}>
-            {role === "developer"
-              ? "すべてのイベント（仮名表示）"
-              : role === "guest"
-                ? "あなたが作った体験用のイベント"
-                : "あなたが幹事のイベント"}
+            {role === "guest" ? "あなたが作った体験用のイベント" : "あなたが幹事のイベント"}
           </p>
         </div>
-        {role !== "developer" && <ButtonLink href={href("/")}>新しく依頼する</ButtonLink>}
+        <ButtonLink href={href("/")}>新しく依頼する</ButtonLink>
       </div>
       <InfoBanner>
         委任・承認・取り消しは Slack で行います。予約内容と領収書の金額の確認は、この画面でできます。

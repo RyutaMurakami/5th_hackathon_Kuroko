@@ -25,19 +25,16 @@ const DUMMY_REPLY = "承知しました。内容を整理しています。（�
 export function KurokoDock({
   messages,
   activity,
-  canChat,
   defaultOpen,
   onConfirmPlan,
 }: {
   messages: ChatMessage[];
   activity: ActivityItem[];
-  /** 開発者はチャットできない（書き込めない） */
-  canChat: boolean;
   defaultOpen: boolean;
   onConfirmPlan?: () => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const [tab, setTab] = useState<PanelTab>(canChat ? "chat" : "activity");
+  const [tab, setTab] = useState<PanelTab>("chat");
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
   const [localActivity, setLocalActivity] = useState<ActivityItem[]>([]);
   const [thinking, setThinking] = useState(false);
@@ -126,7 +123,7 @@ export function KurokoDock({
 
   const current = allActivity[0];
   const tabs: TabItem<PanelTab>[] = [
-    ...(canChat ? [{ value: "chat" as const, label: "チャット" }] : []),
+    { value: "chat" as const, label: "チャット" },
     {
       value: "activity",
       label: "いましていること",
@@ -214,7 +211,7 @@ export function KurokoDock({
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: DURATION.base }}
                   >
-                    {tab === "chat" && canChat ? (
+                    {tab === "chat" ? (
                       <ChatPanel
                         bare
                         autoFocus

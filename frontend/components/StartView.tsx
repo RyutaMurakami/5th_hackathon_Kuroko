@@ -7,7 +7,7 @@ import { useDemoHref, useDemoRole } from "@/lib/demo";
 import { defaultEventIdFor } from "@/lib/mock-data";
 import { EASE_OUT } from "@/lib/motion";
 import { ChatPanel } from "./ChatPanel";
-import { ButtonLink, Card, Caption, TextLink } from "./ui";
+import { ButtonLink, Card, Caption } from "./ui";
 import detail from "./detail.module.css";
 import styles from "./event.module.css";
 
@@ -60,16 +60,6 @@ export function StartView() {
               <Image src="/kuroko-icon.png" alt="KUROKO のアイコン（ビールを運ぶ黒子）" width={200} height={200} priority />
             </motion.div>
           </div>
-        </Card>
-      </main>
-    );
-  }
-
-  if (role === "developer") {
-    return (
-      <main className={styles.page}>
-        <Card title="開発者は依頼を作れません" description="開発者の画面は閲覧だけです（仮名表示）。">
-          <TextLink href={href("/events")}>イベントの一覧へ</TextLink>
         </Card>
       </main>
     );

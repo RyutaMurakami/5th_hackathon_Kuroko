@@ -1,4 +1,4 @@
-// バックエンド（/api/dashboard/*）につなぐまでのダミーデータ（TASKS T1.14）。
+// バックエンド（/api/dashboard/*）につなぐまでのダミーデータ（TASKS F1）。
 // 登場人物と金額は docs/review/2026-09-13_KUROKO_review_04_story.md（すべて架空）。
 // 按分の数字は calculate_split の結果を写したもので、Web では再計算しない（SPEC 7.3.1）。
 import { isAtOrAfter } from "./status";
@@ -110,20 +110,14 @@ const EVENTS: EventSeed[] = [
   },
 ];
 
-/** 開発者の画面は仮名（User_001）。API が実名の表を引かない想定（ARCHITECTURE 4.5） */
-function nameFor(role: Role) {
-  return (userId: string): string => {
-    const index = PEOPLE.findIndex((p) => p.userId === userId);
-    if (role === "developer") return `User_${String(index + 1).padStart(3, "0")}`;
-    return PEOPLE[index]?.name ?? userId;
-  };
+/** 幹事は実名、ゲストは架空の名前（サンドボックス）。審査員と開発者は区別しない（ARCHITECTURE D25） */
+function nameFor(userId: string): string {
+  return PEOPLE.find((p) => p.userId === userId)?.name ?? userId;
 }
 
-/** 「山田さん」の形。開発者には仮名のまま */
-function sanFor(role: Role) {
-  const name = nameFor(role);
-  return (userId: string): string =>
-    role === "developer" ? name(userId) : `${name(userId).split(" ")[0]}さん`;
+/** 「山田さん」の形 */
+function sanFor(userId: string): string {
+  return `${nameFor(userId).split(" ")[0]}さん`;
 }
 
 function consentFor(person: Person, status: EventStatus): ConsentState {
@@ -146,9 +140,9 @@ function consentFor(person: Person, status: EventStatus): ConsentState {
 
 const PENDING_BANK = ["u-kobayashi", "u-kato"];
 
-function buildParticipants(status: EventStatus, role: Role): Participant[] {
+function buildParticipants(status: EventStatus): Participant[] {
   if (status === "planning") return [];
-  const name = nameFor(role);
+  const name = nameFor;
   return PEOPLE.map((p) => ({
     userId: p.userId,
     displayName: name(p.userId),
@@ -348,7 +342,7 @@ function upTo<T>(items: Timed<T>[], status: EventStatus): T[] {
 }
 
 function buildMessages(status: EventStatus, role: Role, seed: EventSeed): ChatMessage[] {
-  const san = sanFor(role);
+  const san = sanFor;
   const planConfirmed = isAtOrAfter(status, "rsvp");
   const messages: Timed<ChatMessage>[] = [
     {
@@ -385,7 +379,7 @@ function buildMessages(status: EventStatus, role: Role, seed: EventSeed): ChatMe
           { label: "人数", value: "10名（主役 2名を含む）" },
           { label: "エリア", value: "神田・有楽町" },
           { label: "予算の目安", value: "1人 4,000〜6,000円（規程 第5条）" },
-          { label: "承認者の見込み", value: `${nameFor(role)(APPROVER_ID)}（部長）` },
+          { label: "承認者の見込み", value: `${nameFor(APPROVER_ID)}（部長）` },
           { label: "出欠の回答期限", value: "10/16（金）" },
         ],
         confirmedAt: planConfirmed ? "2026-09-22T10:06:00+09:00" : null,
@@ -452,7 +446,7 @@ function buildMessages(status: EventStatus, role: Role, seed: EventSeed): ChatMe
 }
 
 function buildActivity(status: EventStatus, role: Role, sandbox: boolean): ActivityItem[] {
-  const san = sanFor(role);
+  const san = sanFor;
   const items: Timed<ActivityItem>[] = [
     { from: "planning", at: "2026-09-22T10:02:10+09:00", text: "規程を確認しました（歓送迎会・第5条）", state: "done" },
     { from: "planning", at: "2026-09-22T10:02:20+09:00", text: "過去の記憶を参照しました（2026/06 の歓送迎会）", state: "done" },
@@ -495,8 +489,8 @@ function buildActivity(status: EventStatus, role: Role, sandbox: boolean): Activ
     .reverse();
 }
 
-function buildDecisionLog(status: EventStatus, role: Role): DecisionLogEntry[] {
-  const san = sanFor(role);
+function buildDecisionLog(status: EventStatus): DecisionLogEntry[] {
+  const san = sanFor;
   const entries: Timed<DecisionLogEntry>[] = [
     { from: "planning", at: "2026-09-22T10:02:10+09:00", actor: "kuroko", actionType: "規程", summary: "歓送迎会の規程 v1.0.0 を適用（第5条 予算の目安）" },
     { from: "planning", at: "2026-09-22T10:02:20+09:00", actor: "kuroko", actionType: "照会", summary: "過去の記憶を参照（店舗の提案に使用。金額には使わない）" },
@@ -518,8 +512,8 @@ function buildDecisionLog(status: EventStatus, role: Role): DecisionLogEntry[] {
 }
 
 function buildHandoff(status: EventStatus, role: Role, sandbox: boolean): Handoff | null {
-  const san = sanFor(role);
-  const name = nameFor(role);
+  const san = sanFor;
+  const name = nameFor;
   const proxy = (text: string) => (sandbox ? text : null);
   if (status === "rsvp") {
     return {
@@ -548,8 +542,8 @@ function buildHandoff(status: EventStatus, role: Role, sandbox: boolean): Handof
   return null;
 }
 
-function waitingOnFor(status: EventStatus, role: Role): string | null {
-  const san = sanFor(role);
+function waitingOnFor(status: EventStatus): string | null {
+  const san = sanFor;
   const map: Partial<Record<EventStatus, string>> = {
     planning: "幹事の条件の確認待ち",
     rsvp: "参加者 3名の回答待ち（Slack）",
@@ -570,8 +564,8 @@ const AGENT = {
 const NO_LLM = "LLM は使っていません";
 
 /** エージェントと仕組みを区別して、いま誰が何をしているかを段階ごとに返す（PLAN 12章の3つのエージェント） */
-function buildWorkers(status: EventStatus, role: Role): Worker[] {
-  const san = sanFor(role);
+function buildWorkers(status: EventStatus): Worker[] {
+  const san = sanFor;
   const kuroko = (id: string, action: string, state: Worker["state"]): Worker => ({
     id, kind: "agent", ...AGENT.kuroko, action, state,
   });
@@ -655,12 +649,6 @@ const NEXT_STEP: Record<EventStatus, string> = {
   closed: "このイベントは終わりました。覚えた内容は次回の企画で使います",
 };
 
-/** 題名に主役の名前が入ることがあるので、開発者には括弧の中を出さない（仮名のみ。SPEC 7.3） */
-function titleFor(seed: EventSeed, role: Role): string {
-  if (role !== "developer") return seed.title;
-  return seed.title.replace(/（.*）$/, `（${seed.eventId}）`);
-}
-
 function seedOf(eventId: string): EventSeed | undefined {
   return EVENTS.find((e) => e.eventId === eventId);
 }
@@ -677,7 +665,7 @@ export function getEventDetail(eventId: string, role: Role, stage?: EventStatus)
   if (!seed) return null;
   if (!canSee(seed, role)) return null;
   const status = stage ?? seed.defaultStatus;
-  const participants = buildParticipants(status, role);
+  const participants = buildParticipants(status);
   const payments = buildPayments(status);
   const payers = participants.filter((p) => p.role === "participant" || p.role === "approver");
   const consentedCount = payers.filter((p) =>
@@ -685,9 +673,9 @@ export function getEventDetail(eventId: string, role: Role, stage?: EventStatus)
   ).length;
   return {
     eventId: seed.eventId,
-    title: titleFor(seed, role),
+    title: seed.title,
     datetime: seed.datetime,
-    organizerName: nameFor(role)(ORGANIZER_ID),
+    organizerName: nameFor(ORGANIZER_ID),
     status,
     consentedCount,
     consentTargetCount: payers.length,
@@ -696,9 +684,9 @@ export function getEventDetail(eventId: string, role: Role, stage?: EventStatus)
     sandbox: seed.sandbox,
     companyName: seed.companyName,
     venueName: isAtOrAfter(status, "booked") ? "炉端 こだま 神田店" : null,
-    waitingOn: waitingOnFor(status, role),
+    waitingOn: waitingOnFor(status),
     nextStep: NEXT_STEP[status],
-    workers: buildWorkers(status, role),
+    workers: buildWorkers(status),
     participants,
     payments,
     split: buildSplit(status),
@@ -706,9 +694,9 @@ export function getEventDetail(eventId: string, role: Role, stage?: EventStatus)
     reservation: buildReservation(status),
     receipt: buildReceipt(status),
     retrospective: buildRetro(status, seed.teamName),
-    messages: role === "developer" ? [] : buildMessages(status, role, seed),
+    messages: buildMessages(status, role, seed),
     activity: buildActivity(status, role, seed.sandbox),
-    decisionLog: buildDecisionLog(status, role),
+    decisionLog: buildDecisionLog(status),
     handoff: buildHandoff(status, role, seed.sandbox),
   };
 }
@@ -739,7 +727,6 @@ export function listEvents(role: Role): EventSummary[] {
 }
 
 export function listNotifications(role: Role): AppNotification[] {
-  if (role === "developer") return [];
   if (role === "guest") {
     return [
       {
