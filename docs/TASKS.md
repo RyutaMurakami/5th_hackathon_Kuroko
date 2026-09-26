@@ -66,7 +66,7 @@
 | [ ] | T1.11 | デモ用の代行のルート（`/tasks/demo/*`）の権限。**`sa-demo-runner` だけを受け付ける・`sandbox` が `false` なら拒否・Policy Gate は省略しない・LLM は呼べない**（Cloud Tasks・銀行はスタブ） | SPEC 12.1「デモ用の代行のテスト」が通る |
 | [ ] | T1.12 | 経費精算の記録 `generate_claim_pdf`（9.5節）と、個人情報の削除 `redact_personal_data`（9.6節） | PDF が生成され、削除の対象が消える |
 | [ ] | T1.13 | 架空の規程文書（`policies/company_rules.pdf`）の**下書き**（`company_rules.yaml` と同じ内容。表・段組を含む） | 人間が確認できる形にする（確認は H24） |
-| [ ] | T1.14 | Web の画面（ダミーデータ）: 全体フローのステッパー・送金の表・承諾リスト・状態のピル（`lib/status.ts`）、Split Table、Retro Summary Card、Venue Choice Card、Chat Panel、Upload Dropzone、Slack Handoff Card、Activity Timeline、Notification Bell、Guest Banner。**H1b の合意後** | `lint` `typecheck` `build` が通る。DESIGN.md のトークンだけを使う（値の直書きなし） |
+| [x] | T1.14 | Web の画面（ダミーデータ）: 全体フローのステッパー・送金の表・承諾リスト・状態のピル（`lib/status.ts`）、Split Table、Retro Summary Card、Venue Choice Card、Chat Panel、Upload Dropzone、Slack Handoff Card、Activity Timeline、Notification Bell、Guest Banner。**H1b の合意後** | `lint` `typecheck` `build` が通る。DESIGN.md のトークンだけを使う（値の直書きなし） ／ **2026-09-23 完了**: `/`（はじめる）・`/events`・`/events/[id]` をダミーデータ（`lib/mock-data.ts`）で実装。役割と段階は開発用の Demo Toolbar（`?role=` `&stage=`。DESIGN.md に追記）で切り替え、操作はブラウザ内の状態で模擬。部品の寸法トークンを DESIGN.md に追記。T0.4 のうち `output: "standalone"`・`globals.css` のトークン・Inter＋Noto Sans JP も実施（API クライアントは T3.13）。**2026-09-25 改訂**: 配色をアプリアイコンに合わせ、イベント詳細を「概要＋タブ」に分け、チャットを右から開く KUROKO Panel へ移した。動き（Motion。PLAN 17.2）・トースト・段階の進行（ゲストの体験用イベントはデモ用の代行で最後まで自動）を追加 |
 
 ---
 
@@ -74,7 +74,7 @@
 
 **最初の2日で通しで確かめ、9/23 を目安に Go / 退避先を判断する。** どれも、実験の前に内容をユーザーに見せて【承】を得る。結果は ARCHITECTURE 13章と SPEC 13章に書き戻す。
 
-| 状態 | ID | タスク | 人間の依存 | 完了の条件 |
+。**2026-09-26**: 概要に「いま動いているもの」（Agent Status）を追加し、どのエージェント（KUROKO Agent／支払い Agent／隔離抽出 Agent）と、エージェントではない仕組み（コード）が動いているかを段階ごとに表示 。**2026-09-26（2回目）**: 予約情報の入れ方を「ファイル／スクリーンショットの貼り付け／手入力」の3つにした。領収書はアップロードだけで、読み取れなかったときだけ手入力できる（SPEC 7.5・DESIGN.md「Upload Dropzone」に反映済み。**ダミーでは、名前に `fail` を含むファイルを「読み取れなかった」ことにする**） | 状態 | ID | タスク | 人間の依存 | 完了の条件 |
 |---|---|---|---|---|
 | [ ] | T2.1 | **ゲート G1: sunabar の疎通**。最小のスクリプトと `bank-adapter` の試作を用意し、OAuth → 振込依頼 → 承認ページでの承認 → 入出金明細での確認を通しで動かす。口座数・承認ページへの直接遷移・期限切れ依頼の照会と冪等キー・ポーリング間隔・Cloud Run からの疎通を確かめる（V10） | H22、H23、H25【承】。H6・H7 | V10 の①〜⑥の結果が書き戻され、**P7（sunabar のまま進めるか）の判断材料が揃う** |
 | [ ] | T2.2 | **ゲート G2: Agent Runtime・Agent Gateway・MCP の実験**。最小の ADK エージェント2つと、MCP を載せた非公開の Cloud Run、Gateway・Registry・Model Armor のテンプレートで、V1・V2・V3・V4・V6・V7・V8・V9 を確かめる。**日本語の攻撃文が入口と出口で検知されるか（V8）** | H21（先に）、H12、H11【承】 | 結果が書き戻され、**Model Armor の直接呼び出しへの退避（V6）や D16（`extract-agent` の要否）の判断材料が揃う** |
