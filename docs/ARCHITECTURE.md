@@ -31,6 +31,8 @@
 | 2026-09-26 | **リージョンを `us-central1` に決定**（D5。human_task H12）。**`bank-adapter` 専用の Firestore データベース `bank` を追加**し、口座の対応表を `(default)` から切り離した（4.6・7章。IAM の条件でデータベースごとに分ける）。H1（D1〜D25 の合意）を反映 |
 | 2026-09-26 | **審査員と開発者の役割の統合**（SPEC 2026-09-26 の改訂に追随。D25）。Web の役割を幹事とゲストの2つにし、開発者の役割（`GET /api/dashboard/dev/*`・仮名のみ・書き込み不可）を廃止した。ゲストは自分の `sandbox` イベントだけ。認証は匿名を残し、将来は Google 認証だけにする。 |
 | 2026-09-27 | **ゲストの認証を匿名認証から Google ログインに変更**（human_task H2・H10。ユーザー決定）。**匿名認証は使わない**。役割の決め方は変えない（Firestore の許可リスト `dashboard_users` に載っている Google アカウントは `organizer`、載っていない Google アカウントは `guest`）。D23・D25・V14 を更新し、Firebase Auth は Google プロバイダだけを有効にする（2.2・4.5・7章・12章・13章）。デモ用の代行（`sa-demo-runner`）を使うか、(A) Web専用か (B) Slack参加も用意するかは、引き続き**要レビュー**（SPEC 13章） |
+| 2026-09-27 | **開発者ページ（`/dev`）を追加**（SPEC 7.3.2。D26）。`kuroko-dashboard` が、デプロイ時に同梱したリポジトリの文書と構成図を表示する |
+| 2026-09-28 | **CI の検査内容を 10.1節にまとめた**（ジョブ・動く条件・検査の内容、CI が失敗してもマージを止められない制約、まだ入っていない検査） |
 
 ---
 
@@ -382,6 +384,7 @@ sequenceDiagram
 
 - Next.js（App Router）。Cloud Run 上で SSR し、**Firestore・BigQuery・Cloud Storage には直接つながず**、`kuroko-api` の `/api/dashboard/*` だけを呼ぶ（D2）。データ取得と実名の再識別を1か所に集約するため。
 - **幹事と審査員（ゲスト）の主導線**（SPEC 7.3・7.5・7.6、D19・D22・D23）。**依頼と対話（チャット）、アップロード、確認**を行い、わかることは6つ（①誰が幹事か ②全体フローのどこか ③誰から誰へいくら送金されたか ④まだ承諾していない人は誰か ⑤**按分の内訳**（D21） ⑥**振り返りと、KUROKOが覚えること**）（画面の詳細は SPEC 7.3）。確認は、予約内容・領収書の金額・店舗候補の選択・予算超過の確認・**振り返りのまとめの確認**。**Slack で人の対応が要る場面では、待ち相手と Slack を開くリンクを出す**。**委任・承認・取り消し・振込の実行に触れるルートは作らない**（Slack のまま）。見た目は [DESIGN.md](../DESIGN.md)。
+- **開発者ページ（`/dev`。SPEC 7.3.2、D26）**: チームメンバー向けに、リポジトリの文書・構成図・タスクの進捗を表示する。内容はデプロイ時に同梱した文書だけで、`kuroko-api` は呼ばない。
 - 利用者は**幹事・ゲスト**の2役割（審査員と開発者は区別せず、どちらもゲスト。D25）。**範囲と個人情報の扱い、書き込みの可否は API 側で強制する**（画面を隠すだけにしない。D14・D19・D23）:
 
 | 役割 | ルート | 返す範囲 | 実名 | 書き込み |
@@ -656,6 +659,22 @@ Cloud Run の IAM は**サービス単位**でしか呼び出し元を絞れな�
 - リージョンは `us-central1`（D5）。V3 で外れたら決め直す。
 - **構築状況**（Terraform で何ができていて、何が未構築か）は、[diagrams/KUROKO_GoogleCloud構成図_v1.0.drawio](diagrams/KUROKO_GoogleCloud構成図_v1.0.drawio) と [diagrams/README.md](diagrams/README.md) にまとめる。
 
+### 10.1 CI（プルリクエストの検査。`.github/workflows/ci.yml`）
+
+- **いつ動くか**: プルリクエストの作成・更新のたび（`pull_request`）。`main` への push では CI は動かず、CD（`deploy.yml`）だけが動く。
+- **変更があった部分のジョブだけを動かす**（`dorny/paths-filter`）。`secret-scan` だけは毎回動く。Google Cloud には触らない（WIF の認証を使わない）。権限は `contents: read` と、変更ファイルの一覧を読むための `pull-requests: read` だけ。
+
+| ジョブ | 動く条件（変更のあったパス） | 検査の内容 |
+|---|---|---|
+| `python` | `backend/`（`policies/` を含む）・`payment_api/`・`bank_adapter/`・`kuroko_agent/`・`payment_agent/`・`extract_agent/` | パッケージごとの matrix で `uv sync --frozen`（`uv.lock` と `pyproject.toml` が食い違うと失敗）→ `ruff check` → `pytest` |
+| `frontend` | `frontend/`・`docs/`・`DESIGN.md` | `npm ci` → `lint`（ESLint）→ `typecheck`（`tsc --noEmit`）→ `build`（`prebuild` で文書を `frontend/content/` に写し、開発者ページを静的に作る。文書の読み取りに失敗しても落ちる。D26） |
+| `terraform` | `infra/terraform/`・`firestore.rules` | `terraform fmt -check -recursive` → `init -backend=false` → `validate`（**`plan` はしない**。state と権限が要るため、差分の確認と `apply` は手動。human_task P1） |
+| `secret-scan` | 毎回 | gitleaks で、**全履歴**（`fetch-depth: 0`）への秘密の混入を検知する |
+
+- 手元で同じ検査をするときは、AGENTS.md の「Commands」の表のコマンドを使う（Backend test・lint、Frontend build、Terraform check）。
+- **制約: CI が失敗しても、プルリクエストはマージできてしまう。** 無料プランの非公開リポジトリでは、GitHub のブランチ保護・ルールセットが使えないため（2026-09-28 に API で確認。有料プランか公開リポジトリにすれば使える）。**運用で、CI が緑になってからマージする。** また CD（`deploy.yml`）は CI の結果を待たずに、`main` への push で動く。
+- **まだ入っていない検査**: 本番ビルドの安全の検査（Demo Toolbar が本番で出ない・`NEXT_PUBLIC_*` に秘密がない・Web に委任や振込の呼び出しがない・DESIGN.md のトークンの直書きがない。TASKS F11）、pre-commit でのシークレットスキャン（E9）、ブラウザでの通しの確認（F12）、エージェントの評価（O）。入れたら、この表に足す。
+
 ---
 
 ## 11. レギュレーション適合
@@ -703,6 +722,7 @@ Cloud Run の IAM は**サービス単位**でしか呼び出し元を絞れな�
 | D23 | **審査員（ゲスト）が触れる導線。Google ログインの `guest` 役割**（許可リストに載っていない Google アカウント。**匿名認証は使わない。2026-09-27決定**）。サンドボックスの会社（架空）で、自分が作った `sandbox` のイベントだけを読み書きできる（`guest_owner_uid`。API で強制）。作成から7日で削除する（Cloud Scheduler）。上限（イベント・メッセージ・アップロード）と全体のキルスイッチ（`guest_enabled`）を置く。参加者・承認者の HITL は、(A) `sandbox` のイベントだけ、専用の実行主体 `sa-demo-runner` の「デモ用の代行」（`payment-api` の `POST /demo/mandates`、`kuroko-api` の `POST /tasks/demo/approve`。`sa-demo-runner` だけを受け付け、`sandbox` が `true` でなければ拒否。Policy Gate は全項目を検査）、または (B) 審査員が Slack に参加して承認者として承認、のどちらでも進められる** | ユーザー指定（審査員が実際に触って体験できること）。一人で最後まで体験できるようにするには、Slack の署名検証済み操作の代わりになる経路が要る。ただし、これは D3 の「唯一の例外」になるので、**`sandbox` に限定し、専用の identity と専用のルートに閉じ、Policy Gate は省略せず、判断ログに `demo-runner` を残し、LLM は呼べない**。本番のイベントでは拒否する。**ログイン方式は Google ログインに決定（2026-09-27）。デモ用の代行を使うか、(A)(B) のどちらを用意するかは引き続き要レビュー**（SPEC 13章）。共有の sunabar 口座を複数のゲストが同時に使うと、明細の照合が混ざるので、振込の付加情報に `payment_id` を載せ、同時に `payment` に入れるゲストのイベントを1件に制限する（V10・V14） | SPEC 1.2・3章・7.6・10章・12章・13章 |
 | D24 | **店舗の選定ロジック（足切り・順位づけ・`reason_facts` の作成・理由の文の検査）は、決定論的なコード（`backend/src/services/venue_ranking.py`）に置く。LLM は、希望の解釈（隔離抽出で固定の語彙へ）と、`reason_facts` からの理由の文章化だけを担う。順位は、重みの足し合わせではなく、段階式（ハード制約 → 最遠の所要時間の帯 → 希望の一致度 → 記憶による調整）** | ユーザー決定（レビュー06）。「なぜこの店か」を説明できる、同じ入力で同じ順位になる、デモで「希望が無視された」と見えない、を満たすため。LLM に順位を決めさせると、説明が後付けになり、再現性が無い。理由の文に、`reason_facts` にない数値が混ざったら、コードが定型の文に差し替える。**新しいサービス・権限は増えない**（`search_venues` の MCP ツールの中で呼ぶ） | SPEC 3章 VenueCandidate・4.1・9.9・12章 |
 | D25 | **審査員と開発者を区別しない。Web の役割は「幹事（`organizer`）」と「ゲスト（`guest`）」の2つ。開発者の役割（`developer`。全イベント・仮名のみ・書き込み不可。`GET /api/dashboard/dev/*`）は廃止し、ゲストに統合する。ゲストが見られるのはサンドボックス（自分の `sandbox` イベント）だけで、幹事と同じルート・同じ画面を使う（経緯＝判断ログも見られる）。参加者向けの Web 画面は作らない。**認証は Google ログインにする（許可リストに載っていないアカウントはゲスト。匿名認証は使わない。2026-09-27決定）** | ユーザー決定。審査員も開発者も「サンドボックスを触って動作を確かめる」立場で、範囲を分ける理由がない。ゲストが見るデータは架空なので、開発者向けの仮名表示は不要になる（LLM への仮名化は変わらない）。本番イベントの調査は Console・BigQuery で行う。**許可リスト（`dashboard_users`）は幹事のメールだけで、ゲストは許可リストに載らない Google アカウントとして扱う** | SPEC 7.3・7.3.1・7.6・10章・12章・13章 |
+| D26 | **開発者ページ（`/dev`）は、リポジトリの文書をデプロイ時に `kuroko-dashboard` に同梱して表示する**（`frontend/scripts/sync-docs.mjs` がビルドの前に `docs/` と `DESIGN.md`、`docs/diagrams/export/*.svg` を `frontend/content/` に写し、ビルド時に静的なページにする）。`kuroko-api` は呼ばない。**当面はログインした全員が見られ、画面のガードはブラウザ側だけ**（SPEC 7.3.2）。draw.io の図は、人が編集したあと `drawio` の CLI で SVG に書き出してコミットする（`docs/diagrams/export/`） | 文書を実行時に GitHub から読む案は、非公開リポジトリを読むトークンを `kuroko-dashboard` に持たせる必要があるため採らない。最終的にメールアドレスの許可リストで絞るときは、サーバー側で Firebase の ID トークンを検証し、ページを動的な描画に変える | SPEC 7.3.2 |
 
 ### テンプレートから変える点（実装時に対応する。タスクは [TASKS.md](TASKS.md) の E（環境準備）・I（インフラ）・B（バックエンド））
 
@@ -715,7 +735,7 @@ Cloud Run の IAM は**サービス単位**でしか呼び出し元を絞れな�
 | `backend/pyproject.toml` | FastAPI・ADK・GCPクライアント | Slack Bolt、BigQuery・KMS・Vertex AI SDK・MCP SDK のクライアントを追加。ADK は `kuroko_agent/` `payment_agent/` 側に移す |
 | `frontend/` | 静的配信・チャット前提の `api-client.ts` | Cloud Run 用に `output: "standalone"` を設定。Dashboard 用のAPIクライアントに置き換え。`globals.css` を、リポジトリ直下の DESIGN.md のトークンに置き換え（ダークテーマの切り替えは削除）。Noto Sans JP を `next/font` で読み込む。役割別の画面（幹事・ゲスト） |
 | `infra/terraform/` | `main.tf` `iam_wif.tf` は TODO のみ | 10章のリソースを定義 |
-| `.github/workflows/` | `ci.yml` `deploy.yml` は TODO のみ | サービスごとのCIとWIFデプロイ。エージェントは変更があったときだけデプロイ |
+| `.github/workflows/` | `ci.yml` `deploy.yml` は TODO のみ | サービスごとのCIとWIFデプロイ。エージェントは変更があったときだけデプロイ（**2026-09-27 対応済み**。CI の検査内容は 10.1節。エージェントのデプロイは I8 で足す） |
 | `firebase.json` | 存在しない（`AGENTS.md` のエミュレータ手順の前提） | Hosting の rewrite とエミュレータ設定を追加 |
 | `kuroko_agent/` `payment_agent/` `extract_agent/` | 存在しない | 新規追加。ツールは `kuroko_agent/` `payment_agent/` が MCP ツールセットだけ、`extract_agent/` はツールなし。Agent identity・Agent Gateway の設定と、Gateway の CA 証明書を `Dockerfile` に組み込む |
 | `payment_api/` `bank_adapter/` | 存在しない | 新規追加。`bank_adapter/` は V10（sunabar の疎通）の後に本実装する（先に銀行APIのスタブで `payment_api/` 側を組む） |

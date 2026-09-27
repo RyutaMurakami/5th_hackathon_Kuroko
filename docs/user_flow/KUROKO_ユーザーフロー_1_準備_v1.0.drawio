@@ -150,7 +150,7 @@
                 <mxCell id="B-004" value="帰りやすさ・苦手・予算・過去の記憶から店を検索&lt;br&gt;&lt;font style=&quot;font-size:8px&quot; color=&quot;#888888&quot;&gt;B-004&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;strokeWidth=1.5;fontSize=10;fontColor=#333333;fillColor=#E3F2FD;strokeColor=#1E88E5;" parent="1" vertex="1">
                     <mxGeometry x="380" y="1040" width="180" height="64" as="geometry"/>
                 </mxCell>
-                <mxCell id="X-001" value="経路・店舗情報を取得（駅すぱあと・Maps・ホットペッパー）&lt;br&gt;&lt;font style=&quot;font-size:8px&quot; color=&quot;#888888&quot;&gt;X-001&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;strokeWidth=1.5;fontSize=10;fontColor=#333333;fillColor=#E8F5E9;strokeColor=#43A047;" parent="1" vertex="1">
+                <mxCell id="X-001" value="経路・店舗情報を取得（駅すぱあと・Google Maps）&lt;br&gt;&lt;font style=&quot;font-size:8px&quot; color=&quot;#888888&quot;&gt;X-001&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;strokeWidth=1.5;fontSize=10;fontColor=#333333;fillColor=#E8F5E9;strokeColor=#43A047;" parent="1" vertex="1">
                     <mxGeometry x="1080" y="1040" width="180" height="64" as="geometry"/>
                 </mxCell>
                 <mxCell id="Q-002" value="全員が45分以内の駅あり？" style="rhombus;whiteSpace=wrap;html=1;strokeWidth=1.5;fontSize=10;fontColor=#333333;fillColor=#FFFFFF;strokeColor=#757575;" parent="1" vertex="1">

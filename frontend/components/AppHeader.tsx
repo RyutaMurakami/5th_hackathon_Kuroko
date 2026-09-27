@@ -17,6 +17,7 @@ export function AppHeader() {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
   const onEvents = pathname.startsWith("/events");
+  const onDev = pathname.startsWith("/dev");
 
   return (
     <header className={styles.header}>
@@ -35,14 +36,22 @@ export function AppHeader() {
           >
             イベント
           </Link>
+          <Link
+            className={`${styles.navLink} ${onDev ? styles.navLinkActive : ""}`}
+            href="/dev"
+            aria-current={onDev ? "page" : undefined}
+          >
+            開発者
+          </Link>
         </nav>
         {/* ログインの前は、役割と通知を出さない */}
         {user && (
         <div className={styles.right}>
           <Pill tone="navy">{ROLE_LABEL[role]}</Pill>
           <NotificationBell />
-          <span className={styles.account} title={user.email ?? undefined}>
-            <Icon name="user" label={user.displayName ?? user.email ?? "アカウント"} />
+          {/* 実名・メールアドレスは画面にもツールチップにも出さない（DESIGN.md「App Header」） */}
+          <span className={styles.account}>
+            <Icon name="user" label="アカウント" />
           </span>
           <TextButton onClick={() => void signOut()}>ログアウト</TextButton>
         </div>

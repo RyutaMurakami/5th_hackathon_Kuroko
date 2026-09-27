@@ -49,6 +49,9 @@ jobs:
             frontend:
               - 'frontend/**'
               - 'firebase.json'
+              # 開発者ページ（/dev）は文書をデプロイ時に同梱する（ARCHITECTURE D26）
+              - 'docs/**'
+              - 'DESIGN.md'
 
   # backend/ は1回ビルドして、kuroko-gateway と kuroko-api に同じイメージを載せる（ARCHITECTURE 10章）
   # TODO(TASKS E2): ビルドコンテキストをリポジトリルートにして policies/ を同梱する
@@ -113,7 +116,6 @@ jobs:
           gcloud run services update bank-adapter --image "$IMAGE" --region "$REGION" --project "$PROJECT_ID" --quiet
 
   # Firebase の設定値（NEXT_PUBLIC_*）はビルド時に埋め込む。秘密ではないので Variables に置く
-  # TODO(TASKS E6): frontend/Dockerfile を用意する
   frontend:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
@@ -126,6 +128,12 @@ jobs:
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v2
       - run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      # Docker のビルドコンテキストは frontend/ だけなので、開発者ページの文書を先に frontend/content/ に写す
+      - name: Bundle docs for /dev
+        run: node frontend/scripts/sync-docs.mjs
       - name: Build and push
         run: |
           IMAGE="${REGISTRY}/dashboard:${GITHUB_SHA}"
@@ -140,9 +148,6 @@ jobs:
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
       - run: gcloud run services update kuroko-dashboard --image "$IMAGE" --region "$REGION" --project "$PROJECT_ID" --quiet
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
       - name: Deploy Firebase Hosting (rewrite to kuroko-dashboard)
         run: npx --yes firebase-tools@latest deploy --only hosting --project "$PROJECT_ID" --non-interactive
       - name: Check the rewrite

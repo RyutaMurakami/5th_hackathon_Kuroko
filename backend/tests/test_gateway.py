@@ -38,6 +38,12 @@ async def test_invalid_signature_is_rejected(gateway_client, enqueued):
     assert enqueued == []
 
 
+async def test_missing_signature_headers_are_rejected(gateway_client, enqueued):
+    response = await gateway_client.post("/slack/events", content=b"{}")
+    assert response.status_code == 401
+    assert enqueued == []
+
+
 async def test_url_verification_returns_challenge(gateway_client):
     raw, headers = _signed({"type": "url_verification", "challenge": "abc"})
     response = await gateway_client.post("/slack/events", content=raw, headers=headers)

@@ -18,11 +18,12 @@ router = APIRouter(prefix="/slack")
 @router.post("/events")
 async def events(request: Request) -> dict[str, str]:
     body = await request.body()
+    timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
+    signature = request.headers.get("X-Slack-Signature", "")
     verifier = SignatureVerifier(get_settings().slack_signing_secret)
-    if not verifier.is_valid(
-        body=body,
-        timestamp=request.headers.get("X-Slack-Request-Timestamp", ""),
-        signature=request.headers.get("X-Slack-Signature", ""),
+    # ヘッダーが欠けている・数値でないと slack_sdk が例外を出すので、先に弾く
+    if not timestamp.isdigit() or not verifier.is_valid(
+        body=body, timestamp=timestamp, signature=signature
     ):
         raise HTTPException(status_code=401, detail="invalid signature")
 
