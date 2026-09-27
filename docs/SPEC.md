@@ -61,7 +61,7 @@
 | 支払いの委任（委任状への署名と銀行APIの利用許可） | 作る | 出欠アンケートのモーダルで同意 → AP2のOpen Mandateに署名 ＋ 銀行API（sunabar）のOAuth認可（8.4節） |
 | 好み・最寄り駅の収集とインジェクション対策 | 作る | **Agent Gateway × Model Armor** + 隔離抽出（ツールを持たない別のエージェント）+ 値の検証（日本語攻撃文の検知まで実装する。10章） |
 | 帰りやすさの計算 | 作る | 駅すぱあと API MCP（範囲探索＋経路探索） |
-| 店舗候補の提示 | 作る | Google Maps + **ホットペッパーAPI**（個室・収容人数の補完）＋ Google Mapsの口コミ本文も判断材料に使う（要ガード、10章）＋ **過去の実績（Memory Bank）を根拠として添える**（9.8節）。**選び方は段階式**（ハード制約で足切り → 最遠の所要時間 → 希望・実績で微調整）で、**選んだ理由を各候補に出す**（9.9節） |
+| 店舗候補の提示 | 作る | Google Maps（**ホットペッパーAPIは不採用。個室・収容人数の補完はあきらめる。2026-09-27決定**）＋ Google Mapsの口コミ本文も判断材料に使う（要ガード、10章）＋ **過去の実績（Memory Bank）を根拠として添える**（9.8節）。**選び方は段階式**（ハード制約で足切り → 最遠の所要時間 → 希望・実績で微調整）で、**選んだ理由を各候補に出す**（9.9節） |
 | 予約内容の取り込み | 作る（最小） | **予約画面を Web にアップロード** → Gemini で抽出 → **Web で幹事が確認**（7.5節） |
 | 予算上限超過時の確認フロー | 作る | 9.1節 |
 | 当日の出席確認 | 作る | Slack（当日欠席は発生しない前提） |
@@ -156,7 +156,6 @@ flowchart LR
 
     subgraph ExtAPI["外部API"]
         Maps["Google Maps"]
-        Hot["ホットペッパー API"]
         Eki["駅すぱあと API MCP"]
     end
 
@@ -186,7 +185,6 @@ flowchart LR
     Agent --> RouteCalc
     RouteCalc --> Eki
     Agent --> Maps
-    Agent --> Hot
     Agent --> Split
     Split --> Gate
     Gate --> Checkout
@@ -215,13 +213,13 @@ flowchart LR
 
 主な変更点（2026-09-20）: AP2サンプルの模擬決済役を外し、**銀行アダプタ（sunabar）**、**RAG Engine**、**Memory Bank**を追加。Memory Bank への矢印のうち、**エージェントが行うのは読み取りだけ**（ADK の `load_memory` を統括エージェントにアタッチ。`memoryViewer`）で、書き込みは幹事の確認のあとに**コード（`kuroko-api`）だけ**が行う（9.8節）。AP2 は「委任・請求・領収書の署名による権限の管理」を担い、**送金の処理はKUROKOが銀行APIを通じて実行する**（8.2節）。KUROKO本体はAP2のMerchant役（請求する側）を兼ねる。
 
-図は機能の依存関係を示すもので、ADKのエージェントがツールを呼ぶ経路は `Agent → Agent Gateway → MCP サーバー` に限る（2.3節。**ADK の組み込みの記憶ツール `load_memory` を除く**。9.8節）。`Agent → RouteCalc / Maps / Hot / Split / Gate / Checkout …` の矢印は「その機能を使う」という意味で、エージェントが直接つながるという意味ではない。配置は [ARCHITECTURE.md](ARCHITECTURE.md) の構成図を見る。
+図は機能の依存関係を示すもので、ADKのエージェントがツールを呼ぶ経路は `Agent → Agent Gateway → MCP サーバー` に限る（2.3節。**ADK の組み込みの記憶ツール `load_memory` を除く**。9.8節）。`Agent → RouteCalc / Maps / Split / Gate / Checkout …` の矢印は「その機能を使う」という意味で、エージェントが直接つながるという意味ではない。配置は [ARCHITECTURE.md](ARCHITECTURE.md) の構成図を見る。
 
 ### 2.2 Slackイベント・Webの依頼の非同期パターン（重要）
 
 **Web のチャットや、アップロード後の読み取り（Gemini）も、数秒〜数十秒かかる。**Web の画面は、依頼を受け付けたらすぐに返し、処理の進み具合を **「KUROKOがいましていること」のタイムライン**（判断ログと、エージェントのイベントから作る）として更新する（7.5節）。長い処理の途中の状態は Firestore が正で、画面はそれを読む。Slack への対応は次のとおり。
 
-SlackはSlackイベント／ボタン押下に対して**3秒以内の応答**を要求する。一方でKUROKOの処理（Gemini呼び出し、駅すぱあと・Maps・ホットペッパーの外部API呼び出し、支払いエージェントとのやり取り）は数秒〜数十秒かかる。**Cloud Runは常駐しない**ため、Bolt側で重い処理をブロッキングで行うと確実にタイムアウトする。
+SlackはSlackイベント／ボタン押下に対して**3秒以内の応答**を要求する。一方でKUROKOの処理（Gemini呼び出し、駅すぱあと・Mapsの外部API呼び出し、支払いエージェントとのやり取り）は数秒〜数十秒かかる。**Cloud Runは常駐しない**ため、Bolt側で重い処理をブロッキングで行うと確実にタイムアウトする。
 
 ```mermaid
 sequenceDiagram
@@ -331,7 +329,7 @@ Firestoreのコレクション/ドキュメント想定。フィールド名は�
 | max_travel_minutes, avg_travel_minutes | int | 帰りやすさスコアの元データ |
 | price_per_person_min/max | int | |
 | features | string[] | 例: `個室`, `半個室` |
-| source | enum | `google_maps / hotpepper` |
+| source | enum | `google_maps`（ホットペッパーAPIは不採用。2026-09-27決定） |
 | review_snippet_used | bool | 口コミ本文を判断に使った場合 `true`。この場合10章の隔離抽出を必ず経由させたことを判断ログに残す |
 | memory_note | string | 過去の実績に基づく理由（例: 「前回（2026/06）このチームで利用。個室・1人5,200円で予算内、満足度4.3」）。統括エージェントが `load_memory` の結果から作る。表示専用。**金額・帰りやすさの数値は変えない**。順位への影響は、9.9節の「記憶による調整」だけ（9.8節） |
 | memory_refs | string[] | 根拠にした記憶の参照（Memory Bank の記憶名）。判断ログにも残す |
@@ -495,7 +493,7 @@ BigQueryへはFirestoreからのエクスポート、またはツール実行時
 | `verify_station(name)` | コード | 駅名 | `{valid, canonical_name, station_code}` | 駅すぱあとAPI |
 | `search_accessible_stations(origins[], max_min, relax_step, relax_limit)` | コード | 最寄り駅一覧 | 候補駅一覧 | 5駅ずつ分割して範囲探索 |
 | `search_routes(origin, destination)` | コード | 駅ペア | `{minutes, transfers, fare}` | 経路探索（`plain`） |
-| `search_venues(area, budget_range, party_size, constraints)` | ツールはコード、提案文はLLM可 | 条件一式（`constraints` = ハード制約とソフト制約。9.9節） | VenueCandidate[]（`reason_facts` つき） | Google Maps + ホットペッパー。口コミ本文は`extract_free_text`経由。**足切り・順位づけ・`reason_facts` は、コードが決める**（9.9節。LLM は順位を決めない）。**選んだ理由の文章（`selection_reason`）だけ LLM が書く**。**過去の実績を根拠に添える場合は、統括Agentが `load_memory` の結果から `memory_note` を作る**（9.8節） |
+| `search_venues(area, budget_range, party_size, constraints)` | ツールはコード、提案文はLLM可 | 条件一式（`constraints` = ハード制約とソフト制約。9.9節） | VenueCandidate[]（`reason_facts` つき） | **Google Maps だけ**（ホットペッパーAPIは不採用。個室・収容人数の補完はあきらめる。2026-09-27決定）。口コミ本文は`extract_free_text`経由。**足切り・順位づけ・`reason_facts` は、コードが決める**（9.9節。LLM は順位を決めない）。**選んだ理由の文章（`selection_reason`）だけ LLM が書く**。**過去の実績を根拠に添える場合は、統括Agentが `load_memory` の結果から `memory_note` を作る**（9.8節） |
 | `load_memory(query)` | **LLM可**（**ADK の組み込みツール。MCP ではない**。読み取り専用） | 知りたいこと（自然文。例:「このチームが歓送迎会で重視していたこと」） | 記憶の事実（本文・作成時期） | **統括エージェントにアタッチした Memory Bank から類似検索**で引く（9.8節）。**検索のスコープは、`kuroko-api` がセッションの `user_id` として設定したチームのスコープに固定され、LLM は変えられない**。**企画・店舗提案の段階だけ呼べる**（`before_tool` のコールバックで決定論的に制限。ARCHITECTURE 4.9）。書き込みの記憶ツールはエージェントに持たせない |
 | `collect_feedback(event_id)` | コード | event_id | 依頼した人数 | 完了の翌日に、出席者へ Slack DM で振り返り（**満足度の1タップ＋任意のコメント**）を依頼する（9.8節）。リマインドは Cloud Scheduler |
 | `record_feedback(event_id, user_id, rating, free_text?)` | **コードのみ**（署名検証済みのSlackインタラクション） | 満足度（必須）と任意のコメント | Feedback | コメントは `extract_free_text`（`feedback` 用途）で語彙（`liked` / `concerns`）に落とし、**原文は保存しない** |
@@ -1078,7 +1076,7 @@ PLAN.md 4.2節の「段階式」を、実装できる粒度にする。**足切�
 **手順**
 
 1. **候補駅の決定**: 全員の最寄り駅から、上限内に着ける駅の共通部分を求める（`search_accessible_stations`）。駅は最適化（全員が着ける駅を全部出し、最遠の所要時間で比べる）
-2. **店の検索**: 候補駅ごとに `search_venues`（Google Maps・ホットペッパー）
+2. **店の検索**: 候補駅ごとに `search_venues`（**Google Maps だけ**。ホットペッパーAPIは不採用）
 3. **ハード制約で足切り**: 収容人数、価格帯、食べられないもの（ジャンル・特徴が**明らかに該当する店**を外す）、幹事が決めた条件。外した理由は `stage_result.excluded_reason` に残し、判断ログに要約を残す。**店のデータにアレルゲンの情報が無い限り、対応の保証はしない**。画面と理由に「アレルゲンは店に確認してください」を必ず添える
 4. **並べ替え（辞書式）**: (a) 最も遠い人の所要時間を**5分刻みの帯**にして、小さい順 (b) 同じ帯の中で、**希望の一致度**（一致する `request_tags` ごとの「希望した人数」の合計）が大きい順 (c) **記憶による調整**（同じ店の実績で、予算内・満足度・幹事の「また使いたい」があれば加点。「使いたくない」は減点して、同じ帯の中で下げる） (d) 苦手なもの（`dietary_avoid`）に当たる人数が少ない順 (e) 平均所要時間の小さい順 (f) 口コミの評価の高い順。**店は、重みの足し合わせではなく、この優先度で並べる**（なぜこの店かを説明できるようにするため）
 5. **提案の選び方**: 上位を最大3件。**総合の上位3件に、希望の一致度が最大の店が入らないとき**は、3件目をその店に置き換え、`role = preference_first` とする（「希望が無視された」に見えないため）
@@ -1121,7 +1119,7 @@ PLAN.md 4.2節の「段階式」を、実装できる粒度にする。**足切�
 - **口座番号と銀行のアクセストークンは、LLMにもエージェントにも渡さない。**支払いエージェントが扱うのは仮名の `user_id` と金額だけで、**口座の解決とトークンの利用は銀行アダプタの中だけ**で行う。「振込先を私の口座に変えて」という文章は、どの経路でも振込先を変えられない（振込先は承認済みの按分と委任状から、コードが決める）
 - **仮名化**: LLMには仮名（`User_001`等）と区分だけを渡す。実名への再識別は帳票生成（PDF・Web Dashboard）レイヤーだけで行う。Web Dashboard では、実名を見られるのは幹事（自分のイベント）に限り、ゲストの `sandbox` は架空の名前だけ（7.3節）。**按分の内訳（区分・係数・負担額）も同じ扱い**（7.3.1）。**Memory Bank には氏名・役職・個人ごとの回答を入れない**（9.8節）
 - **最小権限**: ツールごとに呼べる範囲を限定する（例: `search_venues` は支払い情報にアクセスできない、`create_checkout` はPolicy Gate 6.2を経由しない限り呼べない）。エージェントが呼べるのは、自分専用の API の MCP エンドポイントの「LLM可」のツールだけ（Agent Gateway のポリシーと、API 側の呼び出し元の検査の両方で守る）。`extract-agent` はツールを持たない。**Memory Bank に書き込めるのは `kuroko-api`（コード）だけ**で、統括エージェントは**読み取り専用**（`memoryViewer`）でアタッチされる。支払いエージェント・隔離抽出エージェントは触れない
-- **Secret Manager**: Slackトークン、駅すぱあと・ホットペッパーのAPIキー、**sunabar のクライアント情報と参加者のアクセストークン**を保管。LLMのコンテキストには一切含めない
+- **Secret Manager**: Slackトークン、駅すぱあとのAPIキー、**sunabar のクライアント情報と参加者のアクセストークン**を保管。LLMのコンテキストには一切含めない
 
 ---
 
@@ -1151,7 +1149,7 @@ PLAN.md 4.2節の「段階式」を、実装できる粒度にする。**足切�
 | 依存管理 | uv | AP2サンプルと同じ |
 | Lint/Format | ruff | |
 | テスト | pytest | 按分計算・Policy Gate・委任状の検証は必須 |
-| 外部API | 駅すぱあとAPI MCP、Google Maps、ホットペッパーAPI、**sunabar（銀行API）** | |
+| 外部API | 駅すぱあとAPI MCP、Google Maps、**sunabar（銀行API）**（ホットペッパーAPIは不採用。2026-09-27決定） | |
 
 ---
 
@@ -1246,7 +1244,7 @@ PLAN.md 4.2節の「段階式」を、実装できる粒度にする。**足切�
 - **Web の認証**: 匿名認証（ゲスト）が、組織のポリシーと Firebase の設定で使えるか。ゲストの悪用（大量のイベント作成・アップロード）への上限とキルスイッチの動作（7.6節、10章）
 - **Web のチャットの進み具合の見せ方**（Firebase Hosting → Cloud Run の rewrite にはリクエストの時間の上限がある。長い処理を、受け付け即時応答＋タイムライン更新にできるか。[ARCHITECTURE.md](ARCHITECTURE.md) V13）
 - **デモ用の代行（デモランナー）**: 署名検証済みの Slack 操作の代わりに `sa-demo-runner` の操作を受ける専用ルートを、`sandbox` のイベントだけに限定して安全に実装できるか（7.6節、10章）。sunabar の承認ページ（銀行での承認）を、デモランナーが代行できるか（V10 ③。できなければ、銀行での承認だけは人が行う）
-- ホットペッパーAPIの申請・利用規約がハッカソン用途に適合するか
+- ~~ホットペッパーAPIの申請・利用規約がハッカソン用途に適合するか~~ → **2026-09-27 決定: 利用しない**（規約適合の確認が取れないため断念。`search_venues` は Google Maps だけで進め、個室・収容人数の補完はあきらめる。H14）
 
 ### 要準備
 
@@ -1258,7 +1256,6 @@ PLAN.md 4.2節の「段階式」を、実装できる粒度にする。**足切�
 - **Memory Bank の作成**（Agent Platform。リージョンは V12 で決める）と、**過去のイベントの記憶の投入（seed。架空。3件程度）**。デモの企画の場面で `load_memory` が引けるようにする（9.8節）。文面は定型テンプレートと同じ形にする
 - デモ用Slackワークスペースと参加者役アカウント（架空アカウント約6＋bot併用で10名分を賄う）
 - 駅すぱあとAPIのアクセスキー申請
-- ホットペッパーAPIのキー申請
 - Vertex AI（Gemini・RAG Engine）の設定
 
 ### 2026-09-20 の支払い方式の再変更で復活・不要になったもの

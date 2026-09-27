@@ -60,7 +60,7 @@ terraform apply kuroko.tfplan                  # 承認が要る（human_task P1
 printf '%s' '<値>' | gcloud secrets versions add slack-signing-secret --data-file=- --project=<project_id>
 ```
 
-入れ物: `slack-signing-secret` `slack-bot-token` `ekispert-api-key` `hotpepper-api-key` `maps-api-key` `sunabar-client`（`sunabar-tokens` は `bank-adapter` が実行時に書くので、人間は入れない）。
+入れ物: `slack-signing-secret` `slack-bot-token` `ekispert-api-key` `maps-api-key` `sunabar-client`（`sunabar-tokens` は `bank-adapter` が実行時に書くので、人間は入れない。**`hotpepper-api-key` は2026-09-27に不採用で削除済み**）。
 全部入れたら `terraform.tfvars` の `wire_secrets = true` にして apply する。
 
 ### 3. Firebase Authentication のプロバイダ（human_task H10。Terraform では管理しない）

@@ -147,12 +147,18 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
 - [ ] **H13【人】駅すぱあと API MCP のアクセスキーを申請する**
   - ハッカソン向けの提供枠の申請手順は、公式ページと Discord で確認する。ダイヤ探索は使えず、経路探索（`plain`）だけ（`company_rules.yaml` の記述どおり）
   - 止まる実装: 帰りやすさの計算（`search_accessible_stations` `search_routes`）
-- [ ] **H14【人】ホットペッパー API のキーを申請し、規約を確認する**
+  - **2026-09-27: キーは取得済み。Secret Manager への登録（P3）が残り**。値はチャットに貼らず、手元のターミナルで次を実行する（`infra/terraform/README.md` と同じ手順）:
+    ```
+    printf '%s' '<値>' | gcloud secrets versions add ekispert-api-key --data-file=- --project=kuroko-509311
+    ```
+- [x] **H14【人】ホットペッパー API のキーを申請し、規約を確認する**
   - SPEC 13章の要検証: ハッカソン用途に利用規約が適合するか。**申請できない、または規約に合わない場合**は、Google Maps だけにするか（個室・収容人数の補完をあきらめる）を【決】する
   - 止まる実装: `search_venues` の補完部分
-- [ ] **H15【人】Google Maps Platform（Places API）を有効にし、API キーを作る**
+  - **2026-09-27: 利用しないと決定**（ユーザー確認。「ホットペッパーのAPIは利用できないので諦めます」）。`search_venues` は Google Maps だけで進め、個室・収容人数の補完はあきらめる。SPEC・ARCHITECTURE・TASKS・PLAN と `infra/terraform/secrets.tf`（`hotpepper-api-key` の入れ物を削除・apply 済み）に反映済み
+- [x] **H15【人】Google Maps Platform（Places API）を有効にし、API キーを作る**
   - キーは Places API だけに制限する。Secret Manager に登録する（P3）
   - 止まる実装: `search_venues`
+  - **2026-09-27: 取得・Secret Manager への登録（`maps-api-key`）まで完了**（ユーザー確認）
 - [ ] **H16【決】AP2 SDK・サンプルを動かす認証方式を決める**（SPEC 13章「要準備」。`ap2_mock/` はやめたが、委任状・請求の署名と検証には AP2 SDK を使う）
   - 推奨: API キーを増やさず、Vertex AI（ADC）で動かす
   - 止まる実装: `payment_api/` の AP2 委任状・請求の検証
@@ -163,7 +169,7 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - 個人口座があれば、審査なし・無料で sunabar を使える。口座開設は最短当日（マイナンバーカードの読み取りか自撮り動画で本人確認。**平日14時までの申し込みなどの条件がある**。詳細は [SPEC.md](SPEC.md) 14章のリンク）
   - AI に伝える: 開設したこと（口座番号・パスワードは**貼らない**）。sunabar のクライアント情報は Secret Manager に自分で登録する（P3）
   - 止まる実装: `bank_adapter/` の本実装、H25、支払いのデモすべて
-  - **2026-09-27: 最優先で着手する（ユーザー確認）。開設でき次第、口座番号・パスワードを貼らずに AI に伝える**
+  - **2026-09-27: 申請中（ユーザー確認）。まだ使える状態ではない**。O1（sunabar 疎通ゲート）と B11（銀行本実装）は、この申請が通るまで着手しない。開設でき次第、口座番号・パスワードを貼らずに AI に伝える
 - [ ] **H23【人】デモ用の sunabar 口座を用意する**（参加者役・幹事役）
   - sunabar は **1ユーザーあたり最大10口座**まで追加できる（初期は個人・法人の各1口座）。**振込先も sunabar 内の口座に限る**ので、**幹事の口座も sunabar 口座**にする。デモの参加者10名分は、チームメンバーで分担して用意する。足りなければ参加者を8名に減らす（SPEC 13章）
   - **全口座を1人が持つと、振込ごとの承認も実際には1人が行う**。デモでは「承認する人が数名いる」形にして、残りは早送りにする（H18 のデモ用ユーザーと、どの口座を誰が持つかを対応させる）
@@ -218,6 +224,12 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - Request URL（Events・Interactivity）は `kuroko-gateway` のデプロイ後でないと設定できないので、最初は仮の値でよい（P4 で直す）
   - ワークスペースにインストールし、**Bot Token と Signing Secret は自分で Secret Manager に登録する**（P3）。チャットには貼らない
   - 止まる実装: Slack 連携すべて
+  - **2026-09-27: App は作成済み、Signing Secret は登録済み。Bot Token が見当たらない**（ユーザー確認。代わりに Client Secret・Verification Token を保有）。**Bot Token（`xoxb-`）は、Bot Token Scopes を設定して「Install to Workspace」を実行した後にだけ表示される**ので、まだその操作をしていない可能性が高い。手順:
+    1. [`slack/manifest.yml`](../slack/manifest.yml)（今回用意した）を、そのアプリの **App Manifest** 画面（左メニュー）に貼り付けて保存する（Signing Secret・Client ID・Client Secret はこの操作で変わらない）
+    2. **OAuth & Permissions** → 画面上部の **Install to Workspace**（既にインストール済みなら **Reinstall to Workspace**）を実行する
+    3. 同じ画面に表示される **Bot User OAuth Token**（`xoxb-` で始まる）をコピーする
+    4. 手元のターミナルで登録する（チャットに貼らない）: `printf '%s' 'xoxb-...' | gcloud secrets versions add slack-bot-token --data-file=- --project=kuroko-509311`
+    - **Client Secret・Verification Token は今回の構成では使わない**（署名検証は Signing Secret で行う。複数ワークスペースへの配布もしない）。捨ててよい
 
 ### G. GitHub
 
@@ -238,7 +250,7 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
 | Firebase の設定値 | **貼らない**。自分で記入する | `frontend/.env.local` |
 | Slack の Bot Token・Signing Secret | **貼らない** | Secret Manager に自分で登録。AI にはシークレットの名前だけ伝える |
 | **sunabar のクライアント情報、口座番号・取引パスワード** | **貼らない** | クライアント情報は Secret Manager に自分で登録。**口座番号は `bank-adapter` の対応表**（デモ用の初期データは AI がスクリプトで投入するが、値はチャットに貼らず、ファイルで渡す。コミット禁止）。取引パスワードは AI に渡さない（サンドボックスでは任意の文字列でよい） |
-| 駅すぱあと・ホットペッパー・Maps のキー | **貼らない** | 同上 |
+| 駅すぱあと・Maps のキー | **貼らない** | 同上（**ホットペッパーは2026-09-27に不採用**） |
 | Slack のユーザーID・ワークスペースID（デモ用） | チャットで伝えてよい | デモ用のシードデータ |
 | **デモ用 Slack の招待リンク**（H29） | チャットで伝えてよい（秘密ではない。**公開してよいもの**として提出物に書く） | 提出物・Web の使い方の画面 |
 | Dashboard の許可リスト（メールアドレス・役割） | 伝えてよい（メールは個人情報なので、コミットするファイルには書かない） | Firestore の `dashboard_users`（初期データは AI がデプロイ後に投入する） |
@@ -251,7 +263,8 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - **2026-09-26: I1〜I6 の apply を承認・実行（125件の追加）。エージェント系（I7〜I9）の apply は、その時点で改めて承認を取る**
 - [ ] **P2【人】`terraform output` の値を GitHub の Variables / Secrets に登録する**（`infra/terraform/README.md` の手順）
 - [ ] **P3【人】Secret Manager に値を登録する**（`gcloud secrets versions add ...`。Terraform には値を入れない。`.agents/rules/infra.md`）
-  - 対象: Slack の Bot Token・Signing Secret、駅すぱあと・ホットペッパー・Maps のキー、**sunabar のクライアント情報**（H22。**参加者・幹事のアクセストークンは、`bank-adapter` が OAuth のあとに自分で書く**ので、人が登録するのはクライアント情報だけ）
+  - 対象: Slack の Bot Token・Signing Secret、駅すぱあと・Maps のキー、**sunabar のクライアント情報**（H22。**参加者・幹事のアクセストークンは、`bank-adapter` が OAuth のあとに自分で書く**ので、人が登録するのはクライアント情報だけ。**ホットペッパーは2026-09-27に不採用のため対象外**）
+  - **2026-09-27時点**: 登録済み — `slack-signing-secret`、`maps-api-key`。未登録 — `slack-bot-token`（H19 参照）、`ekispert-api-key`（H13 参照。キーは取得済み）、`sunabar-client`（H22 の申請待ち）
 - [ ] **P4【人】`kuroko-gateway` のデプロイ後、Slack App の Request URL を設定する**
   - Events と Interactivity の URL、App Home の有効化。URL 検証（`url_verification`）が通ることを確認する
 - [ ] **P5【承】各サービス・エージェントのデプロイを承認する**（Cloud Run 5サービス、Agent Runtime のエージェント3つ。`agents-cli deploy` は毎回。エージェントは Agent identity と Gateway の設定付き）

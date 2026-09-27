@@ -7,9 +7,9 @@ locals {
     "slack-signing-secret" = { readers = ["sa-gateway"], env = "SLACK_SIGNING_SECRET" }
     "slack-bot-token"      = { readers = ["sa-api", "sa-payment-api"], env = "SLACK_BOT_TOKEN" }
     "ekispert-api-key"     = { readers = ["sa-api"], env = "EKISPERT_API_KEY" }
-    "hotpepper-api-key"    = { readers = ["sa-api"], env = "HOTPEPPER_API_KEY" }
     "maps-api-key"         = { readers = ["sa-api"], env = "MAPS_API_KEY" }
-    "sunabar-client"       = { readers = ["sa-bank-adapter"], env = "SUNABAR_CLIENT" }
+    # ホットペッパーAPIは2026-09-27に不採用（利用規約の適合が確認できず断念。human_task H14）
+    "sunabar-client" = { readers = ["sa-bank-adapter"], env = "SUNABAR_CLIENT" }
     # 参加者・幹事のアクセストークン。bank-adapter が実行時に読み書きする（環境変数には渡さない）
     "sunabar-tokens" = { readers = ["sa-bank-adapter"], env = null }
   }

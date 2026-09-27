@@ -865,7 +865,7 @@ Less Work. More Good Times.
 | 記憶 | Agent Platform の Memory Bank |
 | 権限と証跡 | AP2 v0.2（委任状・請求・領収書の署名） |
 | 送金 | 銀行API（GMOあおぞらネット銀行 sunabar）。銀行アダプタ（Cloud Run）が窓口 |
-| 帰りやすさ・店舗 | 駅すぱあと API MCP、Google Maps、ホットペッパーAPI |
+| 帰りやすさ・店舗 | 駅すぱあと API MCP、Google Maps（ホットペッパーAPIは2026-09-27に不採用） |
 | データ | Firestore（状態）、Cloud Storage（領収書・予約画面・PDF）、BigQuery（判断ログ）、Secret Manager / Cloud KMS |
 | 非同期・定期 | Cloud Tasks、Cloud Scheduler |
 
@@ -931,6 +931,6 @@ Less Work. More Good Times.
 
 1. 審査員がSlackに参加して体験する導線（Webのみの体験は残す）
 2. 振り返りのSlackモーダル（Webで代替）
-3. ホットペッパーAPIによる店舗情報の補完
+3. ~~ホットペッパーAPIによる店舗情報の補完~~ → **2026-09-27 決定: 利用しない**（規約適合が確認できず断念。ゲート結果を待たず先に確定した）
 4. Memory Bank（Firestoreの簡易版に落とす）
 5. 隔離抽出を別エージェントにすること（関数に落とす）

@@ -112,7 +112,7 @@ flowchart LR
     Slack["Slack"]
     Browser["幹事・ゲスト（ブラウザ）"]
     Payer["参加者（ブラウザ）"]
-    EXT["Google Maps / ホットペッパー / 駅すぱあと"]
+    EXT["Google Maps / 駅すぱあと"]
     BANKAPI["sunabar（銀行API・サンドボックス）<br/>OAuth・振込依頼・承認ページ・入出金明細"]
 
     subgraph GCP["GCPプロジェクト（シングル環境）"]
@@ -254,7 +254,7 @@ sequenceDiagram
 │       ├── gateway.py       # kuroko-gateway のアプリ（/slack/events, /slack/interactivity）
 │       ├── routers/         # エンドポイント定義のみ（slack.py, tasks.py, mcp.py, internal.py, dashboard.py, health.py）。mcp.py は MCP サーバー（LLM可のツールだけを公開。4.7節）、dashboard.py は役割（幹事・ゲスト）ごとに返す範囲と、幹事（ゲストは自分の `sandbox` イベント）だけが使える書き込み（**チャット・アップロード・確認**）を分ける（4.5節）。`demo.py`（`/tasks/demo/*`。デモ用の代行。**`sa-demo-runner` だけ**。`sandbox` のイベントだけ。4.5節）
 │       ├── services/        # 業務ロジック（決定論的コード）と、エージェントの呼び出し
-│       ├── clients/         # 外部・GCPの薄いラッパー（slack, maps, hotpepper, ekispert, bigquery, gcs, kms, secrets, agent_runtime, rag_engine, memory_bank, payment_api, bank_adapter）
+│       ├── clients/         # 外部・GCPの薄いラッパー（slack, maps, ekispert, bigquery, gcs, kms, secrets, agent_runtime, rag_engine, memory_bank, payment_api, bank_adapter）（ホットペッパーは2026-09-27に不採用）
 │       ├── db/              # Firestoreのデータアクセス（SPEC 3章のエンティティごと）
 │       └── models/          # Pydanticスキーマ（SPEC 3章）
 ├── payment_api/             # Cloud Run: payment-api（backend/ と同じレイヤー構成。pyproject・Dockerfileは別）
@@ -406,7 +406,7 @@ sequenceDiagram
 | **Memory Bank**（Agent Platform） | 会社・チーム単位の経験の記憶（定型の事実。SPEC 9.8、D20）。**独立したリソース**。TTL 365日 | **書き込みは `kuroko-api` のコードだけ**（Policy Gate 6.4。`memoryEditor`）。**読み取りは `agent-kuroko`（アタッチ。`load_memory`。`memoryViewer`）** |
 | **RAG Engine のコーパス** | 会社規程の文書（架空のPDF）。`retrieveContexts` で参照する（SPEC 9.7、D18） | 取り込みは**開発者が事前に**行う。読むのは `kuroko-api` だけ |
 | **Firestore `bank`（`bank-adapter` 専用の名前付きデータベース）** | 仮名 `user_id` ↔ sunabar の口座の対応表（D17） | **`bank-adapter` だけ**。IAM の条件でデータベースごとに分け、`sa-bank-adapter` は `bank` だけ、`sa-api`・`sa-payment-api` は `(default)` だけに触れる。他のサービス・エージェント・LLM からは読めない |
-| Secret Manager | Slackの署名検証シークレット・ボットトークン、駅すぱあと・ホットペッパー・Mapsのキー、**sunabar のクライアント情報と参加者・幹事のアクセストークン**（`sa-bank-adapter` のみ） | 値は手動で登録（Terraformで管理しない。`.agents/rules/infra.md`）。銀行のトークンは `bank-adapter` が実行時に書く |
+| Secret Manager | Slackの署名検証シークレット・ボットトークン、駅すぱあと・Mapsのキー、**sunabar のクライアント情報と参加者・幹事のアクセストークン**（`sa-bank-adapter` のみ）（ホットペッパーは2026-09-27に不採用） | 値は手動で登録（Terraformで管理しない。`.agents/rules/infra.md`）。銀行のトークンは `bank-adapter` が実行時に書く |
 | Cloud KMS | 請求の署名鍵（`sa-api`のみ）、参加者と支払いエージェントの署名鍵（`sa-payment-api`のみ） | — |
 
 > **Firestore の権限はデータベース単位で、コレクション単位では分けられない。** `kuroko-api` からも Mandate ドキュメントを書き換えられてしまう。そのため、委任状の**中身（上限・支払先・期限）の正は署名済みSD-JWT**とし、`payment-api` は Firestore の写し（`cap_yen` など）を信用せずに検証する（SPEC 3章 Mandate）。`status`（取り消し済みか）と nonce の使用状況は Firestore に置く。**強化案**: `payment-api` 専用の名前付きデータベースを別に作り、IAM で分離する（MVPでは採らない）。**`bank-adapter` の口座の対応表は、同じ理由で専用のデータベース `bank` に分けた**（2026-09-26。口座番号に当たる情報を `sa-api` から読めないようにするため）。
@@ -586,7 +586,7 @@ Cloud Run の IAM は**サービス単位**でしか呼び出し元を絞れな�
 | Cloud Tasks への投入 | ○ | ○ | ○ | | | | | |
 | Secret Manager: Slack署名検証シークレット | ○ | | | | | | | |
 | Secret Manager: Slackボットトークン | | ○ | ○ | | | | | |
-| Secret Manager: 駅すぱあと・ホットペッパー・Mapsのキー | | ○ | | | | | | |
+| Secret Manager: 駅すぱあと・Mapsのキー | | ○ | | | | | | |
 | **Secret Manager: sunabar のクライアント情報・アクセストークン** | | | | ○（読み書き） | | | | |
 | Firestore（読み書き） | | ○（`(default)`） | ○（`(default)`） | ○（`bank` のみ） | | | | |
 | BigQuery（判断ログ） | | 書き込み・読み取り | 書き込み | 書き込み | | | | |
