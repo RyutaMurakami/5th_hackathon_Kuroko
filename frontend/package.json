@@ -2,7 +2,10 @@
   "name": "frontend",
   "private": true,
   "scripts": {
+    "sync-docs": "node scripts/sync-docs.mjs",
+    "predev": "node scripts/sync-docs.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/sync-docs.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -10,10 +13,15 @@
   },
   "dependencies": {
     "firebase": "^11.0.0",
+    "github-slugger": "^2.0.0",
+    "mermaid": "^12.0.0",
     "motion": "^13.4.3",
     "next": "^15.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "rehype-slug": "^6.0.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.1.0",

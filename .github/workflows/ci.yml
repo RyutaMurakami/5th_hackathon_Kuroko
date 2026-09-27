@@ -36,6 +36,9 @@ jobs:
               - 'extract_agent/**'
             frontend:
               - 'frontend/**'
+              # 開発者ページ（/dev）が文書を読んでビルドする（ARCHITECTURE D26）
+              - 'docs/**'
+              - 'DESIGN.md'
             terraform:
               - 'infra/terraform/**'
               - 'firestore.rules'
