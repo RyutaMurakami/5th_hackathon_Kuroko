@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   # 変更があったサービスだけを動かす（TASKS I10）
