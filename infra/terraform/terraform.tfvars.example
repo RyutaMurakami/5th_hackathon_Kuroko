@@ -9,8 +9,8 @@ cors_allowed_origins = [
   "http://localhost:3000",
 ]
 
-# Secret Manager の値を登録したら true にする（human_task P3）
-wire_secrets = false
+# Secret Manager に値を登録したシークレットだけを並べる（human_task P3）
+wired_secrets = []
 
 # 呼び先のルート（TASKS B17）ができたら false にする
 scheduler_paused = true
