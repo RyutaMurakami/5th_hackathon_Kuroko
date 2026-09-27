@@ -25,7 +25,7 @@
 | 鍵 | Cloud KMS（`kuroko-claims` / `kuroko-mandates`） | TF | 参加者ごとの鍵の持ち方は B9 |
 | 鍵 | Secret Manager（7つ） | 器のみ（値が未登録） | P3 の後に `wire_secrets = true` |
 | Firebase | Hosting（サイト `kuroko-509311`） | 手動 | rewrite のデプロイ（I6・I11） |
-| Firebase | Authentication（Google・匿名） | 手動 | Console での有効化（H10） |
+| Firebase | Authentication（Google のみ。匿名は使わない） | 手動 | Console での有効化（H10。2026-09-27決定） |
 | Agent Platform | Agent Gateway ＋ Model Armor、Agent Registry | 未 | O2（G2）→ I7 |
 | Agent Platform | Agent Runtime（`kuroko-agent` / `payment-agent` / `extract-agent`）と Agent identity | 未 | E4 → I8（P5） |
 | Agent Platform | RAG Engine、Memory Bank | 未 | O3（G3）→ I9 |

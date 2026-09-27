@@ -161,7 +161,7 @@
 ### App Header
 **Role:** 画面上部のナビゲーション
 
-背景 `--color-pure-white`、下に 1px `--color-hairline`、高さ 64px。左にロゴ（角丸 10px の正方形、背景 `--color-sun-signal`（アイコンの月）、「黒」の字は `--color-ink-navy`）と `KUROKO`。右に、ログイン中の役割のピル（`幹事` / `ゲスト`）とアカウント（ゲストは匿名でログインするので、アカウントは出さず「ゲスト」だけ）。
+背景 `--color-pure-white`、下に 1px `--color-hairline`、高さ 64px。左にロゴ（角丸 10px の正方形、背景 `--color-sun-signal`（アイコンの月）、「黒」の字は `--color-ink-navy`）と `KUROKO`。右に、ログイン中の役割のピル（`幹事` / `ゲスト`）とアカウント（ゲストも Google ログインだが、**画面には実名・写真を出さず「ゲスト」だけ**表示する。2026-09-27決定）。
 
 ### Tab Pill Navigation
 **Role:** 画面内の切り替え。**イベント詳細では、概要（Event Summary）の下を「送金・承諾／按分／振り返り／経緯」のタブで切り替え、1画面に出す量を絞る。**

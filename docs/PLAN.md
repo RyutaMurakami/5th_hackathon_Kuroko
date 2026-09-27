@@ -854,7 +854,7 @@ Less Work. More Good Times.
 
 | 層 | 選定 |
 |---|---|
-| Web（幹事・審査員の主導線） | Next.js ＋ Firebase Auth（Google・匿名）。Firebase Hosting の背後に Cloud Run |
+| Web（幹事・審査員の主導線） | Next.js ＋ Firebase Auth（Google のみ。匿名は使わない。2026-09-27決定）。Firebase Hosting の背後に Cloud Run |
 | Web の動き | **Motion**（旧 framer-motion。MIT）。2026-09-25 に追加。理由: 審査員が触って体験する画面（SPEC 7.6）で、KUROKOが進めていること（段階の進行・KUROKOの返事・タイムラインの追加・右から開くパネル・タブの切り替え）を、動きで分かりやすく見せるため。CSS だけでは、要素の出入り（パネル・トースト・リストへの追加）とタブの印の移動が作りにくい。`prefers-reduced-motion` では止める（DESIGN.md「Motion」） |
 | Slack連携 | Slack Bolt for Python（HTTPモード）。Cloud Run |
 | エージェント | Google ADK。**3つ**（12章）を Agent Platform の Agent Runtime にデプロイ |
