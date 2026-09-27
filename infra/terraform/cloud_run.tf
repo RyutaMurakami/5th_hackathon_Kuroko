@@ -95,11 +95,11 @@ locals {
     }
   }
 
-  # サービスごとに、環境変数で渡すシークレット（wire_secrets = true のときだけ）
+  # サービスごとに、環境変数で渡すシークレット（wired_secrets に並べたものだけ）
   service_secrets = {
     for name, svc in local.services : name => {
       for id, s in local.secrets : s.env => id
-      if s.env != null && contains(s.readers, svc.sa)
+      if s.env != null && contains(s.readers, svc.sa) && contains(var.wired_secrets, id)
     }
   }
 
@@ -145,7 +145,7 @@ resource "google_cloud_run_v2_service" "this" {
       }
 
       dynamic "env" {
-        for_each = var.wire_secrets ? local.service_secrets[each.key] : {}
+        for_each = local.service_secrets[each.key]
         content {
           name = env.key
           value_source {

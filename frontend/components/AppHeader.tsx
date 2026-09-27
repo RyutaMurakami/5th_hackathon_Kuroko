@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useAuth } from "@/lib/auth";
 import { useDemoHref, useDemoRole } from "@/lib/demo";
 import { Icon } from "./Icon";
 import { NotificationBell } from "./NotificationBell";
-import { Pill } from "./ui";
+import { Pill, TextButton } from "./ui";
 import styles from "./shell.module.css";
 
 const ROLE_LABEL = { organizer: "幹事", guest: "ゲスト" } as const;
@@ -14,10 +15,8 @@ export function AppHeader() {
   const role = useDemoRole();
   const href = useDemoHref();
   const pathname = usePathname();
-  const params = useSearchParams();
+  const { user, signOut } = useAuth();
   const onEvents = pathname.startsWith("/events");
-  // はじめる画面でログインを選ぶ前は、役割と通知を出さない
-  const signedIn = pathname !== "/" || params.has("role");
 
   return (
     <header className={styles.header}>
@@ -37,13 +36,15 @@ export function AppHeader() {
             イベント
           </Link>
         </nav>
-        {signedIn && (
+        {/* ログインの前は、役割と通知を出さない */}
+        {user && (
         <div className={styles.right}>
           <Pill tone="navy">{ROLE_LABEL[role]}</Pill>
           <NotificationBell />
-          <span className={styles.account}>
-            <Icon name="user" label="アカウント" />
+          <span className={styles.account} title={user.email ?? undefined}>
+            <Icon name="user" label={user.displayName ?? user.email ?? "アカウント"} />
           </span>
+          <TextButton onClick={() => void signOut()}>ログアウト</TextButton>
         </div>
         )}
       </div>

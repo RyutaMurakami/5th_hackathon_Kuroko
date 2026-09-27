@@ -13,6 +13,10 @@ dependencies = [
     "google-cloud-secret-manager>=2.20",
     "pydantic-settings>=2.5",
     "python-dotenv>=1.0",
+    "google-cloud-tasks>=2.25.0",
+    "slack-sdk>=3.44.1",
+    "google-auth>=2.58.0",
+    "aiohttp>=3.14.3",
 ]
 
 [dependency-groups]

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Noto_Sans_JP } from "next/font/google";
 import { Suspense } from "react";
 import { AppHeader } from "@/components/AppHeader";
+import { AuthGate } from "@/components/AuthGate";
 import { DemoToolbar } from "@/components/DemoToolbar";
 import { GuestBanner } from "@/components/GuestBanner";
 import { Providers } from "@/components/Providers";
@@ -41,7 +42,7 @@ export default function RootLayout({
             <AppHeader />
             <GuestBanner />
           </Suspense>
-          {children}
+          <AuthGate>{children}</AuthGate>
           <Suspense>
             <DemoToolbar />
           </Suspense>

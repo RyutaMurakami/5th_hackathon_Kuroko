@@ -52,6 +52,21 @@ terraform apply kuroko.tfplan                  # 承認が要る（human_task P1
 
 `GCP_WORKLOAD_IDENTITY_PROVIDER` が未登録のあいだは、デプロイのワークフローは動かない。
 
+`gh` CLI で登録する場合（リポジトリのルートで実行。値は画面に出さずにそのまま渡す）:
+
+```
+cd infra/terraform
+gh variable set GCP_PROJECT_ID --body "$(terraform output -raw project_id)"
+gh variable set GCP_REGION --body "$(terraform output -raw region)"
+gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --body "$(terraform output -raw workload_identity_provider)"
+gh variable set GCP_DEPLOY_SERVICE_ACCOUNT --body "$(terraform output -raw deploy_service_account)"
+gh variable set GCP_ARTIFACT_REGISTRY --body "$(terraform output -raw artifact_registry_repository)"
+cd ../..
+# Firebase の設定値（frontend/.env.local と同じ値）を NEXT_PUBLIC_* の Variables に入れる
+grep '^NEXT_PUBLIC_FIREBASE_' frontend/.env.local | grep -v EMULATOR | while IFS='=' read -r k v; do gh variable set "$k" --body "$v"; done
+gh variable list
+```
+
 ### 2. Secret Manager に値を入れる（human_task P3）
 
 値はチャットに貼らない。手元のターミナルで、標準入力から入れる。
@@ -61,11 +76,11 @@ printf '%s' '<値>' | gcloud secrets versions add slack-signing-secret --data-fi
 ```
 
 入れ物: `slack-signing-secret` `slack-bot-token` `ekispert-api-key` `maps-api-key` `sunabar-client`（`sunabar-tokens` は `bank-adapter` が実行時に書くので、人間は入れない。**`hotpepper-api-key` は2026-09-27に不採用で削除済み**）。
-全部入れたら `terraform.tfvars` の `wire_secrets = true` にして apply する。
+値を入れたシークレットから順に、`terraform.tfvars` の `wired_secrets` に並べて apply する（値のないシークレットを並べると、そのサービスのリビジョンが起動しない）。
 
 ### 3. Firebase Authentication のプロバイダ（human_task H10。Terraform では管理しない）
 
-Firebase Console → Authentication → Sign-in method で、**Google** と **匿名** を有効にする。
+Firebase Console → Authentication → Sign-in method で、**Google** を有効にする（**匿名は使わない。2026-09-27決定**。許可リストに載っていない Google アカウントはゲストとして扱う）。
 承認済みドメインに `<project_id>.web.app` と `<project_id>.firebaseapp.com` があることを確認する。
 
 ### 4. Firebase Hosting

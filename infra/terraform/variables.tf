@@ -26,10 +26,10 @@ variable "placeholder_image" {
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
-variable "wire_secrets" {
-  type        = bool
-  description = "Secret Manager の値を Cloud Run の環境変数に渡すか。値の登録（human_task P3）が済むまで false にする（値のないシークレットを参照するとリビジョンが起動しない）"
-  default     = false
+variable "wired_secrets" {
+  type        = set(string)
+  description = "Cloud Run の環境変数に渡すシークレット（secrets.tf の secret_id）。値の登録（human_task P3）が済んだものだけを並べる（値のないシークレットを参照するとリビジョンが起動しない）"
+  default     = []
 }
 
 variable "scheduler_paused" {

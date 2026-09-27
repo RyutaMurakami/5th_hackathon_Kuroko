@@ -2,12 +2,14 @@
 
 import { motion } from "motion/react";
 import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth";
 import { useDemoHref, useDemoRole } from "@/lib/demo";
 import { defaultEventIdFor } from "@/lib/mock-data";
 import { EASE_OUT } from "@/lib/motion";
 import { ChatPanel } from "./ChatPanel";
-import { ButtonLink, Card, Caption } from "./ui";
+import { useToast } from "./Toast";
+import { Button, Card, Caption } from "./ui";
 import detail from "./detail.module.css";
 import styles from "./event.module.css";
 
@@ -24,13 +26,16 @@ const HOW_TO = [
 
 /** はじめる画面（`/`）。ログインの前はログインの選択、後は依頼のチャット */
 export function StartView() {
-  const params = useSearchParams();
   const router = useRouter();
   const role = useDemoRole();
   const href = useDemoHref();
-  const signedIn = params.has("role");
+  const { user, loading, signInWithGoogle } = useAuth();
+  const { toast } = useToast();
 
-  if (!signedIn) {
+  // 認証状態の確認中は、ログインボタンを一瞬出さない
+  if (loading) return null;
+
+  if (!user) {
     return (
       <main className={styles.page}>
         <Card>
@@ -42,13 +47,20 @@ export function StartView() {
                 お金の権限に触れる操作（委任・承認）は、本人が Slack で行います。
               </p>
               <div className={styles.actions}>
-                <ButtonLink href="/?role=guest">ログイン不要で試す</ButtonLink>
-                <ButtonLink variant="secondary" href="/events?role=organizer">
+                <Button
+                  onClick={() =>
+                    signInWithGoogle().catch((e: { code?: string }) => {
+                      // ポップアップを閉じただけのときは何も出さない
+                      if (e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") return;
+                      toast({ tone: "coral", text: "ログインできませんでした。もう一度お試しください。" });
+                    })
+                  }
+                >
                   Google でログイン
-                </ButtonLink>
+                </Button>
               </div>
               <Caption>
-                「ログイン不要で試す」は審査員向けの体験です。架空の会社「サンプル商事」のデータで、7日で削除されます。
+                幹事として登録されていない Google アカウントは、ゲストとして架空の会社「サンプル商事」のデータで体験できます（7日で削除されます）。
               </Caption>
             </div>
             <motion.div

@@ -10,13 +10,14 @@
 # それが SLACK_BOT_TOKEN。値はチャットに貼らず、手元のターミナルで登録する:
 #   printf '%s' 'xoxb-...' | gcloud secrets versions add slack-bot-token --data-file=- --project=<project_id>
 #
-# request_url はプレースホルダー。kuroko-gateway のデプロイ後、実際の URL に直す
-# （human_task P4。https://<kuroko-gateway の URL>/slack/events, /slack/interactivity）。
-# 現時点では、Slack の URL 検証（url_verification）に応答できないため、保存時に
-# 「Verified」にならなくても構わない（有効化 [ON] のまま、URL だけ後で直す）。
+# request_url は kuroko-gateway（Cloud Run）の URL（human_task P4）。
+# 保存すると Slack が /slack/events に URL 検証（url_verification）を送るので、
+# 先に kuroko-gateway に B16a のコードをデプロイしておくこと（まだなら「Verified」にならない）。
+# /slack/interactivity はまだ実装していない（ボタン・モーダルは B16 で作る）。
 #
-# 2026-09-27 時点のドラフト（B16 未着手）。実装（署名検証・モーダル・App Home の
-# 内容）が固まったら、スコープ・イベントを合わせて更新する。
+# 2026-09-27: B16a（仮）。Bot への DM を受け取り、仮のエージェントが返答する。
+# チャンネルでのメンション（app_mention・app_mentions:read）はバックログ。
+# 出欠・委任・承認のモーダルと App Home の内容（B16）が固まったら、スコープ・イベントを合わせて更新する。
 
 display_information:
   name: KUROKO
@@ -29,7 +30,8 @@ features:
     always_online: true
   app_home:
     home_tab_enabled: true
-    messages_tab_enabled: false
+    # Bot に DM を送れるようにする（B16a）
+    messages_tab_enabled: true
     messages_tab_read_only_enabled: false
 
 oauth_config:
@@ -38,18 +40,21 @@ oauth_config:
       # DM の送信（出欠・委任・承認依頼・完了報告・振り返り依頼）
       - chat:write
       - im:write
+      # Bot への DM を受け取る（message.im イベント。B16a）
+      - im:history
       # 許可リスト（メールアドレス）から Slack ユーザーを引き当てる（P6）
       - users:read
       - users:read.email
 
 settings:
   event_subscriptions:
-    request_url: "https://REPLACE-ME-AFTER-DEPLOY.example.com/slack/events"
+    request_url: "https://kuroko-gateway-nbymkfmzpq-uc.a.run.app/slack/events"
     bot_events:
       - app_home_opened
+      - message.im
   interactivity:
     is_enabled: true
-    request_url: "https://REPLACE-ME-AFTER-DEPLOY.example.com/slack/interactivity"
+    request_url: "https://kuroko-gateway-nbymkfmzpq-uc.a.run.app/slack/interactivity"
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false
