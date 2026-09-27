@@ -32,6 +32,7 @@
 | 2026-09-26 | **審査員と開発者の役割の統合**（SPEC 2026-09-26 の改訂に追随。D25）。Web の役割を幹事とゲストの2つにし、開発者の役割（`GET /api/dashboard/dev/*`・仮名のみ・書き込み不可）を廃止した。ゲストは自分の `sandbox` イベントだけ。認証は匿名を残し、将来は Google 認証だけにする。 |
 | 2026-09-27 | **ゲストの認証を匿名認証から Google ログインに変更**（human_task H2・H10。ユーザー決定）。**匿名認証は使わない**。役割の決め方は変えない（Firestore の許可リスト `dashboard_users` に載っている Google アカウントは `organizer`、載っていない Google アカウントは `guest`）。D23・D25・V14 を更新し、Firebase Auth は Google プロバイダだけを有効にする（2.2・4.5・7章・12章・13章）。デモ用の代行（`sa-demo-runner`）を使うか、(A) Web専用か (B) Slack参加も用意するかは、引き続き**要レビュー**（SPEC 13章） |
 | 2026-09-27 | **開発者ページ（`/dev`）を追加**（SPEC 7.3.2。D26）。`kuroko-dashboard` が、デプロイ時に同梱したリポジトリの文書と構成図を表示する |
+| 2026-09-28 | **CI の検査内容を 10.1節にまとめた**（ジョブ・動く条件・検査の内容、CI が失敗してもマージを止められない制約、まだ入っていない検査） |
 
 ---
 
@@ -658,6 +659,22 @@ Cloud Run の IAM は**サービス単位**でしか呼び出し元を絞れな�
 - リージョンは `us-central1`（D5）。V3 で外れたら決め直す。
 - **構築状況**（Terraform で何ができていて、何が未構築か）は、[diagrams/KUROKO_GoogleCloud構成図_v1.0.drawio](diagrams/KUROKO_GoogleCloud構成図_v1.0.drawio) と [diagrams/README.md](diagrams/README.md) にまとめる。
 
+### 10.1 CI（プルリクエストの検査。`.github/workflows/ci.yml`）
+
+- **いつ動くか**: プルリクエストの作成・更新のたび（`pull_request`）。`main` への push では CI は動かず、CD（`deploy.yml`）だけが動く。
+- **変更があった部分のジョブだけを動かす**（`dorny/paths-filter`）。`secret-scan` だけは毎回動く。Google Cloud には触らない（WIF の認証を使わない）。権限は `contents: read` と、変更ファイルの一覧を読むための `pull-requests: read` だけ。
+
+| ジョブ | 動く条件（変更のあったパス） | 検査の内容 |
+|---|---|---|
+| `python` | `backend/`（`policies/` を含む）・`payment_api/`・`bank_adapter/`・`kuroko_agent/`・`payment_agent/`・`extract_agent/` | パッケージごとの matrix で `uv sync --frozen`（`uv.lock` と `pyproject.toml` が食い違うと失敗）→ `ruff check` → `pytest` |
+| `frontend` | `frontend/`・`docs/`・`DESIGN.md` | `npm ci` → `lint`（ESLint）→ `typecheck`（`tsc --noEmit`）→ `build`（`prebuild` で文書を `frontend/content/` に写し、開発者ページを静的に作る。文書の読み取りに失敗しても落ちる。D26） |
+| `terraform` | `infra/terraform/`・`firestore.rules` | `terraform fmt -check -recursive` → `init -backend=false` → `validate`（**`plan` はしない**。state と権限が要るため、差分の確認と `apply` は手動。human_task P1） |
+| `secret-scan` | 毎回 | gitleaks で、**全履歴**（`fetch-depth: 0`）への秘密の混入を検知する |
+
+- 手元で同じ検査をするときは、AGENTS.md の「Commands」の表のコマンドを使う（Backend test・lint、Frontend build、Terraform check）。
+- **制約: CI が失敗しても、プルリクエストはマージできてしまう。** 無料プランの非公開リポジトリでは、GitHub のブランチ保護・ルールセットが使えないため（2026-09-28 に API で確認。有料プランか公開リポジトリにすれば使える）。**運用で、CI が緑になってからマージする。** また CD（`deploy.yml`）は CI の結果を待たずに、`main` への push で動く。
+- **まだ入っていない検査**: 本番ビルドの安全の検査（Demo Toolbar が本番で出ない・`NEXT_PUBLIC_*` に秘密がない・Web に委任や振込の呼び出しがない・DESIGN.md のトークンの直書きがない。TASKS F11）、pre-commit でのシークレットスキャン（E9）、ブラウザでの通しの確認（F12）、エージェントの評価（O）。入れたら、この表に足す。
+
 ---
 
 ## 11. レギュレーション適合
@@ -718,7 +735,7 @@ Cloud Run の IAM は**サービス単位**でしか呼び出し元を絞れな�
 | `backend/pyproject.toml` | FastAPI・ADK・GCPクライアント | Slack Bolt、BigQuery・KMS・Vertex AI SDK・MCP SDK のクライアントを追加。ADK は `kuroko_agent/` `payment_agent/` 側に移す |
 | `frontend/` | 静的配信・チャット前提の `api-client.ts` | Cloud Run 用に `output: "standalone"` を設定。Dashboard 用のAPIクライアントに置き換え。`globals.css` を、リポジトリ直下の DESIGN.md のトークンに置き換え（ダークテーマの切り替えは削除）。Noto Sans JP を `next/font` で読み込む。役割別の画面（幹事・ゲスト） |
 | `infra/terraform/` | `main.tf` `iam_wif.tf` は TODO のみ | 10章のリソースを定義 |
-| `.github/workflows/` | `ci.yml` `deploy.yml` は TODO のみ | サービスごとのCIとWIFデプロイ。エージェントは変更があったときだけデプロイ |
+| `.github/workflows/` | `ci.yml` `deploy.yml` は TODO のみ | サービスごとのCIとWIFデプロイ。エージェントは変更があったときだけデプロイ（**2026-09-27 対応済み**。CI の検査内容は 10.1節。エージェントのデプロイは I8 で足す） |
 | `firebase.json` | 存在しない（`AGENTS.md` のエミュレータ手順の前提） | Hosting の rewrite とエミュレータ設定を追加 |
 | `kuroko_agent/` `payment_agent/` `extract_agent/` | 存在しない | 新規追加。ツールは `kuroko_agent/` `payment_agent/` が MCP ツールセットだけ、`extract_agent/` はツールなし。Agent identity・Agent Gateway の設定と、Gateway の CA 証明書を `Dockerfile` に組み込む |
 | `payment_api/` `bank_adapter/` | 存在しない | 新規追加。`bank_adapter/` は V10（sunabar の疎通）の後に本実装する（先に銀行APIのスタブで `payment_api/` 側を組む） |
