@@ -11,10 +11,10 @@
 - **送金は、KUROKO自身が実在の銀行API（GMOあおぞらネット銀行の sunabar）を通じて実行する**（ユーザー指定。D17）。AP2 は委任・請求・領収書の署名による**権限と証跡**を担い、送金の処理は `payment-api` → `bank-adapter` → 銀行API の経路で行う。**幹事Pay など外部の集金・決済サービスは、決済手段として組み込まない**。`ap2-mock` を `bank-adapter` に置き換える
 - **会社規程は Vertex AI RAG Engine で参照する**（ユーザー指定。D18）。文書の版管理はしない
 - **経験の記憶は Agent Platform の Memory Bank に置く**（ユーザー指定。D20）。**統括エージェントにアタッチして読み取る**（ADK の `load_memory`。**読み取り専用のロール** `memoryViewer`。企画・店舗提案の段階だけ。`user_id` にチームのスコープIDを入れる）。**書き込みは、幹事が Web で確認した定型の事実を、`kuroko-api` のコードだけが直接書き込む**（会話からの自動生成は使わない）
-- **按分の内訳を Web に出す**（ユーザー指定。D21）。`SplitResult` の値をそのまま返し、Web では再計算しない。幹事は自分のイベントだけ・開発者は仮名のみ
+- **按分の内訳を Web に出す**（ユーザー指定。D21）。`SplitResult` の値をそのまま返し、Web では再計算しない。幹事は自分のイベントだけ・ゲストは自分の `sandbox` のイベントだけ
 - **Web が主導線、Slack は Human-in-the-loop**（ユーザー指定。D22）。幹事の作業（**依頼と対話（チャット）、領収書・予約画面のアップロード**、確認、状況の把握）は Web で行う。Slack は、出欠・委任・按分の承認・銀行での承認・予算超過の最終確認・振り返りの回答（人の判断・同意）とその通知に使う。**お金の権限に触れる操作（委任・承認・取り消し・振込）は Slack だけ**
 - **審査員（ゲスト）が提出した URL から触って体験できる**（ユーザー指定。D23）。ログイン不要（匿名認証）のサンドボックス。ゲストは自分の `sandbox` イベントだけ。参加者・承認者の HITL は、`sandbox` のイベントに限り、専用の実行主体 `sa-demo-runner` の**デモ用の代行**でも進められる（**要レビュー**）
-- 本書で新しく決めたこと（SPEC にない決定）は **12章の D1〜D23** に集約している。合意が取れるまで「提案」として扱う。Agent Runtime・Agent Gateway・銀行API・RAG Engine・Memory Bank の挙動に依存していて、まだ確かめていないことは **13章の V1〜V14** にまとめた
+- 本書で新しく決めたこと（SPEC にない決定）は **12章の D1〜D25** に集約している。合意が取れるまで「提案」として扱う。Agent Runtime・Agent Gateway・銀行API・RAG Engine・Memory Bank の挙動に依存していて、まだ確かめていないことは **13章の V1〜V14** にまとめた
 
 ### 変更履歴
 
@@ -27,6 +27,9 @@
 | 2026-09-20 | ①**ADK のコールバック関数を、フローの途中で必要になった場合に使う**ことを D6 と 4.9節に追記。例: 按分確定後に、負担額が最大の人へ確認する。コールバックは導線で、確認の依頼・検証・記録は `kuroko-api`、権威は Firestore（ADK の「ツール確認」は、Agent Runtime のセッションに非対応・実験的・偽造の問題があるため使わない）。V9 を追加。②**`DESIGN.md` はリポジトリ直下にある UI デザインの仕様**として、D15 と各リンクを直した（旧 `docs/DESIGN.md` は無い）。あわせて、D6 の理由に残っていた「隔離抽出は `kuroko-api` に置く」（D16 で `extract-agent` に変更済み）を直した |
 | 2026-09-20 | SPEC.md の 2026-09-20 の改訂（2回目）に追随した。①**Memory Bank を追加**（D20）。振り返りの回答（`Feedback`）と集計（`Retrospective`）を Firestore に置き、幹事が Web で確認したものだけを `kuroko-api` のコードが Memory Bank に直接書き込む。読み取りは MCP ツール `recall_memory`（読み取り専用）。エージェントに ADK の記憶ツール・`VertexAiMemoryBankService` を持たせない。`sa-api` だけに `roles/aiplatform.memoryUser` を付ける（2.2・2.3・3章・4.2・4.5・4.6・4.7・5章・6章・7章・8章・10章・11章）。②**按分の内訳を Web に出す**（D21。4.5）。③`extract-agent` に用途（`preferences` / `feedback`）を追加し、振り返りの自由記述を語彙だけに落とす（4.2）。④V12（Memory Bank）を追加 |
 | 2026-09-21 | SPEC.md の 2026-09-21 の改訂（思想の変更）に追随した。①**Web が主導線、Slack は Human-in-the-loop**（D22）。Web でチャット・アップロード・確認・通知を行い、`kuroko-dashboard` と `kuroko-api` の Web 向けの入口を拡張した（2.2・4.2・4.5・5章・6章）。②**審査員（ゲスト）が触れる導線**（D23）。匿名認証、`guest` 役割、サンドボックスのイベント、デモ用の代行（`sa-demo-runner`）、隔離とコストの上限（4.5・6章・7章・8章・10章）。③**Memory Bank を統括エージェントにアタッチして読み取る方式に変更**（D20 を書き換え）。MCP ツール `recall_memory` は廃止。`agent-kuroko` に `roles/aiplatform.memoryViewer`、`sa-api` に書き込み（`roles/aiplatform.memoryEditor`）。`load_memory` は企画・店舗提案の段階だけ（コールバック）（2.2・4.2・4.7・4.9・5章・6章・7章）。④V12 を書き換え、V13（Web のチャットの時間の上限）・V14（デモ用の代行・匿名認証）を追加 |
+| 2026-09-26 | SPEC.md の 2026-09-26 の改訂（[レビュー06（fukuoka）](review/2026-09-23_KUROKO_review_06_fukuoka.md)への対応）に追随した。①**AIとコードの役割の境界を 2.4節に追加**（ステージごとの担当表と、マスキング下での承認・送金のシーケンス。LLM のノードとコードのノードを分けて描いた）。4.3 の `payment-agent` の担当を明記（**手順・金額・可否・署名・口座は決めず、通知文と次に呼ぶツールの選択まで**。構成は変えない）。②**店舗の選定ロジック**（SPEC 9.9）を `backend/src/services/venue_ranking.py` に置く（決定論的。LLM は理由の文章だけ。D24）。③**振り返りを「自動の実績＋最小のフィードバック」に見直し**（SPEC 9.8・7.4）。参加者は満足度の1タップ＋任意のコメント、`extract-agent` の `feedback` 用途は、任意のコメントの語彙化だけに使う。`summarize_retrospective` が実績を自動で作り、幹事は Web で1問に答える（3章の対応表・4.2・5章）。構成（Cloud Run 5サービス・エージェント3つ）と権限は変えない |
+| 2026-09-26 | **リージョンを `us-central1` に決定**（D5。human_task H12）。**`bank-adapter` 専用の Firestore データベース `bank` を追加**し、口座の対応表を `(default)` から切り離した（4.6・7章。IAM の条件でデータベースごとに分ける）。H1（D1〜D25 の合意）を反映 |
+| 2026-09-26 | **審査員と開発者の役割の統合**（SPEC 2026-09-26 の改訂に追随。D25）。Web の役割を幹事とゲストの2つにし、開発者の役割（`GET /api/dashboard/dev/*`・仮名のみ・書き込み不可）を廃止した。ゲストは自分の `sandbox` イベントだけ。認証は匿名を残し、将来は Google 認証だけにする。 |
 
 ---
 
@@ -107,9 +110,9 @@ SPEC 2.1 は機能の依存関係の図。こちらは**どこに置き、誰が
 ```mermaid
 flowchart LR
     Slack["Slack"]
-    Browser["幹事・開発者（ブラウザ）"]
+    Browser["幹事・ゲスト（ブラウザ）"]
     Payer["参加者（ブラウザ）"]
-    EXT["Google Maps / ホットペッパー / 駅すぱあと"]
+    EXT["Google Maps / 駅すぱあと"]
     BANKAPI["sunabar（銀行API・サンドボックス）<br/>OAuth・振込依頼・承認ページ・入出金明細"]
 
     subgraph GCP["GCPプロジェクト（シングル環境）"]
@@ -179,6 +182,63 @@ flowchart LR
     BANK --> KEYS
 ```
 
+### 2.4 AIとコードの役割の境界（2026-09-26。レビュー06への対応）
+
+> **エージェント（LLM）は、お金と個人情報に直接触れない。触れられない構造そのものが、最大のガバナンス。**概要は [PLAN.md](PLAN.md) 7.0、LLM が見る・見ない・決めないものは [SPEC.md](SPEC.md) 10章。本節は、それを**どのサービスが担うか**に対応づける。
+
+**ステージごとの担当**（SPEC 5章のステージ）
+
+| ステージ | LLM（Agent Runtime） | コード（Cloud Run） | 人 |
+|---|---|---|---|
+| 企画 | 依頼の解釈、不足情報の質問（`kuroko-agent`）。規程の条文の読み取り | Event の作成、`memory_scope` の設定、`extract_policy_values` の**値の検証**（型・範囲）、`policy_snapshot` の保存 | 幹事が計画を確認 |
+| 出欠収集 | 自由記述の**語彙への抽出**（`extract-agent`。ツールなし）、説明・リマインドの文 | 出欠の記録、**委任状の署名**（コードのみ）、銀行の認可の受け取り、リマインドの起動 | 参加者: 出欠・委任 |
+| 店舗提案 | 希望の解釈、**選んだ理由の文章**、記憶の読み取り（`load_memory`） | 候補駅の検索、**足切りと順位づけ**、`reason_facts` の作成、理由の文の検査（SPEC 9.9。D24） | 幹事: 選択・予約 |
+| 予約〜領収書 | （読み取りは `kuroko-api` が直接呼ぶ Gemini。エージェントではない） | 読み取り結果の**検証**、確定の記録、予算チェック | 幹事: 予約・領収書の確定 |
+| 按分〜承認 | 按分ルールの選択と説明文 | **金額の計算**・承認者の決定・Policy Gate 6.1 / 6.2・請求の署名 | 承認者: 承認 |
+| 送金 | 通知文の作成、次に呼ぶツールの選択（手順は固定。順序違いは `payment-api` が拒否。D10） | **Policy Gate 6.3**、Closed Mandate、振込依頼、期限切れの作り直し、明細の照合、「完了」の判断 | 参加者: 銀行で承認 |
+| 振り返り・記憶 | 任意のコメントの語彙化（`extract-agent`）、記憶の読み取り（次回） | **実績の自動記録**・集計・記憶の書き込み（Policy Gate 6.4） | 幹事: 1問と確認 |
+
+**マスキング下での承認・送金**: 仮名化は、**LLM に見せる範囲を絞る**処理で、承認・送金の流れを止めない。コードが本人のID（Slack ユーザーID・仮名ID）で処理し、実名への再識別は帳票・Web の生成レイヤー、口座の解決は `bank-adapter` の中だけで行う。
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor A as 承認者（人）
+    actor M as 参加者（人）
+    box rgb(255,243,205) LLM（Agent Runtime）
+        participant KA as kuroko-agent
+        participant PA as payment-agent
+    end
+    box rgb(219,234,254) 決定論的なコード（Cloud Run）
+        participant K as kuroko-api
+        participant P as payment-api
+        participant BA as bank-adapter
+    end
+    participant B as 銀行API（sunabar）
+
+    K->>K: 按分の計算・承認者の決定（LLM は計算しない）
+    K->>KA: 仮名化した文脈（User_001・区分・条文の抜粋）
+    KA-->>K: 按分ルールの説明文（提案）
+    K->>K: 文面を検査 → 実名に再識別 → Slack で承認依頼
+    A->>K: 承認（署名検証済みの Slack 操作）
+    K->>K: Policy Gate 6.2（承認者・ハッシュ値）→ 請求に署名
+    K->>P: 請求（参加者1人につき1タスク）
+    P->>PA: 支払いの開始（仮名の user_id・金額）
+    PA->>P: 次のツールを呼ぶ（MCP。手順は固定・順序違いは拒否）
+    P->>P: Policy Gate 6.3（委任状・上限・支払先・nonce）
+    P->>BA: 振込依頼（仮名ID・金額・冪等キー）
+    BA->>B: 振込依頼（口座はここで解決）
+    PA-->>P: 通知文（「銀行で承認してください」）
+    P->>M: 文面を検査して DM を送る
+    M->>B: 銀行の承認ページで承認（10分以内）
+    P->>BA: 出金明細の照会 → 入金の照合 → 「完了」
+    PA-->>P: 完了の通知文
+    P->>M: 文面を検査して DM を送る
+```
+
+- **黄色の箱（LLM）が返せるのは、文章と、次に呼ぶツールの選択だけ**。金額・可否・署名・口座・振込は、青い箱（コード）だけが決める
+- `payment-agent` は、**LLM が判断の主体になる部分ではない**。AP2 の役割名（Shopping Agent）に合わせて「エージェント」と呼び、Agent Runtime・Agent Gateway・Model Armor の上に置くことで、入力と出力の検査、identity による権限の分離を受ける。**エージェントの自律（観察 → 判断 → 行動）が働くのは、会の前と、記憶を根拠にした提案**（PLAN 5.1）
+
 ---
 
 ## 3. コード配置
@@ -192,9 +252,9 @@ flowchart LR
 │   └── src/
 │       ├── main.py          # kuroko-api のアプリ（/tasks/*, /mcp, /internal/*, /api/dashboard/*）
 │       ├── gateway.py       # kuroko-gateway のアプリ（/slack/events, /slack/interactivity）
-│       ├── routers/         # エンドポイント定義のみ（slack.py, tasks.py, mcp.py, internal.py, dashboard.py, health.py）。mcp.py は MCP サーバー（LLM可のツールだけを公開。4.7節）、dashboard.py は役割（幹事・ゲスト・開発者）ごとに返す範囲と、幹事（ゲストは自分の `sandbox` イベント）だけが使える書き込み（**チャット・アップロード・確認**）を分ける（4.5節）。`demo.py`（`/tasks/demo/*`。デモ用の代行。**`sa-demo-runner` だけ**。`sandbox` のイベントだけ。4.5節）
+│       ├── routers/         # エンドポイント定義のみ（slack.py, tasks.py, mcp.py, internal.py, dashboard.py, health.py）。mcp.py は MCP サーバー（LLM可のツールだけを公開。4.7節）、dashboard.py は役割（幹事・ゲスト）ごとに返す範囲と、幹事（ゲストは自分の `sandbox` イベント）だけが使える書き込み（**チャット・アップロード・確認**）を分ける（4.5節）。`demo.py`（`/tasks/demo/*`。デモ用の代行。**`sa-demo-runner` だけ**。`sandbox` のイベントだけ。4.5節）
 │       ├── services/        # 業務ロジック（決定論的コード）と、エージェントの呼び出し
-│       ├── clients/         # 外部・GCPの薄いラッパー（slack, maps, hotpepper, ekispert, bigquery, gcs, kms, secrets, agent_runtime, rag_engine, memory_bank, payment_api, bank_adapter）
+│       ├── clients/         # 外部・GCPの薄いラッパー（slack, maps, ekispert, bigquery, gcs, kms, secrets, agent_runtime, rag_engine, memory_bank, payment_api, bank_adapter）（ホットペッパーは2026-09-27に不採用）
 │       ├── db/              # Firestoreのデータアクセス（SPEC 3章のエンティティごと）
 │       └── models/          # Pydanticスキーマ（SPEC 3章）
 ├── payment_api/             # Cloud Run: payment-api（backend/ と同じレイヤー構成。pyproject・Dockerfileは別）
@@ -220,6 +280,7 @@ flowchart LR
 | 支払いエージェント（4.2, 8） | `payment_agent/`（Agent Runtime）。検査・署名・鍵は `payment_api/` |
 | LLM可のツール（4.1） | 実装は `backend/src/services/`。エージェントには `backend/src/routers/mcp.py`（`/mcp`）の MCP ツールとして公開する |
 | 隔離抽出（`extract_free_text`。10章） | `extract_agent/`（Agent Runtime。ツールなし）。呼び出しは `backend/src/services/` |
+| 店舗の選定ロジック（9.9）: 足切り・順位づけ・`reason_facts`・理由の文の検査 | `backend/src/services/venue_ranking.py`（決定論的。LLM を呼ばない。`search_venues` の MCP ツールが呼ぶ）。理由の文章化だけ統括Agent |
 | 按分計算・承認者の決定・Policy Gate 6.1 / 6.2（4.1, 6章） | `backend/src/services/`（決定論的。LLM禁止） |
 | 請求（Merchant役）`create_checkout` / `confirm_incoming_payments`（4.1） | `backend/src/services/checkout.py` |
 | 規程の参照 `retrieve_policy` / `extract_policy_values`（4.1, 9.7） | `backend/src/clients/rag_engine.py`（RAG Engine の呼び出し）と `backend/src/services/policy.py`（抽出した値の検証と `policy_snapshot` の保存） |
@@ -230,7 +291,7 @@ flowchart LR
 | Slack Block Kit（App Home・DM・モーダル）（7章） | 画面の組み立ては `kuroko-api`、受信と署名検証は `kuroko-gateway` |
 | Web Dashboard（7.3） | `frontend/`（画面）と `backend/src/routers/dashboard.py`（役割ごとの読み取りAPI＋**幹事だけの事務の確認**。**按分の内訳・振り返り**を含む）。デザインは [DESIGN.md](../DESIGN.md) |
 | Web のチャット・アップロード・アプリ内通知（7.5・4.3） | 画面は `frontend/`。受け付けは `backend/src/routers/dashboard.py`、処理は `backend/src/services/`（`chat.py`：メッセージの受け付けとエージェントの呼び出し、`upload.py`：署名付きURLの発行・種類とサイズの検査・読み取りの起動、`notification.py`：アプリ内通知、`guest.py`：ゲストの上限とキルスイッチ、`demo_runner.py`：デモ用の代行のタスクの投入） |
-| 振り返り・記憶（9.8） | 回答の受け取りと集計は `backend/src/services/retrospective.py`。Memory Bank の呼び出しは `backend/src/clients/memory_bank.py`、書き込み（Policy Gate 6.4）と読み取りの整形は `backend/src/services/memory.py` |
+| 振り返り・記憶（9.8） | 回答（満足度の1タップ・任意のコメント）の受け取りと、**実績の自動記録**・集計は `backend/src/services/retrospective.py`。Memory Bank の呼び出しは `backend/src/clients/memory_bank.py`、書き込み（Policy Gate 6.4）と読み取りの整形は `backend/src/services/memory.py` |
 | 按分の内訳の表示（7.3.1） | `backend/src/routers/dashboard.py`（`SplitResult` の値をそのまま返す。再計算しない）と `frontend/`（Split Table） |
 
 ---
@@ -252,8 +313,8 @@ flowchart LR
   - `POST /tasks/scheduled/*` — リマインド・期限チェック・**振り返りの依頼・リマインド・締切の処理**。**`sa-scheduler` だけ**
   - `POST /tasks/internal/*` — 完了処理など、自分自身が投入する後続の処理。**`sa-api` だけ**
   - `/mcp` — エージェント用の MCP エンドポイント（MCP の Streamable HTTP）。**Agent Gateway 経由の `agent-kuroko` だけ**（V1）。`retrieve_policy`（RAG Engine）、`search_venues`、`check_budget` の結果参照など、SPEC 4.1 の「LLM可」に限る（**記憶の読み取り `load_memory` は MCP ではなく、統括エージェントにアタッチする**。下の kuroko-agent）。ツールは `services/` を呼ぶ薄い層で、引数（`event_id` など）は API 側で必ず検証する（LLM が渡した値を信用しない）（4.7節）
-  - `GET /api/dashboard/*` — Web Dashboard 用の読み取りAPI。**`sa-dashboard` だけ**。さらに、**利用者本人の Firebase ID トークンを検証して役割（幹事・開発者）を決め、役割ごとに返す範囲を変える**（4.5節）。開発者には仮名のデータだけを返し、実名への再識別は幹事向けのこのAPIと帳票（PDF）の生成だけ（SPEC 10章）
-  - `POST /api/dashboard/organizer/*` — **幹事の依頼・アップロード・確認**（SPEC 4.3。**チャットの発言（`events/{id}/messages`）、アップロードURLの発行と登録（`uploads`）、イベントの計画・読み取り結果・店舗候補・予算超過・振り返りの確認（`confirm/*`、`retro/confirm`。記憶への保存）**、通知）。**`sa-dashboard` だけ**。さらに、Firebase のトークンの役割が `organizer` で、Firebase の UID が対象イベントの `organizer_web_uid` と一致することを検査する（ゲストは、自分の `sandbox` イベントだけ）。**開発者は呼べない。委任・承認・取り消し・振込のルートはここに作らない**（D19）
+  - `GET /api/dashboard/*` — Web Dashboard 用の読み取りAPI。**`sa-dashboard` だけ**。さらに、**利用者本人の Firebase ID トークンを検証して役割（幹事・ゲスト）を決め、役割ごとに返す範囲を変える**（4.5節）。実名への再識別は幹事向けのこのAPIと帳票（PDF）の生成だけ（SPEC 10章）
+  - `POST /api/dashboard/organizer/*` — **幹事の依頼・アップロード・確認**（SPEC 4.3。**チャットの発言（`events/{id}/messages`）、アップロードURLの発行と登録（`uploads`）、イベントの計画・読み取り結果・店舗候補・予算超過・振り返りの確認（`confirm/*`、`retro/confirm`。記憶への保存）**、通知）。**`sa-dashboard` だけ**。さらに、Firebase のトークンの役割が `organizer` で、Firebase の UID が対象イベントの `organizer_web_uid` と一致することを検査する（ゲストは、自分の `sandbox` イベントだけ）。**委任・承認・取り消し・振込のルートはここに作らない**（D19）
 - **Web の依頼の受け付け**: チャットの発言は、`kuroko-api` が Firestore の `Message` に書いて**すぐに返す**（受け付けの応答。エージェントの処理は待たない）。処理は Cloud Tasks で非同期に行い（エージェントの呼び出し・読み取り・Gemini）、進み具合は判断ログとエージェントのイベント（`stream_query` が返すツール呼び出しと結果）から**「KUROKOがいましていること」のタイムライン**として Firestore に書く。画面は、それを短い間隔で読む（V13）。
 - **アップロード**: `issue_upload_url` が、種類・サイズ・枚数を検査したうえで、**短い期限の署名付きURL**を発行し、ブラウザが Cloud Storage に直接アップロードする。`register_upload` で登録すると、`ingest_reservation` / `ocr_receipt`（`kuroko-api` が直接 Gemini を呼ぶ。エージェントではない）を起動し、結果を確認カードに出す。**画像の文字は外部入力**（SPEC 10章）。
 - **ゲスト**（SPEC 7.6）: `guest.py` が、ゲストの UID ごとに、イベント数・メッセージ数・アップロード数の上限と、全体のキルスイッチ（`guest_enabled`）を検査する。`sandbox` のイベントは、作成から7日で Cloud Scheduler が削除する。
@@ -261,7 +322,7 @@ flowchart LR
 - **エージェントの呼び方**: Slack の操作（または Web の依頼）を受けた `kuroko-api`（後段）が、Firestore から**仮名化済みの文脈**（イベント条件、出欠の集計）を組み立てて**エージェントを呼ぶ**。自由記述は、まず `extract-agent` に渡して構造化した値（`dislikes / preferences / nearest_station`）だけを受け取り、統括Agentにはその値を渡す。どちらの呼び出しも Agent Gateway の入口で Model Armor の検査を受ける（4.8節）。エージェントが返した提案は、Policy Gate などの検査を通してから実行する。エージェントは、必要なときだけ `kuroko-api` の MCP ツールを呼び返す（出口も Gateway が検査）。
 - Gateway が入口でブロックした場合は、エージェントの提案を使わず、決まった文面で幹事に伝える（8章）。
 - **規程の参照（RAG Engine。D18）**: `clients/rag_engine.py` が `retrieveContexts` を呼ぶ。企画時に1回だけ `extract_policy_values` を実行し、Gemini が抽出した値を `services/policy.py` が**型と範囲で検証**してから Event の `policy_snapshot` に保存する。以後の按分は、この写しだけを使う（SPEC 9.7）。エージェントからは、条文の抜粋を返す `retrieve_policy` だけを MCP ツールとして見せる（4.7節）。**検索結果は外部入力**として扱う（SPEC 10章）。
-- **振り返りと記憶（Memory Bank。D20）**: 完了の翌日に `collect_feedback` が振り返りをDMで依頼し、`record_feedback` が回答を受ける（自由記述は `extract-agent` の `feedback` 用途で語彙に落とし、**原文は保存しない**）。締切後に `summarize_retrospective`（LLMなし）が集計と事実の下書きを作り、幹事が Web で確認したら、`save_memory` が Policy Gate 6.4 を通して **`clients/memory_bank.py` から Memory Bank に直接書き込む**（会話からの自動生成は使わない）。書き込みの冪等は `Retrospective.memory_refs` で担保する。読み取りは、統括エージェントにアタッチした `load_memory` が、**セッションの `user_id`（`kuroko-api` が Event の `memory_scope` から設定したチームのスコープID）に固定して**類似検索する（4.2節の kuroko-agent）。Memory Bank に書き込めるのは `sa-api` だけ（7章）。
+- **振り返りと記憶（Memory Bank。D20）**: 完了の翌日に `collect_feedback` が振り返り（**満足度の1タップ＋任意のコメント**）をDMで依頼し、`record_feedback` が回答を受ける（コメントは `extract-agent` の `feedback` 用途で語彙に落とし、**原文は保存しない**）。**実績（店・人数・1人あたり・予算内か・最も遠い人の所要時間）は、参加者に聞かず、イベントのデータから自動で記録する**（SPEC 9.8）。締切後に `summarize_retrospective`（LLMなし）が実績・集計・事実の下書き（`venue_record` / `venue_evaluation`）を作り、幹事が Web で確認したら、`save_memory` が Policy Gate 6.4 を通して **`clients/memory_bank.py` から Memory Bank に直接書き込む**（会話からの自動生成は使わない）。書き込みの冪等は `Retrospective.memory_refs` で担保する。読み取りは、統括エージェントにアタッチした `load_memory` が、**セッションの `user_id`（`kuroko-api` が Event の `memory_scope` から設定したチームのスコープID）に固定して**類似検索する（4.2節の kuroko-agent）。Memory Bank に書き込めるのは `sa-api` だけ（7章）。
 - **幹事口座の入金の確認**: `confirm_incoming_payments`（SPEC 4.1）が `bank-adapter` に幹事口座の入金明細を照会し、回収状況を更新する。支払いエージェント側の確認（4.3節）とは独立に行う。
 - Slackへの送信（DM、`chat.update`、App Homeの更新）、Slackのファイル（領収書・予約画面）のダウンロードとCloud Storageへの保存もここで行う。
 - 請求の署名鍵（Merchant役。SPEC 4.1 `create_checkout`）は、このサービスだけが使える KMS キーで持つ。
@@ -276,7 +337,7 @@ flowchart LR
 - 呼び出し方: `kuroko-api` から Vertex AI の SDK（`agent_engines`）で `stream_query` を呼ぶ。この呼び出しが Agent Gateway の入口（client-to-agent）を通る。
 
 **extract-agent（Agent Runtime）**
-- **隔離抽出**（SPEC 10章）。**用途（`mode`）を2つ持つ**: ①`preferences`: 参加者の自由記述と、口コミ本文（`search_venues` の中で取り込むもの）から、`{dislikes[], preferences[], nearest_station}` だけを取り出して返す ②**`feedback`（D20）**: 振り返りの自由記述から、**固定の語彙**（SPEC 3章 Feedback）の `{liked[], concerns[]}` だけを返す。**語彙にないものは捨てる**（原文も保存しない）。`mode` は `kuroko-api` が決め、入力から変えられない。
+- **隔離抽出**（SPEC 10章）。**用途（`mode`）を2つ持つ**: ①`preferences`: 参加者の自由記述と、口コミ本文（`search_venues` の中で取り込むもの）から、`{dislikes[], preferences[], nearest_station}` だけを取り出して返す ②**`feedback`（D20）**: 振り返りの**任意のコメント**から、**固定の語彙**（SPEC 3章 Feedback）の `{liked[], concerns[]}` だけを返す。**語彙にないものは捨てる**（原文も保存しない）。`mode` は `kuroko-api` が決め、入力から変えられない。
 - **ツールなし・外部への通信なし**。実行主体は Agent identity（`agent-extract`）で、権限は Gemini の呼び出しだけ。仮に攻撃文が混ざっていても、このエージェントは何も実行できず、返せるのは決まった形の値だけ（返った値は `kuroko-api` が型・語彙・長さで検証する。SPEC 10章の「値の検証」）。
 - `kuroko-api` から `stream_query` で呼ぶ。呼び出しは Agent Gateway の入口を通る（Model Armor が原文を検査する）（D16）。
 - **コールバック**（`extract_agent/callbacks.py`。4.9節）: 入力の長さの上限、出力が用途ごとの形（`{dislikes[], preferences[], nearest_station}` または `{liked[], concerns[]}`）に合うかの検証（外れたら空の結果に差し替える）。
@@ -298,7 +359,7 @@ flowchart LR
 - Slackへの「銀行で承認してください（10分以内）」「支払い完了」のDMの送信もここで行う（文面はエージェントが作った文を、検査してから使う）。
 
 **payment-agent（Agent Runtime）**
-- ツールは **`payment-api` の MCP ツールセット（`/mcp`）だけ**。実行主体は Agent identity（`agent-payment`）。LLM が決めるのは「次にどのツールを呼ぶか」（実際は固定の手順）と、通知文の文面まで。金額・支払先・**口座**・署名は決めない。
+- ツールは **`payment-api` の MCP ツールセット（`/mcp`）だけ**。実行主体は Agent identity（`agent-payment`）。LLM が決めるのは「次にどのツールを呼ぶか」（実際は固定の手順）と、通知文の文面まで。**手順・金額・可否・支払先・口座・署名は決めない**（コード＝`payment-api` が検査・実行する）。境界の全体は 2.4節。
 - **コールバック**（`payment_agent/callbacks.py`。4.9節）: 手順の順序に合わないツール呼び出しの早期の拒否、識別子の引数を state の値に固定。正は `payment-api` の状態遷移と検査（D10）。
 
 ### 4.4 bank-adapter
@@ -320,17 +381,16 @@ flowchart LR
 
 - Next.js（App Router）。Cloud Run 上で SSR し、**Firestore・BigQuery・Cloud Storage には直接つながず**、`kuroko-api` の `/api/dashboard/*` だけを呼ぶ（D2）。データ取得と実名の再識別を1か所に集約するため。
 - **幹事と審査員（ゲスト）の主導線**（SPEC 7.3・7.5・7.6、D19・D22・D23）。**依頼と対話（チャット）、アップロード、確認**を行い、わかることは6つ（①誰が幹事か ②全体フローのどこか ③誰から誰へいくら送金されたか ④まだ承諾していない人は誰か ⑤**按分の内訳**（D21） ⑥**振り返りと、KUROKOが覚えること**）（画面の詳細は SPEC 7.3）。確認は、予約内容・領収書の金額・店舗候補の選択・予算超過の確認・**振り返りのまとめの確認**。**Slack で人の対応が要る場面では、待ち相手と Slack を開くリンクを出す**。**委任・承認・取り消し・振込の実行に触れるルートは作らない**（Slack のまま）。見た目は [DESIGN.md](../DESIGN.md)。
-- 利用者は**幹事・ゲスト・開発者**の3役割。**範囲と個人情報の扱い、書き込みの可否は API 側で強制する**（画面を隠すだけにしない。D14・D19・D23）:
+- 利用者は**幹事・ゲスト**の2役割（審査員と開発者は区別せず、どちらもゲスト。D25）。**範囲と個人情報の扱い、書き込みの可否は API 側で強制する**（画面を隠すだけにしない。D14・D19・D23）:
 
 | 役割 | ルート | 返す範囲 | 実名 | 書き込み |
 |---|---|---|---|---|
 | 幹事（`organizer`） | `GET` / `POST /api/dashboard/organizer/*` | Firebase の UID が `organizer_web_uid` と一致するイベントだけ | あり（自分のイベントの参加者） | **あり**（依頼・アップロード・確認のみ） |
-| **ゲスト（`guest`。審査員）** | `GET` / `POST /api/dashboard/organizer/*`（同じルート） | **自分が作った `sandbox` のイベントだけ**（`guest_owner_uid`） | 架空のデモ参加者の名前（実名ではない） | あり（同上。上限とキルスイッチつき） |
-| 開発者（`developer`） | `GET /api/dashboard/dev/*` | 全イベント | **なし**（仮名 `User_001`。API が実名の表を引かない） | なし |
+| **ゲスト（`guest`。審査員・開発者）** | `GET` / `POST /api/dashboard/organizer/*`（同じルート） | **自分が作った `sandbox` のイベントだけ**（`guest_owner_uid`） | 架空のデモ参加者の名前（実名ではない） | あり（同上。上限とキルスイッチつき） |
 
-- **返す内容**（どちらも同じ形。実名か仮名かだけが違う）: イベント一覧（題名・日時・幹事・ステージ・承諾の数・送金の進捗）と、イベント詳細（①幹事・承認者・主役・参加者の役割 ②ステージと待ち相手 ③Payment の一覧（送金元・送金先・金額・状態・時刻。**承認待ちの残り時間と作り直した回数**を含む） ④参加者ごとの承諾の状況（SPEC 7.3 の表） ⑤**按分の内訳**（`SplitResult` の値をそのまま返す。**Web では再計算しない**。人ごとの区分・係数・負担額、金額の流れ、根拠の条文の引用、承認の状況。幹事は実名、開発者は仮名。SPEC 7.3.1） ⑥**振り返り**（回答数・平均・良かった点と気になった点の件数・記憶の下書きと保存の状態。**個人ごとの回答は返さない**。回答が3件未満のときは内訳を返さない） ⑦判断ログ）。元データは Firestore の Event・Participant・Mandate・Payment・Approval・SplitResult・Feedback（集計のみ）・Retrospective と、BigQuery の判断ログ。**好み・最寄り駅・署名の原文・口座番号・銀行のアクセストークン・振り返りの個人ごとの回答・Memory Bank の記憶の全件は返さない**（保存前の下書きと、そのイベントで保存した記憶だけを返す）。**領収書と予約画面の画像は、幹事が自分のイベントを確認するときだけ**返す（署名付きURLを短い期限で発行する）。**アプリ内通知**（`Notification`）は、宛先の UID の利用者にだけ返す。**経費精算PDFは、幹事が自分のイベントでダウンロードできる**（署名付きURL）。
+- **返す内容**（どちらも同じ形。ゲストの名前は架空）: イベント一覧（題名・日時・幹事・ステージ・承諾の数・送金の進捗）と、イベント詳細（①幹事・承認者・主役・参加者の役割 ②ステージと待ち相手 ③Payment の一覧（送金元・送金先・金額・状態・時刻。**承認待ちの残り時間と作り直した回数**を含む） ④参加者ごとの承諾の状況（SPEC 7.3 の表） ⑤**按分の内訳**（`SplitResult` の値をそのまま返す。**Web では再計算しない**。人ごとの区分・係数・負担額、金額の流れ、根拠の条文の引用、承認の状況。幹事は実名、ゲストは架空の名前。SPEC 7.3.1） ⑥**振り返り**（回答数・平均・良かった点と気になった点の件数・記憶の下書きと保存の状態。**個人ごとの回答は返さない**。回答が3件未満のときは内訳を返さない） ⑦判断ログ）。元データは Firestore の Event・Participant・Mandate・Payment・Approval・SplitResult・Feedback（集計のみ）・Retrospective と、BigQuery の判断ログ。**好み・最寄り駅・署名の原文・口座番号・銀行のアクセストークン・振り返りの個人ごとの回答・Memory Bank の記憶の全件は返さない**（保存前の下書きと、そのイベントで保存した記憶だけを返す）。**領収書と予約画面の画像は、幹事が自分のイベントを確認するときだけ**返す（署名付きURLを短い期限で発行する）。**アプリ内通知**（`Notification`）は、宛先の UID の利用者にだけ返す。**経費精算PDFは、幹事が自分のイベントでダウンロードできる**（署名付きURL）。
 - **書き込みの検査**（`POST /api/dashboard/organizer/*`。D19・D23）: ①`sa-dashboard` からの呼び出しであること ②Firebase のトークンが有効で、役割が `organizer`（許可リスト）または `guest`（匿名認証）であること ③**Firebase の UID が、対象イベントの `organizer_web_uid` と一致すること**（ゲストは、さらに `sandbox` が `true` で `guest_owner_uid` が一致すること）④ゲストの上限・キルスイッチを超えていないこと ⑤イベントが該当のステージにあること、を順に検査してから書く。**委任・承認・取り消し・振込のルートはこの配下に作らない**。書き込みは判断ログに `actor: human` で残す。
-- **認証の流れ**: ブラウザは Firebase Auth（**Googleログイン、またはゲストの匿名認証**）→ `kuroko-dashboard` のサーバー側が Firebase の ID トークンを検証し、**そのトークンを `X-Firebase-Token` として、Cloud Run 用のIDトークン（`sa-dashboard`）と一緒に** `kuroko-api` へ送る。`kuroko-api` は Firebase のトークンを自分でも検証し、Firestore の許可リスト（`dashboard_users`: メール・役割。**幹事は Slack ユーザーIDを持たなくてよい**）から役割を決める（許可リストにない匿名の利用者は `guest`）。`sa-dashboard` が乗っ取られても、利用者本人のトークンなしには役割を偽れない。許可リストにない Google ログインの人は、何も返さない（D8・D14）。匿名のゲストは、自分の `sandbox` イベントだけ扱える。
+- **認証の流れ**: ブラウザは Firebase Auth（**Googleログイン、またはゲストの匿名認証**）→ `kuroko-dashboard` のサーバー側が Firebase の ID トークンを検証し、**そのトークンを `X-Firebase-Token` として、Cloud Run 用のIDトークン（`sa-dashboard`）と一緒に** `kuroko-api` へ送る。`kuroko-api` は Firebase のトークンを自分でも検証し、Firestore の許可リスト（`dashboard_users`: メール・役割。**幹事は Slack ユーザーIDを持たなくてよい**）から役割を決める（許可リストにない匿名の利用者は `guest`）。`sa-dashboard` が乗っ取られても、利用者本人のトークンなしには役割を偽れない。許可リストにない Google ログインの人は、何も返さない（D8・D14）。匿名のゲストは、自分の `sandbox` イベントだけ扱える。**将来は Google 認証だけにする**（SPEC 13章バックログ）。現状のフロントには認証機能がないので、ログイン不要（匿名）を残す。
 - Hosting経由でCookieを使う場合は、Cloud Runに転送されるのが `__session` だけである点に注意する。
 - `NEXT_PUBLIC_` の変数には公開してよい値だけを入れる。`kuroko-api` への呼び出しに使うIDトークンとユーザーのトークンはサーバー側（Route Handler・Server Component）だけで扱う（`.agents/rules/frontend.md`）。
 - **送金は sunabar（銀行APIのサンドボックス）を通じて実行する**（SPEC 8.8）。送金の一覧には常に「sunabar（銀行API）経由で実行。サンドボックス環境のため資金は仮想です」を表示する（「送金していない」と読める文言にしない）。
@@ -339,17 +399,17 @@ flowchart LR
 
 | ストア | 置くもの | 書く主体 |
 |---|---|---|
-| Firestore（1データベース） | SPEC 3章のエンティティ（Event, Participant, Mandate, VenueCandidate, Receipt, SplitResult, Approval, Payment, **Feedback, Retrospective, Message, Notification**, ClaimRecord）と、Dashboard の許可リスト（`dashboard_users`）。**業務状態の正はここ** | `kuroko-api` と `payment-api`（Mandate, Payment の支払い側の項目） |
+| Firestore `(default)` | SPEC 3章のエンティティ（Event, Participant, Mandate, VenueCandidate, Receipt, SplitResult, Approval, Payment, **Feedback, Retrospective, Message, Notification**, ClaimRecord）と、Dashboard の許可リスト（`dashboard_users`）。**業務状態の正はここ** | `kuroko-api` と `payment-api`（Mandate, Payment の支払い側の項目） |
 | Agent Runtime のセッション | エージェントの会話文脈 | エージェント（マネージド） |
 | BigQuery | 判断ログ（DecisionLogEntry）。Web Dashboard と App Home の読み出し元（SPEC 11章） | `kuroko-api` と `payment-api` が `insert`。`kuroko-api` が読む（D4） |
 | Cloud Storage | 領収書・予約画面（**Web からのアップロード**）・経費精算PDF、**RAG のコーパスに取り込む規程の文書** | `kuroko-api`（署名付きURLの発行。**ブラウザが署名付きURLで直接アップロードする**）。規程の文書は開発者が事前に置く。ゲストのアップロードは `sandbox` のイベントと一緒に7日で削除する |
 | **Memory Bank**（Agent Platform） | 会社・チーム単位の経験の記憶（定型の事実。SPEC 9.8、D20）。**独立したリソース**。TTL 365日 | **書き込みは `kuroko-api` のコードだけ**（Policy Gate 6.4。`memoryEditor`）。**読み取りは `agent-kuroko`（アタッチ。`load_memory`。`memoryViewer`）** |
 | **RAG Engine のコーパス** | 会社規程の文書（架空のPDF）。`retrieveContexts` で参照する（SPEC 9.7、D18） | 取り込みは**開発者が事前に**行う。読むのは `kuroko-api` だけ |
-| **`bank-adapter` のデータ** | 仮名 `user_id` ↔ sunabar の口座の対応表（D17） | **`bank-adapter` だけ**。他のサービス・エージェント・LLM からは読めない |
-| Secret Manager | Slackの署名検証シークレット・ボットトークン、駅すぱあと・ホットペッパー・Mapsのキー、**sunabar のクライアント情報と参加者・幹事のアクセストークン**（`sa-bank-adapter` のみ） | 値は手動で登録（Terraformで管理しない。`.agents/rules/infra.md`）。銀行のトークンは `bank-adapter` が実行時に書く |
+| **Firestore `bank`（`bank-adapter` 専用の名前付きデータベース）** | 仮名 `user_id` ↔ sunabar の口座の対応表（D17） | **`bank-adapter` だけ**。IAM の条件でデータベースごとに分け、`sa-bank-adapter` は `bank` だけ、`sa-api`・`sa-payment-api` は `(default)` だけに触れる。他のサービス・エージェント・LLM からは読めない |
+| Secret Manager | Slackの署名検証シークレット・ボットトークン、駅すぱあと・Mapsのキー、**sunabar のクライアント情報と参加者・幹事のアクセストークン**（`sa-bank-adapter` のみ）（ホットペッパーは2026-09-27に不採用） | 値は手動で登録（Terraformで管理しない。`.agents/rules/infra.md`）。銀行のトークンは `bank-adapter` が実行時に書く |
 | Cloud KMS | 請求の署名鍵（`sa-api`のみ）、参加者と支払いエージェントの署名鍵（`sa-payment-api`のみ） | — |
 
-> **Firestore の権限はデータベース単位で、コレクション単位では分けられない。** `kuroko-api` からも Mandate ドキュメントを書き換えられてしまう。そのため、委任状の**中身（上限・支払先・期限）の正は署名済みSD-JWT**とし、`payment-api` は Firestore の写し（`cap_yen` など）を信用せずに検証する（SPEC 3章 Mandate）。`status`（取り消し済みか）と nonce の使用状況は Firestore に置く。**強化案**: `payment-api` 専用の名前付きデータベースを別に作り、IAM で分離する（MVPでは採らない）。
+> **Firestore の権限はデータベース単位で、コレクション単位では分けられない。** `kuroko-api` からも Mandate ドキュメントを書き換えられてしまう。そのため、委任状の**中身（上限・支払先・期限）の正は署名済みSD-JWT**とし、`payment-api` は Firestore の写し（`cap_yen` など）を信用せずに検証する（SPEC 3章 Mandate）。`status`（取り消し済みか）と nonce の使用状況は Firestore に置く。**強化案**: `payment-api` 専用の名前付きデータベースを別に作り、IAM で分離する（MVPでは採らない）。**`bank-adapter` の口座の対応表は、同じ理由で専用のデータベース `bank` に分けた**（2026-09-26。口座番号に当たる情報を `sa-api` から読めないようにするため）。
 
 ---
 
@@ -475,7 +535,7 @@ sequenceDiagram
 4. **判断ログ** — 判断・ブロック・署名・支払いなどを実行した Cloud Run のサービスが、その場で BigQuery に書く。エージェントのツール呼び出しは `/mcp` に届くので、**エージェントが何を呼んだかも同じログに残る**。Web Dashboard と App Home は、`kuroko-api` を通じて同じログを読む。Agent Gateway・Model Armor の検知は Cloud Logging に出る（9章）。
 5. **フローの途中の確認**（例: 按分確定後の、負担額が最大の人への確認。4.9節）— `kuroko-api` がエージェントを呼ぶ → コールバックが確認待ちで止める（state に `pending_confirmation`）→ `kuroko-api` が Firestore に `pending` を保存し、Slack で本人にだけ依頼 → 本人の操作が `kuroko-gateway`（署名検証）→ Cloud Tasks → `kuroko-api`（本人か検証、Firestore を更新）→ 同じセッションで新しいターンを呼んで再開する。
 6. **Web Dashboard** — ブラウザ → Firebase Hosting → `kuroko-dashboard`（Firebase ログインを検証）→ `kuroko-api` の `GET /api/dashboard/{organizer|dev}/*`（`sa-dashboard` と利用者のトークンを検証し、役割の範囲だけ返す）。書き込みはない。
-7. **振り返りと記憶**（SPEC 9.8、D20）— 完了の翌日に Cloud Scheduler → `kuroko-api`（`POST /tasks/scheduled/retro/*`）が `collect_feedback` で出席者にDMを送る → 回答は Slack のモーダル → `kuroko-gateway`（署名検証）→ Cloud Tasks → `kuroko-api`（`record_feedback`。自由記述は `extract-agent`（`feedback` 用途。Agent Gateway の入口を通る）で語彙に落とし、**原文は破棄**）→ Firestore の `Feedback`。締切（完了+3日、または全員回答）で `summarize_retrospective`（LLMなし）が集計と事実の下書きを作り、`Retrospective` を `awaiting_organizer` にして幹事へ**アプリ内通知**（`retro_ready`）→ 幹事が Web で確認（`POST /api/dashboard/organizer/retro/confirm`）→ `save_memory` が Policy Gate 6.4 を通し、**`kuroko-api` が Memory Bank に直接書き込む** → `memory_refs` を保存。次回の企画では、統括Agent が、アタッチした `load_memory`（`agent-kuroko` の identity。`memoryViewer`。**企画・店舗提案の段階だけ**）で、セッションの `user_id`（`kuroko-api` が `memory_scope` から設定したチームのスコープID）に固定して Memory Bank を引く。
+7. **振り返りと記憶**（SPEC 9.8、D20）— 完了の翌日に Cloud Scheduler → `kuroko-api`（`POST /tasks/scheduled/retro/*`）が `collect_feedback` で出席者にDMを送る → 回答は Slack（満足度の1タップ＋任意のコメント）→ `kuroko-gateway`（署名検証）→ Cloud Tasks → `kuroko-api`（`record_feedback`。コメントは `extract-agent`（`feedback` 用途。Agent Gateway の入口を通る）で語彙に落とし、**原文は破棄**）→ Firestore の `Feedback`。締切（完了+3日、または全員回答）で `summarize_retrospective`（LLMなし）が**自動記録の実績**・集計・事実の下書きを作り、`Retrospective` を `awaiting_organizer` にして幹事へ**アプリ内通知**（`retro_ready`）→ 幹事が Web で確認し、**「次回もこの店を使いたいか」の1問**に答える（`POST /api/dashboard/organizer/retro/confirm`。`reuse_intent` を含む）→ `save_memory` が Policy Gate 6.4 を通し、**`kuroko-api` が Memory Bank に直接書き込む** → `memory_refs` を保存。次回の企画では、統括Agent が、アタッチした `load_memory`（`agent-kuroko` の identity。`memoryViewer`。**企画・店舗提案の段階だけ**）で、セッションの `user_id`（`kuroko-api` が `memory_scope` から設定したチームのスコープID）に固定して Memory Bank を引く。
 8. **Web の依頼・アップロード**（SPEC 7.5、D22）— 幹事（またはゲスト）がブラウザで操作 → `kuroko-dashboard`（Firebase のログインを検証）→ `kuroko-api`（`POST /api/dashboard/organizer/*`。`sa-dashboard` と利用者のトークンを検証。ゲストは上限・キルスイッチを検査）。**チャット**: `Message` を書いてすぐに返す → Cloud Tasks → `kuroko-api` がエージェントを呼ぶ（Agent Gateway の入口。仮名化した文脈）→ 提案を検査して確認カード（イベントの計画・店舗候補）に出す → 幹事が確認（`confirm/*`）→ 出欠依頼を Slack で送る。**アップロード**: `issue_upload_url`（検査つきの署名付きURL）→ ブラウザが Cloud Storage に直接アップロード → `register_upload` → `kuroko-api` が Gemini で読み取り（エージェントではない。画像の文字は外部入力として値を検証）→ 確認カード → 幹事が確定。進み具合は、判断ログとエージェントのイベントから**タイムライン**に書き、画面が読む。Slack で人の対応が要るときは、`Notification`（`waiting_on_human`）と、待ち相手・Slack を開くリンクを画面に出す。
 9. **デモ用の代行**（SPEC 7.6。`sandbox` のイベントだけ）— `kuroko-api` が「デモ用のタスク」を Cloud Tasks に積む（実行主体は `sa-demo-runner`）→ `payment-api` の `POST /demo/mandates`（デモ参加者の委任状の署名）／`kuroko-api` の `POST /tasks/demo/approve`（按分の承認）。**`sandbox` が `true` でなければ拒否**。Policy Gate 6.2・6.3 は通常どおり。判断ログに `demo-runner` を残す。
 
@@ -506,7 +566,7 @@ Cloud Run の IAM は**サービス単位**でしか呼び出し元を絞れな�
 | Cloud Scheduler / `payment-api` → `payment-api`（承認待ちのポーリング） | OIDC: `sa-scheduler` / `sa-payment-api` | `POST /tasks/internal/payments/poll` は **`sa-scheduler` と `sa-payment-api` だけ** |
 | `payment-api` → `bank-adapter`（認可・振込依頼・照会・本人の出金明細） | IDトークン（`sa-payment-api`） | `POST /authorizations`, `POST /transfers`, `GET /transfers/{apply_no}`, `GET /statements` |
 | `kuroko-api` → `bank-adapter`（幹事口座の入金明細） | IDトークン（`sa-api`） | `GET /statements` **だけ**（振込依頼のルートは `sa-api` を受け付けない） |
-| `kuroko-dashboard` → `kuroko-api` | IDトークン（`sa-dashboard`）＋ 利用者の Firebase ID トークン（`X-Firebase-Token`） | `/api/dashboard/*` は **`sa-dashboard` だけ**。さらに Firebase のトークンから役割（幹事・ゲスト・開発者）を決め、役割に合わないルートは拒否。**`POST` は、役割が `organizer` で Firebase の UID が `organizer_web_uid` と一致するとき、または `guest` で自分の `sandbox` イベントのときだけ**（4.5節、D19・D23） |
+| `kuroko-dashboard` → `kuroko-api` | IDトークン（`sa-dashboard`）＋ 利用者の Firebase ID トークン（`X-Firebase-Token`） | `/api/dashboard/*` は **`sa-dashboard` だけ**。さらに Firebase のトークンから役割（幹事・ゲスト）を決め、役割に合わないルートは拒否。**`POST` は、役割が `organizer` で Firebase の UID が `organizer_web_uid` と一致するとき、または `guest` で自分の `sandbox` イベントのときだけ**（4.5節、D19・D23） |
 
 - 「署名検証済みのSlack操作」は、`kuroko-gateway` で署名検証を済ませ、**Slack由来の操作を受けるルート（`/tasks/slack/*`、`/mandates*`）が `sa-gateway` 以外を受け付けない**ことで担保する。エージェントや `kuroko-api` から委任状の署名を起こせないのは、`POST /mandates` が `sa-gateway` 以外を受け付けないため。
 - **エージェントが到達できるのは、自分専用の API の MCP エンドポイント（`/mcp`）の「LLM可」のツールだけ。**お金・鍵・Slackへの送信・状態の書き込みに当たる処理は、MCP ツールにない。Gateway のポリシー（エージェント identity・ツール名）、`routers/mcp.py` の公開ツール一覧、API 側の呼び出し元の検査（`/mcp` は該当エージェントだけ、他のルートはエージェントを受け付けない）の**3か所**で守る。
@@ -526,9 +586,9 @@ Cloud Run の IAM は**サービス単位**でしか呼び出し元を絞れな�
 | Cloud Tasks への投入 | ○ | ○ | ○ | | | | | |
 | Secret Manager: Slack署名検証シークレット | ○ | | | | | | | |
 | Secret Manager: Slackボットトークン | | ○ | ○ | | | | | |
-| Secret Manager: 駅すぱあと・ホットペッパー・Mapsのキー | | ○ | | | | | | |
+| Secret Manager: 駅すぱあと・Mapsのキー | | ○ | | | | | | |
 | **Secret Manager: sunabar のクライアント情報・アクセストークン** | | | | ○（読み書き） | | | | |
-| Firestore（読み書き） | | ○ | ○ | ○（口座の対応表のみ） | | | | |
+| Firestore（読み書き） | | ○（`(default)`） | ○（`(default)`） | ○（`bank` のみ） | | | | |
 | BigQuery（判断ログ） | | 書き込み・読み取り | 書き込み | 書き込み | | | | |
 | Cloud Storage | | ○ | | | | | | |
 | KMS: 請求の署名鍵 | | ○ | | | | | | |
@@ -592,7 +652,8 @@ Cloud Run の IAM は**サービス単位**でしか呼び出し元を絞れな�
 - 規模の指定（`--min-instances` `--max-instances` `--concurrency` など）は `agents-cli deploy` のフラグで行う。既定は `min=1`、`max=10`、`concurrency=8`。費用への影響は確認する（V5）。
 - **Web アプリ**（D22）: Firebase Hosting → Cloud Run の rewrite には、リクエストの時間の上限がある（V13）ので、Web の依頼は「受け付け即時応答＋非同期処理＋タイムライン」にする。Cloud Storage のバケットに、署名付きURLでのブラウザからのアップロード用の **CORS** を設定する。Firebase Auth は **Google と匿名**のプロバイダを有効にする（匿名は V14）。
 - Terraform で管理するもの: Cloud Run ×5、`sa-demo-runner` と、そのための `iam.serviceAccountUser`・invoker、**ゲストの `sandbox` イベントの削除の Cloud Scheduler**、**Agent Gateway・Agent Registry への MCP エンドポイントとエージェント（3つ）の登録・関連の IAM・Model Armor のテンプレート（`agentGatewayConfig` は Terraform でも SDK と同じ構造で指定できる）**、**Agent Runtime（`google_vertex_ai_reasoning_engine` ×3。`lifecycle.ignore_changes` でイメージの更新は `agents-cli deploy` に任せる）**、Artifact Registry、SA と IAM（7章）、Cloud Tasks のキュー（通常 / 支払い / 委任状）、Cloud Scheduler（リマインドと、**承認待ちのポーリング**。8章）、Firestore、Cloud Storage、BigQuery のデータセットとテーブル、KMS のキーリング、Secret Manager の**入れ物だけ**（値は入れない）、**RAG Engine のコーパス**（文書の取り込みは開発者が行う）、**Memory Bank**（Terraform で管理できるかは V12。できなければ SDK のスクリプトで作成し、リソース名だけを設定に渡す）、Firebase Hosting のサイト。
-- リージョンは未決（D5、V3）。
+- リージョンは `us-central1`（D5）。V3 で外れたら決め直す。
+- **構築状況**（Terraform で何ができていて、何が未構築か）は、[diagrams/KUROKO_GoogleCloud構成図_v1.0.drawio](diagrams/KUROKO_GoogleCloud構成図_v1.0.drawio) と [diagrams/README.md](diagrams/README.md) にまとめる。
 
 ---
 
@@ -620,27 +681,29 @@ Cloud Run の IAM は**サービス単位**でしか呼び出し元を絞れな�
 | D2 | Web Dashboard は Cloud Run（Next.js SSR）＋Firebase Hosting の前段。データは `kuroko-api` の読み取りAPI経由 | ブラウザや Next.js から BigQuery・Firestore に直接つなぐと、権限が広がり、実名の再識別が複数箇所に散らばる（SPEC 10章の「帳票生成レイヤーだけ」に反する） | SPEC 2.1 の図の矢印（Web → BigQuery / Firestore）を直した |
 | D3 | サービス間は Cloud Run IAM（サービス単位）＋アプリ層のIDトークン検証（ルート単位）。Slack由来の操作は Cloud Tasks 経由で、OIDC の主体を送信元のSAにする | 「署名検証済みのSlack操作」と「エージェント・統括側から委任状を作れない」を、コードではなく認可で担保するため | なし（SPEC 10章の具体化） |
 | D4 | 判断ログは BigQuery へ直接書き込む。お金・委任・承認の操作は、書けなければ実行しない | SPEC 3章の選択肢（エクスポート／ダブルライト）のうち、直接書き込みを採る | なし |
-| D5 | リージョンは未決 | テンプレートの既定は `us-central1`。国内利用のレイテンシと、Agent Runtime・Model Armor・Gemini のリージョン対応を確認して決める（V3） | なし |
+| D5 | **リージョンは `us-central1`**（2026-09-26 決定。Cloud Run・Firestore・Agent Runtime・Agent Gateway・Model Armor・RAG Engine・KMS・Artifact Registry を同じリージョンに置く。Memory Bank は `us-central1` で作れなければ `us`） | Agent Gateway の入口はエージェントと同一リージョンが必須で、Agent Platform のプレビュー機能・RAG Engine・Memory Bank が最もそろうリージョンに全体を寄せる。国内からのレイテンシ（+100〜150ms 程度）はデモには許容できる。V3 で外れたら決め直す | なし |
 | D6 | **ADK エージェントは、基本的にすべて Agent Platform の Agent Runtime にデプロイし、決定論的なコード・鍵・副作用は Cloud Run に置く。エージェントのツールは MCP 経由（D11）にする。あわせて、フローの途中で必要になった場合は、ADK のコールバック関数（`before/after` の agent・model・tool）を使う（例: 按分確定後に、負担額が最大の人へ確認する）。コールバックは「確認待ちに入る導線」で、確認の依頼・検証・記録は `kuroko-api`、確認の権威は Firestore の記録とする。ADK の「ツール確認」（`require_confirmation`）は使わない。コールバックにも鍵・お金・Slack・状態の書き込みは置かない**（4.9節。旧 D6「Agent Runtime を使わない」を差し替え。ツールの渡し方は D11） | ユーザー指定（Agent Runtime、フローの途中でのコールバック）。あわせて、`audit.llm_must_not` を「エージェントの identity が、そもそもその処理に到達できない」形で守れる。コールバックは LLM の判断に左右されない決定論的なコードなので、確認待ちへの遷移や、識別子の固定（攻撃文で別のイベントを指せない）を、プロンプトより確実に効かせられる。ADK の「ツール確認」は、実験的で、Agent Runtime のセッション（`VertexAiSessionService`、D7）に非対応と公式ドキュメントにあり、確認の応答が偽造できる問題も報告されているため使わない。ツールを持たない単発の LLM 呼び出し（隔離抽出）も、ADK エージェント `extract-agent` として Agent Runtime に置く（D16）。旧 H1 の論点「`payment-agent` を Agent Runtime に置く価値」は、この指定で決着 | SPEC 13章の「ADK の `require_confirmation` で…」の項目を、本書の方針に合わせて直した。SPEC の機能・ツール契約・承認の権威（Policy Gate 6.2）は変えない |
 | D7 | ADK セッションは Agent Runtime のマネージドセッション（`VertexAiSessionService`）を使う。業務状態は Firestore が正 | Agent Runtime にデプロイすると、実行時に自動で切り替わる。旧 D7（保存先未決）を解決 | なし |
-| D8 | Dashboard の認証は Firebase Auth（Googleログイン）＋許可リストを既定案とする。**許可リストは役割（`organizer / developer`）と、幹事の Slack ユーザーIDを持つ**（D14） | SPEC 7.3 の「MVPでは簡易」の範囲。判断ログに実名が出るため、URLを知っているだけでは見られないようにしたい | なし |
+| D8 | Dashboard の認証は Firebase Auth（Googleログイン）＋許可リストを既定案とする。**許可リストは幹事のメールを持つ（役割は `organizer` だけ。開発者の役割は D25 で廃止）**（D14） | SPEC 7.3 の「MVPでは簡易」の範囲。判断ログに実名が出るため、URLを知っているだけでは見られないようにしたい | なし |
 | D9 | コードは `kuroko_agent/` `payment_agent/`（Agent Runtime）、`backend/` `payment_api/` `bank_adapter/` `frontend/`（Cloud Run）に分ける。`backend/src/agents/` は使わない | Agent Runtime は、プロジェクトのルートに置いた `Dockerfile` からイメージをビルドする。エージェントごとに独立したデプロイ単位が要る | テンプレートの規約（`README.md` `.agents/rules/backend.md`）を直した |
 | D10 | 支払いの手順の順序と検査は `payment-api` が強制し、`payment-agent` は手順を進めるだけにする | LLM が手順を飛ばしても、順番を変えても、範囲外の支払いができないようにするため（SPEC 6.3、8.5 の「コードが検証する」） | なし（SPEC 4.2 の具体化） |
 | D11 | **エージェントのツールは MCP 経由。`kuroko-api` と `payment-api` が自分自身で MCP サーバー（`/mcp`）を兼ね、Cloud Run にデプロイする。MCP Toolbox は使わない。エージェントは、API から呼ばれた後、必要なときだけ API を MCP のツールとして呼び返す** | ユーザー指定。入力（API → エージェント）もツール（エージェント → API）も Agent Gateway を通るので、Model Armor の検査が一貫する。別の MCP サーバー用のサービスがなくなり、Cloud Run は5サービスのまま（Toolbox 案の7サービスより、構成・IAM・費用が軽い）。`/mcp` の呼び出し元は該当エージェントの identity だけに絞り、他のルートは受け付けない（6章）。Toolbox 案は、非公開の API を HTTP ツールとして呼べるか未確認だったため、代替としていた「API 自身が MCP サーバーを兼ねる」形を採った | SPEC 2.3・4章・11章 |
 | D12 | **エージェントの入出力は Agent Gateway を必ず通す。3つのエージェントを Agent identity でデプロイし、入口（client-to-agent）と出口（agent-to-anywhere）の両方を有効にする。Agent Registry に MCP エンドポイント（2つの API の `/mcp`）とエージェントを登録し、エージェントごとに到達先（MCP エンドポイント・ツール名）を絞る** | ユーザー指定（Agent Gateway の利用）。ツールの到達性を、コード・API の呼び出し元検査・Gateway の3か所で守れる。既定拒否なので、許可した先にしか出られない | SPEC 10章・11章に追記 |
 | D13 | **インジェクション対策は Agent Gateway × Model Armor に一本化する。エージェントの入口（`streamQuery`）と MCP の `tools/call` を Gateway で検査し、Model Armor を API で直接呼ぶ処理は作らない。多層: ①Gateway + Model Armor、②隔離抽出（`extract-agent`。D16）、③値の検証と Policy Gate。開発中は「検査のみ」で始め、日本語の検知を確かめてからブロックにする。お金・委任・承認は fail closed** | ユーザー指定。Slack の自由記述も、API（後段）がエージェントを呼ぶ形にしたので Gateway を通る。口コミなど**ツールの応答**に混ざった攻撃文も、エージェントに届く前に検査できる。Gemini 呼び出し自体の検査は未確認（V8）。Gateway が使えない場合は、Model Armor の API 直接呼び出しに戻す（V6） | SPEC 10章の書き換え |
-| D14 | （**読み取り専用の部分は D19 で、「わかることは4つ」は 7.3 の6つに更新**）**Web Dashboard は幹事・開発者の2役割にし、役割ごとの範囲を `kuroko-api` で強制する。開発者には仮名のデータだけを返す。利用者本人の Firebase ID トークンも `kuroko-api` が検証する。わかることは「誰が幹事か・全体フローのどこか・誰から誰へいくら送金されたか・まだ承諾していない人は誰か」の4つに絞る（経理向けの画面、セキュリティ検知・実行トレースの画面は作らない）** | ユーザー指定。画面を隠すだけだと、`sa-dashboard` が乗っ取られたときに実名まで見える。開発者が実名を見ないことは、SPEC 10章の仮名化と一致する。データ源は Firestore と判断ログだけになり、Gateway のログの取り込みや `run_id` は不要になった | SPEC 1.2・7章・7.3・10章 |
+| D14 | （**役割は D25 で、幹事・ゲストの2つに更新**。**読み取り専用の部分は D19 で、「わかることは4つ」は 7.3 の6つに更新**）**Web Dashboard は幹事・ゲスト（審査員・開発者。D25）の2役割にし、役割ごとの範囲を `kuroko-api` で強制する。ゲストには自分の `sandbox` のデータだけを返す。利用者本人の Firebase ID トークンも `kuroko-api` が検証する。わかることは「誰が幹事か・全体フローのどこか・誰から誰へいくら送金されたか・まだ承諾していない人は誰か」の4つに絞る（経理向けの画面、セキュリティ検知・実行トレースの画面は作らない）** | ユーザー指定。画面を隠すだけだと、`sa-dashboard` が乗っ取られたときに実名まで見える。ゲストが見るのは架空のデータだけなので、実名は出ない（SPEC 10章の仮名化は LLM への入力の話で、変わらない）。データ源は Firestore と判断ログだけになり、Gateway のログの取り込みや `run_id` は不要になった | SPEC 1.2・7章・7.3・10章 |
 | D15 | **リポジトリ直下の `DESIGN.md` は、UI デザインに関する仕様（Web Dashboard の色・文字・余白・部品）とする。`docs/` には置かない。旧 `DESIGN.md`（API・データモデル・エージェント設計）とは別物で、それらは SPEC 3〜4章と本書が扱う** | ユーザー指定（Refero Styles の DESIGN.md 形式を参考に作成し、リポジトリ直下に置く）。画面の実装が、値を直接書かずにトークンから組み立てられるようにする。API・データ・エージェントの設計と、見た目の規約を混ぜない | なし（SPEC 7.3 と 14章から参照。リンクは `../DESIGN.md`） |
 | D16 | **隔離抽出（`extract_free_text`）を、ツールを持たない ADK エージェント `extract-agent`（Agent Runtime。Agent identity は Gemini の呼び出しだけ）にする。`kuroko-api` が呼び、統括Agent には抽出後の値だけを渡す** | 「ADK エージェントはすべて Agent Runtime」と「入力もすべて Agent Gateway を通す」を両立しつつ、SPEC 10章の隔離抽出（ツールを持つエージェントに自由記述の原文を渡さない）を残すため。デプロイ対象が1つ増える（レイテンシ・費用は V4・V5）。**簡略案**: 隔離抽出をやめ、自由記述を統括Agent に直接渡す（Gateway の入口の検査と Policy Gate だけで守る）。重ければこちらに切り替える | SPEC 10章・4章（`extract_free_text` の呼び出し元） |
 | D17 | **`ap2-mock` をやめ、`bank-adapter`（sunabar への窓口）に置き換える。AP2 は委任・請求・領収書の署名による権限と証跡を担い、送金は KUROKO が `payment-api` → `bank-adapter` → 実在の銀行API の経路で実行する。アクセストークンと口座の対応表を持つのは `bank-adapter` だけで、引数にも応答にも口座番号を出さない。支払いは非同期になるので、承認待ちのポーリング（Cloud Scheduler）と期限切れの作り直し（最大2回）を `payment-api` に置く** | ユーザー指定（「承認のもと、エージェントが銀行振込などの形で実際に送金する」）。実在の銀行APIで振込依頼から入金確認まで動かせるため、審査基準③（主要機能がモックでないこと）への説明が強くなる。銀行は振込ごとに口座の持ち主の承認を求めるので、「本人の操作なしに払う」は成立せず、鍵3は銀行での本人承認に戻る。資金は仮想（sunabar はサンドボックス）。`bank-adapter` を分けるのは、口座番号とトークンの到達範囲を1サービスに閉じるため。**外部の集金・決済サービス（幹事Pay など）は使わない**（ユーザー指定。KUROKO自身が送金を実行する。[PLAN.md](PLAN.md) 16.6）。**疎通が取れない場合の代替は V10**（代替は AP2 サンプルの模擬決済役で、外部の決済サービスではない） | SPEC 1.2・2章・3章 Payment・4章・5章・6.3・7章・8章・10章・11章・12章・13章 |
 | D18 | **会社規程を Vertex AI RAG Engine で参照する。`retrieveContexts` を `kuroko-api` が呼び、エージェントには条文の抜粋を返す MCP ツール `retrieve_policy` だけを見せる。抽出した値はコードが型と範囲で検証し、企画時に1回だけ Event の `policy_snapshot` に保存する。文書の版管理はしない。`company_rules.yaml` はテストの正解データとフォールバックに役割を変える** | ユーザー指定（版管理は対象外にして RAG Engine の API を叩く）。規程を人手で登録し直さずに導入でき、承認カードに条文を引用できる。値を1回だけ固定するのは、計算のたびに抽出し直すと同じ入力で按分が変わりうるため。RAG の検索結果は**外部入力**として Model Armor の検査対象にし、値の検証で二重に守る。RAG Engine を呼べるのは `sa-api` だけで、エージェントはコーパスを操作できない | SPEC 1.2・3章 Event・4.1・6.1・9.7・10章・11章・12章・13章 |
 | D19 | （**D22 で「依頼・アップロード」まで拡張**）**Web Dashboard を幹事の主導線にし、`POST /api/dashboard/organizer/*` を追加する。幹事の事務の確認（予約内容・領収書の金額・店舗候補の選択・予算超過の確認）を Web から行えるようにし、委任・承認・取り消し・振込は Slack のままにする。書き込みの権限（役割が `organizer` で、Slack ユーザーIDが `organizer_user_id` と一致）は API 側で強制する** | ユーザー指定（「基本的に幹事担当者は Web アプリ画面を見る」）。D14 の「読み取り専用」を更新する。**お金の権限に触れる操作は Slack に残す**ので、署名検証済みの Slack 操作という担保は、委任・承認については変わらない。金額の確定を Web に出すことの担保は、①Googleログイン＋許可リストでの本人確認 ②そのあとに承認者が按分表のハッシュ値つきで Slack から承認すること（Policy Gate 6.2）の2つ。**要レビュー**（SPEC 13章） | SPEC 1.2・7章・7.3・9.1 |
 | D20 | **Agent Platform の Memory Bank を経験の記憶に使う。統括エージェントにアタッチして読み取る（ADK の `VertexAiMemoryBankService` ＋ `load_memory`。`PreloadMemoryTool` は使わない）。`agent-kuroko` には読み取り専用のロール `roles/aiplatform.memoryViewer` だけを付け、`load_memory` は `before_tool` のコールバックで企画・店舗提案の段階だけに制限する。検索スコープは、`kuroko-api` がセッションの `user_id` に入れるチームのスコープID。書き込みは、幹事が Web で確認した定型の事実を、`kuroko-api` のコード（`sa-api`。`memoryEditor`）だけが直接書き込む（会話・セッションからの自動生成 `add_session_to_memory` は使わない）。TTL は365日。記憶は店舗の提案・質問の確認・説明文にだけ使い、金額・按分・承認者・支払先・委任・規程の値には使わない** | ユーザー指定（振り返り・記憶を作る。「エージェントに Memory Bank をアタッチできないか」）。**当初の案（読み取りも MCP ツールに集約し、エージェントに Memory Bank の権限を付けない）は、2026-09-21 に変更した。**理由: 読み取り専用のロール（`memoryViewer`）があり、書き込みは ADK では明示の呼び出しだけ（自動ではない）なので、**エージェントの権限を読み取りだけに絞ったまま、アタッチできる**と分かったため。公式ドキュメントは、長期記憶はプロンプトインジェクションによる汚染のリスクがあるとしているので、**入口（書き込み）を「検証済みの値・定型テンプレート・幹事の確認」に絞り、影響の範囲（お金に届かない）を固定**する。代償: 読み取りの結果（Memory Bank → エージェント）の区間には Gateway の検査が掛からない。ただし、**それを踏まえたエージェントの応答は Gateway の入口（応答側）で Model Armor が検査する**ので、多層にはなる（応答の検査は、記憶に混ざった攻撃文がモデルの判断に影響すること自体は防げない点に注意。影響の範囲は「お金に届かない設計」で固定する。V8・V12）。エージェントの権限が「Gemini・自分専用の `/mcp`・Memory Bank の読み取り」になる（原則1の例外。読み取り専用）。**要レビュー**（SPEC 13章） | SPEC 1.2・3章・4章・5章・6.4・7.3・7.4・9.8・10章・11章・12章・13章 |
-| D21 | **按分の内訳を Web に出す。`GET /api/dashboard/{organizer / dev}/events/{id}/split` が `SplitResult` の値をそのまま返し（再計算しない）、幹事には実名、開発者には仮名で返す。人ごとの区分・係数・負担額、金額の流れ、根拠の条文の引用、承認の状況を含む。範囲は、幹事は自分のイベントだけ、開発者は仮名のみ** | ユーザー指定。幹事は区分と係数から個人の役職を推測できるが、承知の上で表示する。按分は `calculate_split` だけが計算し（LLM禁止）、Web は表示だけにして、計算を2か所に持たない。承認された按分表のハッシュ値と、Web の表示が一致することを、テストで固定する（SPEC 12章） | SPEC 7.3.1・10章・12章 |
+| D21 | **按分の内訳を Web に出す。`GET /api/dashboard/organizer/events/{id}/split` が `SplitResult` の値をそのまま返し（再計算しない）、幹事には実名、ゲストには架空の名前で返す。人ごとの区分・係数・負担額、金額の流れ、根拠の条文の引用、承認の状況を含む。範囲は、幹事は自分のイベントだけ、ゲストは自分の `sandbox` のイベントだけ** | ユーザー指定。幹事は区分と係数から個人の役職を推測できるが、承知の上で表示する。按分は `calculate_split` だけが計算し（LLM禁止）、Web は表示だけにして、計算を2か所に持たない。承認された按分表のハッシュ値と、Web の表示が一致することを、テストで固定する（SPEC 12章） | SPEC 7.3.1・10章・12章 |
 | D22 | **Web が主導線、Slack は Human-in-the-loop。幹事の作業（チャットでの依頼と対話、予約画面・領収書のアップロード、確認、状況の把握、アプリ内通知）は `kuroko-dashboard`（Web アプリ）と `kuroko-api` の Web 向けの入口（`/api/dashboard/organizer/*`）で行う。Slack（`kuroko-gateway`）は、出欠・委任・按分の承認・銀行での承認の依頼・予算超過の最終確認・振り返りの回答（人の判断・同意）とその通知に使う。お金の権限に触れる操作（委任・承認・取り消し・振込）は Slack だけで、Web にルートを作らない。Web の本人確認は Firebase の UID（`organizer_web_uid`）で行い、Slack ユーザーIDの対応づけは不要にする。Web の依頼は、受け付けたらすぐに返し、処理は Cloud Tasks で非同期に行って、進み具合をタイムラインに書く** | ユーザー指定（Slack を HITL の手段に位置づけ、領収書のアップロードなどは Web で行う。ハッカソンの審査員が実際に触って体験できることを狙う）。D19（幹事の事務の確認）を拡張する。「署名検証済みの Slack 操作だけが委任に署名できる」（D3）は変えない。Web の書き込みの権限は、Firebase の UID と `organizer_web_uid` の一致（API で強制）。アップロードは署名付きURLで Cloud Storage に直接送り（短い期限・種類・サイズの検査）、読み取り（Gemini。エージェントではない）の結果は幹事が確認してから使う | SPEC 1.1・1.2・3章・4.3・7章・7.3・7.5・9.5・10章 |
 | D23 | **審査員（ゲスト）が触れる導線。匿名認証の `guest` 役割。サンドボックスの会社（架空）で、自分が作った `sandbox` のイベントだけを読み書きできる（`guest_owner_uid`。API で強制）。作成から7日で削除する（Cloud Scheduler）。上限（イベント・メッセージ・アップロード）と全体のキルスイッチ（`guest_enabled`）を置く。参加者・承認者の HITL は、(A) `sandbox` のイベントだけ、専用の実行主体 `sa-demo-runner` の「デモ用の代行」（`payment-api` の `POST /demo/mandates`、`kuroko-api` の `POST /tasks/demo/approve`。`sa-demo-runner` だけを受け付け、`sandbox` が `true` でなければ拒否。Policy Gate は全項目を検査）、または (B) 審査員が Slack に参加して承認者として承認、のどちらでも進められる** | ユーザー指定（審査員が実際に触って体験できること）。一人で最後まで体験できるようにするには、Slack の署名検証済み操作の代わりになる経路が要る。ただし、これは D3 の「唯一の例外」になるので、**`sandbox` に限定し、専用の identity と専用のルートに閉じ、Policy Gate は省略せず、判断ログに `demo-runner` を残し、LLM は呼べない**。本番のイベントでは拒否する。**要レビュー**（SPEC 13章）。共有の sunabar 口座を複数のゲストが同時に使うと、明細の照合が混ざるので、振込の付加情報に `payment_id` を載せ、同時に `payment` に入れるゲストのイベントを1件に制限する（V10・V14） | SPEC 1.2・3章・7.6・10章・12章・13章 |
+| D24 | **店舗の選定ロジック（足切り・順位づけ・`reason_facts` の作成・理由の文の検査）は、決定論的なコード（`backend/src/services/venue_ranking.py`）に置く。LLM は、希望の解釈（隔離抽出で固定の語彙へ）と、`reason_facts` からの理由の文章化だけを担う。順位は、重みの足し合わせではなく、段階式（ハード制約 → 最遠の所要時間の帯 → 希望の一致度 → 記憶による調整）** | ユーザー決定（レビュー06）。「なぜこの店か」を説明できる、同じ入力で同じ順位になる、デモで「希望が無視された」と見えない、を満たすため。LLM に順位を決めさせると、説明が後付けになり、再現性が無い。理由の文に、`reason_facts` にない数値が混ざったら、コードが定型の文に差し替える。**新しいサービス・権限は増えない**（`search_venues` の MCP ツールの中で呼ぶ） | SPEC 3章 VenueCandidate・4.1・9.9・12章 |
+| D25 | **審査員と開発者を区別しない。Web の役割は「幹事（`organizer`）」と「ゲスト（`guest`）」の2つ。開発者の役割（`developer`。全イベント・仮名のみ・書き込み不可。`GET /api/dashboard/dev/*`）は廃止し、ゲストに統合する。ゲストが見られるのはサンドボックス（自分の `sandbox` イベント）だけで、幹事と同じルート・同じ画面を使う（経緯＝判断ログも見られる）。参加者向けの Web 画面は作らない。認証は匿名（ログイン不要）を残し、将来は Google 認証だけにする** | ユーザー決定。審査員も開発者も「サンドボックスを触って動作を確かめる」立場で、範囲を分ける理由がない。ゲストが見るデータは架空なので、開発者向けの仮名表示は不要になる（LLM への仮名化は変わらない）。本番イベントの調査は Console・BigQuery で行う。現状のフロントには認証機能がないので、匿名を残し、Google 認証への統一は将来のバックログにする。**許可リスト（`dashboard_users`）は幹事のメールだけ** | SPEC 7.3・7.3.1・7.6・10章・12章・13章 |
 
-### テンプレートから変える点（実装時に対応する。タスクは [TASKS.md](TASKS.md) の T0）
+### テンプレートから変える点（実装時に対応する。タスクは [TASKS.md](TASKS.md) の E（環境準備）・I（インフラ）・B（バックエンド））
 
 | 対象 | 現状（テンプレート） | 本構成で必要な変更 |
 |---|---|---|
@@ -649,7 +712,7 @@ Cloud Run の IAM は**サービス単位**でしか呼び出し元を絞れな�
 | `backend/Dockerfile` | `src.main:app` 固定、`policies/` を含まない | 起動モジュールを環境変数で切替。ビルドコンテキストをリポジトリルートにして `policies/` を同梱 |
 | `backend/src/routers/chat.py` ほか | 雛形のチャットAPI | 削除。`slack.py` `tasks.py` `mcp.py` `internal.py` `dashboard.py` を追加 |
 | `backend/pyproject.toml` | FastAPI・ADK・GCPクライアント | Slack Bolt、BigQuery・KMS・Vertex AI SDK・MCP SDK のクライアントを追加。ADK は `kuroko_agent/` `payment_agent/` 側に移す |
-| `frontend/` | 静的配信・チャット前提の `api-client.ts` | Cloud Run 用に `output: "standalone"` を設定。Dashboard 用のAPIクライアントに置き換え。`globals.css` を、リポジトリ直下の DESIGN.md のトークンに置き換え（ダークテーマの切り替えは削除）。Noto Sans JP を `next/font` で読み込む。役割別の画面（幹事・開発者） |
+| `frontend/` | 静的配信・チャット前提の `api-client.ts` | Cloud Run 用に `output: "standalone"` を設定。Dashboard 用のAPIクライアントに置き換え。`globals.css` を、リポジトリ直下の DESIGN.md のトークンに置き換え（ダークテーマの切り替えは削除）。Noto Sans JP を `next/font` で読み込む。役割別の画面（幹事・ゲスト） |
 | `infra/terraform/` | `main.tf` `iam_wif.tf` は TODO のみ | 10章のリソースを定義 |
 | `.github/workflows/` | `ci.yml` `deploy.yml` は TODO のみ | サービスごとのCIとWIFデプロイ。エージェントは変更があったときだけデプロイ |
 | `firebase.json` | 存在しない（`AGENTS.md` のエミュレータ手順の前提） | Hosting の rewrite とエミュレータ設定を追加 |

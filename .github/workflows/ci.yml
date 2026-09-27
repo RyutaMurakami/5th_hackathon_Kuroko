@@ -3,21 +3,108 @@ name: CI
 on:
   pull_request:
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
-  backend:
+  # 変更があったサービスだけを動かす（TASKS I10）
+  changes:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
+    outputs:
+      python: ${{ steps.python.outputs.packages }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      terraform: ${{ steps.filter.outputs.terraform }}
     steps:
       - uses: actions/checkout@v4
-      # TODO: setup uv, `uv run ruff check .`, `uv run pytest`
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'policies/**'
+            payment_api:
+              - 'payment_api/**'
+            bank_adapter:
+              - 'bank_adapter/**'
+            kuroko_agent:
+              - 'kuroko_agent/**'
+            payment_agent:
+              - 'payment_agent/**'
+            extract_agent:
+              - 'extract_agent/**'
+            frontend:
+              - 'frontend/**'
+            terraform:
+              - 'infra/terraform/**'
+              - 'firestore.rules'
+      - id: python
+        run: |
+          packages=$(echo '${{ steps.filter.outputs.changes }}' \
+            | jq -c '[.[] | select(. != "frontend" and . != "terraform")]')
+          echo "packages=${packages}" >> "$GITHUB_OUTPUT"
+
+  python:
+    needs: changes
+    if: needs.changes.outputs.python != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.changes.outputs.python) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run pytest
 
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-      # TODO: setup node, `npm ci`, `npm run lint`, `npm run typecheck`, `npm run build`
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+  terraform:
+    needs: changes
+    if: needs.changes.outputs.terraform == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+
+  # 秘密の混入を検知する（TASKS E9。pre-commit 側の設定は E9 で足す）
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,55 @@
+# KUROKO の Slack App マニフェスト（human_task H19 で使う。TASKS B16 の一部）。
+#
+# 使い方: https://api.slack.com/apps → 対象のアプリを開く → 左メニュー「App Manifest」→
+# このファイルの中身を貼り付けて「Save Changes」。既存の Signing Secret・Client ID・
+# Client Secret（「Basic Information」の値）はこの操作では変わらない。
+#
+# 保存後、「OAuth & Permissions」→ 画面上部の「Install to Workspace」
+#（すでにインストール済みなら「Reinstall to Workspace」）を実行すると、
+# 同じページに Bot User OAuth Token（xoxb- で始まる）が表示される。
+# それが SLACK_BOT_TOKEN。値はチャットに貼らず、手元のターミナルで登録する:
+#   printf '%s' 'xoxb-...' | gcloud secrets versions add slack-bot-token --data-file=- --project=<project_id>
+#
+# request_url はプレースホルダー。kuroko-gateway のデプロイ後、実際の URL に直す
+# （human_task P4。https://<kuroko-gateway の URL>/slack/events, /slack/interactivity）。
+# 現時点では、Slack の URL 検証（url_verification）に応答できないため、保存時に
+# 「Verified」にならなくても構わない（有効化 [ON] のまま、URL だけ後で直す）。
+#
+# 2026-09-27 時点のドラフト（B16 未着手）。実装（署名検証・モーダル・App Home の
+# 内容）が固まったら、スコープ・イベントを合わせて更新する。
+
+display_information:
+  name: KUROKO
+  description: 幹事の代わりに、飲み会の企画・按分・精算・送金を進める
+  background_color: "#1a2538"
+
+features:
+  bot_user:
+    display_name: KUROKO
+    always_online: true
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: false
+    messages_tab_read_only_enabled: false
+
+oauth_config:
+  scopes:
+    bot:
+      # DM の送信（出欠・委任・承認依頼・完了報告・振り返り依頼）
+      - chat:write
+      - im:write
+      # 許可リスト（メールアドレス）から Slack ユーザーを引き当てる（P6）
+      - users:read
+      - users:read.email
+
+settings:
+  event_subscriptions:
+    request_url: "https://REPLACE-ME-AFTER-DEPLOY.example.com/slack/events"
+    bot_events:
+      - app_home_opened
+  interactivity:
+    is_enabled: true
+    request_url: "https://REPLACE-ME-AFTER-DEPLOY.example.com/slack/interactivity"
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

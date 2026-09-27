@@ -1,7 +1,8 @@
 // Dashboard API（kuroko-api の /api/dashboard/*）が返す形。SPEC 3章・ARCHITECTURE 4.5節。
 // バックエンドにつなぐまでは lib/mock-data.ts がこの形のダミーを返す。
 
-export type Role = "organizer" | "guest" | "developer";
+/** 審査員と開発者は区別しない（どちらも guest。ARCHITECTURE D25） */
+export type Role = "organizer" | "guest";
 
 export type EventStatus =
   | "planning"
@@ -61,7 +62,7 @@ export type DecisionActionType =
 
 export type Participant = {
   userId: string;
-  /** 幹事・ゲストは実名（ゲストは架空の名前）、開発者は仮名（User_001） */
+  /** 幹事は実名、ゲストは架空の名前（サンドボックス） */
   displayName: string;
   role: ParticipantRole;
   memberClass: MemberClass | null;

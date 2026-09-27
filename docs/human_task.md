@@ -2,13 +2,15 @@
 
 > エージェントへ: AI が実装に着手する前に、人間が済ませておくタスクの一覧（**AI 側のタスクは [TASKS.md](TASKS.md)**。本書は人間のタスクだけ）。着手する作業に対応する項目（各項目の「止まる実装」）が完了しているかを、実装の前にユーザーへ確認する。未完了のまま仮実装で進めない。**トークン・キーなどの秘密の値は、ユーザーにチャットへ貼らせない**（置き場所は「受け渡し」節に従う）。項目が完了したらチェックを付け、日付と結果（ID・URLなど秘密でないもの）を書き込む。
 
-- 作成日: 2026-09-19 / 最終更新: 2026-09-20（提出締切 2026-10-15 23:59 まで **残り約25日**）
+- 作成日: 2026-09-19 / 最終更新: 2026-09-27（提出締切 2026-10-15 23:59 まで **残り18日**）
 - 根拠: [SPEC.md](SPEC.md) 13章（要準備・要検証）、[ARCHITECTURE.md](ARCHITECTURE.md) 12章（D1〜D21）・13章（V1〜V12）、[DESIGN.md](../DESIGN.md)、ハッカソンの提出要件
 - 2026-09-20 の更新内容（1回目）: ツールを MCP 経由にし API 自身が MCP サーバーを兼ねる構成、Agent Gateway × Model Armor への一本化、隔離抽出エージェント（`extract-agent`）、Web Dashboard を幹事・開発者向けの4点に絞ったこと、DESIGN.md の新設を反映した。**Agent Gateway が使えるかの確認（H21）を、Agent Runtime の実験（H11）より先にした**
 - 2026-09-20 の更新内容（2回目）: **送金を、AP2 サンプルの模擬決済役から、KUROKO 自身が銀行API（sunabar）で実行する形に変えた**（D17。幹事Pay など外部の集金・決済サービスは使わない）。**規程の参照を RAG Engine にした**（D18）。**Web Dashboard を幹事の主導線にし、事務の確認を Web で行えるようにした**（D19）。これに伴い、**sunabar の口座開設と疎通（H22・H23・H25）、規程の文書の用意（H24）を追加**し、`ap2-mock` に関する項目（H16・P7・S4・S5）を差し替えた。**H22（口座開設）はリードタイムがあるので最優先**
 - 2026-09-20 の更新内容（3回目）: **按分の内訳を Web に出す**（D21）、**振り返り・記憶を作る**（**Agent Platform の Memory Bank**。D20）、**Web の事務の確認**（振り返りのまとめの確認を含む）が決まった。これに伴い、**Memory Bank の疎通（H26。V12）と、過去のイベントの記憶（seed）の用意（H27）を追加**し、H1・H2 を更新した。**H2 の「要レビュー」から、決まった3点を外した**
 - 2026-09-21 の更新内容（5回目）: **AI の実装タスクを [TASKS.md](TASKS.md) に分けた**（「人間の作業を待たずに AI が始められる実装」の節は TASKS.md の T1 へ移した）。PLAN=概要、SPEC=仕様、ARCHITECTURE=アーキテクチャ、TASKS=AI のタスク、human_task=人間のタスク、という分け方にした。
 - 2026-09-21 の更新内容（4回目）: **思想の変更（Webが主導線、Slackは Human-in-the-loop）**。幹事の作業（依頼・領収書と予約画面のアップロード・確認）は Web で行い、**審査員が実際に触って体験できる**ことを狙う（D22・D23、SPEC 7.5・7.6）。これに伴い、**審査員向けの準備（H28：サンプルの領収書・予約画面と「サンプル商事」の初期データ、H29：デモ用 Slack の招待リンク）を追加**し、Firebase の匿名認証（H10）、H17・H18・H26・H27・P6・P8・P10・S1 を更新した。あわせて、**Memory Bank を統括エージェントにアタッチして読み取る**方式に変えた（D20。MCP ツール `recall_memory` は廃止）
+- 2026-09-26 の更新内容: **審査員と開発者の役割を統合した**（ARCHITECTURE D25・SPEC 7.3/7.6）。Web の役割は幹事とゲストの2つで、許可リスト（P6）は幹事だけになった。認証はログイン不要を残し、将来は Google 認証だけにする
+- **2026-09-27 の更新内容: 最小構成での実装順を決定した**（TASKS.md 参照）。**H11・H21（Agent Runtime・Agent Gateway の検証）と H22（sunabar 口座開設）を最優先で進める**（本実装はこの結果が出るまで着手しない）。**H24・H26・H27（RAG Engine・Memory Bank の準備）も、結果を待たず並行して優先的に進める**。**H17〜H20（Slack）は、間に合わなければ後回しでよい**（審査員向けデモは sandbox のデモ用代行で成立させる）
 
 ### 種別の見方
 
@@ -18,21 +20,24 @@
 | 【承】 | AI が実行するが、人間の承認が必要（課金・デプロイなど。`agents-cli deploy` は毎回承認が前提） |
 | 【決】 | 人間が決める（AI は選択肢と推奨を出す） |
 
-### 進め方の目安
+### 進め方の目安（2026-09-27 改定）
+
+> H1・H6・H7・H9・H12 は完了。**最優先は H11・H21（Agent 系の検証）と H22（sunabar 口座開設）**。**H24・H26・H27（RAG・Memory Bank）も、結果を待たず並行して優先的に進める**。**H17〜H20（Slack）は、間に合わなければ後回しでよい**（TASKS.md 参照）。
 
 | 時期 | やること |
 |---|---|
-| 9/19〜9/21 | 決定・登録（H1・H1b〜H5）、GCP と CLI の準備（H6〜H8）、**H22（sunabar の口座開設。最短当日だが平日14時までの申し込みなどの条件がある。最優先）**、**H21（Agent Gateway が使えるか。H11 の前に必ず）**、E の**申請**（H13〜H14。リードタイムがあるので先に出す） |
-| 9/22〜9/26 | **H25（sunabar の疎通。最初の1〜2日で通しで確かめる）**、**H26（Memory Bank の疎通。V12）**、H23（参加者役の口座）、H24（規程の文書）、H27（過去の記憶の seed）、H9〜H10（権限確認・Firebase）→ **H12（リージョン）→ H11（Agent Runtime・Agent Gateway・MCP の実験）**、H15〜H20（Maps・Slack・GitHub） |
+| 9/27〜9/29 | **最優先**: H11（Agent Runtime・Gateway の実験を承認）・H21（Agent Gateway・Model Armor が使えるかの確認）・H22（sunabar の口座開設）。**並行して優先**: H24（規程PDFの内容確認）・H26（Memory Bank の実験を承認）・H27（記憶 seed の内容を決める） |
 | 9/29 | ハッカソンのオフィスアワー（質問リストは P10） |
-| 10月上旬 | AI による全面実装（Phase 1 を並行して進める） |
-| 10/15 23:59 | **参加登録とプロジェクト提出の両方**の締切（Phase 2） |
+| 9/29〜10/5 | H23（デモ用 sunabar 口座）、H13〜H16（外部 API の申請）、**H17〜H20（Slack。間に合わなければ後回しでよい）**、P1〜P3（apply の承認・シークレットの登録） |
+| 10/6〜10/10 | H28・H29（審査員向け素材）、P4〜P9（デプロイの承認・許可リスト・確認） |
+| 10/11〜10/14 | S1〜S9（提出物） |
+| 10/15 23:59 | **参加登録とプロジェクト提出の両方**の締切** |
 
 ---
 
 ## AI の実装タスクは TASKS.md
 
-AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md) に分けた。本書は**人間のタスクだけ**を持つ。人間の作業を待たずに AI が始められる実装は、TASKS.md の「T1. 人間待ちのない実装（先行可）」にある（**H1・H1b・H2 の合意さえ済めば着手できる**）。各タスクが依存する人間のタスクは、TASKS.md の「人間の依存」欄に H・P・S 番号で書いてある。
+AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md) に分けた。本書は**人間のタスクだけ**を持つ。人間の作業を待たずに AI が始められる実装は、TASKS.md の「B-A. 業務ロジック（先行可）」「B-B. 支払い・銀行」（B9・B10）と、E・F の先行可のタスクにある（**H1・H1b・H2 の合意さえ済めば着手できる**）。各タスクが依存する人間のタスクは、TASKS.md の「人間の依存」欄に H・P・S 番号で書いてある。
 
 ---
 
@@ -40,9 +45,10 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
 
 ### A. 決定・合意
 
-- [ ] **H1【決】ARCHITECTURE.md の D1〜D21 をレビューして合意する**
+- [x] **H1【決】ARCHITECTURE.md の D1〜D21 をレビューして合意する**
+  - **2026-09-26: 合意（D1〜D25）。D16（`extract-agent` を分けるか）は保留のまま、I8 で決める**
   - **新しい決定（2026-09-20・21）**: **D17**（`ap2-mock` をやめ、`bank-adapter` から sunabar で送金する。外部の集金・決済サービスは使わない）、**D18**（規程を RAG Engine で参照。版管理なし）、**D19**（Web Dashboard を幹事の主導線にし、事務の確認の書き込みを許す）、**D20**（Memory Bank。**統括エージェントにアタッチして読み取る**（`load_memory`。読み取り専用のロール。企画・店舗提案の段階だけ）。**書き込みはコードだけ・幹事の確認のあと・定型の事実だけ**）、**D21**（按分の内訳を Web に出す）、**D22**（**Web が主導線、Slack は Human-in-the-loop**。チャット・アップロード・確認は Web）、**D23**（**審査員（ゲスト）が触れる導線**。匿名認証・サンドボックス・デモ用の代行）
-  - 特に **D9**（エージェントを `backend/` から `kuroko_agent/` `payment_agent/` `extract_agent/` に分ける）、**D10**（支払いの手順を `payment-api` が強制する）、**D11**（ツールを MCP 経由にし、`kuroko-api` / `payment-api` 自身が MCP サーバー `/mcp` を兼ねる）、**D12・D13**（Agent Gateway × Model Armor。Model Armor の直接呼び出しは作らない）、**D14**（Dashboard は幹事・開発者の2役割で、「誰が幹事か・全体フローのどこか・誰から誰へいくら送金されたか・まだ承諾していない人は誰か」の4点に、**按分の内訳と、振り返り・記憶**を加えた6点に絞る。権限は API で強制。D19・D21）
+  - 特に **D9**（エージェントを `backend/` から `kuroko_agent/` `payment_agent/` `extract_agent/` に分ける）、**D10**（支払いの手順を `payment-api` が強制する）、**D11**（ツールを MCP 経由にし、`kuroko-api` / `payment-api` 自身が MCP サーバー `/mcp` を兼ねる）、**D12・D13**（Agent Gateway × Model Armor。Model Armor の直接呼び出しは作らない）、**D14・D25**（Dashboard は幹事・ゲスト（審査員と開発者を区別しない）の2役割で、「誰が幹事か・全体フローのどこか・誰から誰へいくら送金されたか・まだ承諾していない人は誰か」の4点に、**按分の内訳と、振り返り・記憶**を加えた6点に絞る。権限は API で強制。D19・D21）
   - **判断が要る点**: **D16** 隔離抽出を、ツールを持たない別のエージェント（`extract-agent`）にするか。デプロイ対象が1つ増える。**簡略案**は、隔離抽出をやめて自由記述を統括エージェントに直接渡す（Gateway の入口の検査と Policy Gate だけで守る）。H11 のレイテンシの結果を見て決めてもよい
   - ~~`payment-agent` を Agent Runtime に置く価値があるか~~ → 「ADK エージェントは基本的にすべて Agent Runtime」の指定で決着（D6）
   - 止まる実装: すべて（ディレクトリ構成が決まらない）
@@ -76,12 +82,13 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
 
 ### C. Google Cloud と開発環境
 
-- [ ] **H6【人】GCP プロジェクトを1つ作り、課金を有効にする**
+- [x] **H6【人】GCP プロジェクトを1つ作り、課金を有効にする**
   - シングル環境の方針（dev/stg/prod を分けない）。プロジェクトID を AI に伝える
   - あわせて**予算アラート**を設定する（Agent Runtime は `min-instances=1` が既定で、**3インスタンス**（`kuroko-agent` `payment-agent` `extract-agent`）が常時課金になり得る。ARCHITECTURE V5）。**RAG Engine・Memory Bank・Agent Gateway・Model Armor のテンプレート**も課金対象になり得るので、予算アラートの対象にする（sunabar は無料）
   - 公式ページの特典欄にクレジット提供があるかも確認する
   - 止まる実装: Terraform・デプロイ・Gemini を呼ぶ実装すべて
-- [ ] **H7【人】手元に CLI を入れ、ログインする**
+  - **2026-09-26: プロジェクト `kuroko-509311`（プロジェクト番号 1054683553459）。課金は有効、Owner を確認。Firebase は追加済み（Hosting のサイト `kuroko-509311`・Web アプリ登録済み）。予算アラートは設定済み（ユーザー確認）**
+- [x] **H7【人】手元に CLI を入れ、ログインする**
   - 必要: `gcloud`（**最新版**。Agent Gateway・Agent Registry のコマンドを使うため、`gcloud components update` も実行する）、`terraform`、`uv`、`node`（npm）、`firebase-tools`、`agents-cli`（`uv tool install google-agents-cli`）
   - ログイン（対話が必要。Claude Code では `! ` を先頭に付けて実行できる）:
     - `gcloud auth login`
@@ -89,6 +96,7 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
     - `gcloud config set project <プロジェクトID>`
     - `firebase login`
   - 止まる実装: GCP に触れる作業すべて
+  - 2026-09-26（途中）: `gcloud`・`uv`・`node`・`firebase-tools`・`agents-cli` は導入済み、ADC も有効。`terraform` は AI が Homebrew で導入（1.16.4）。`gcloud config set project kuroko-509311` も実施済み（2026-09-26 完了）
 - [ ] **H8【人】Terraform を回すための最初の API を有効にする**
   - `gcloud services enable serviceusage.googleapis.com cloudresourcemanager.googleapis.com iam.googleapis.com`
   - 残りの API は AI が Terraform（`google_project_service`）で有効にする
@@ -98,8 +106,9 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - IAM のロールを付与できるか（Agent Gateway の `roles/iap.egressor`、Model Armor のロールなど。組織のポリシーで止まらないか）
   - Agent Runtime・Agent Gateway・Model Armor が使えるかは **H21** で確認する
   - 止まる実装: `kuroko-gateway` のデプロイ、Slack 連携
+  - 2026-09-26（途中。AI が確認）: `kuroko-509311` は組織に属さず、あなたは Owner。組織ポリシーがないので、未認証の公開と IAM の付与は止まらない。**Agent Gateway・Model Armor のロールは H21 で確認する**
 - [ ] **H10【人】Firebase を設定する**
-  - GCP プロジェクトに Firebase を追加 → Hosting を有効化 → Authentication で **Google プロバイダと匿名プロバイダ**を有効化（幹事・開発者は Google ログイン＋許可リスト（P6）、**審査員（ゲスト）は匿名ログイン**。匿名が組織のポリシーで使えるかは ARCHITECTURE V14）→ Web アプリを登録
+  - GCP プロジェクトに Firebase を追加 → Hosting を有効化 → Authentication で **Google プロバイダと匿名プロバイダ**を有効化（幹事は Google ログイン＋許可リスト（P6）、**ゲスト（審査員・開発者）は匿名ログイン＝ログイン不要**。将来は Google 認証だけにする（SPEC 13章）。匿名が組織のポリシーで使えるかは ARCHITECTURE V14）→ Web アプリを登録
   - 表示される設定値（`firebaseConfig`）は、自分で `frontend/.env.local` に記入する（コミット禁止・チャットに貼らない）
   - 止まる実装: Web Dashboard のデプロイ・認証
 
@@ -112,11 +121,13 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - AI が公式ドキュメントで調べた内容と、Console の画面を突き合わせて、使えるかを判断する
   - 使えない場合の代替は ARCHITECTURE 13章 V6（Model Armor を API で直接呼ぶ形。`clients/model_armor.py` を復活させる）。**合否によって SPEC 10章の書き方が変わる**ので、H11 の前に確認する
   - 止まる実装: Agent Gateway・Agent Registry の Terraform、エージェントの Gateway 設定、`extract-agent`
-- [ ] **H12【決】リージョンを決める**（ARCHITECTURE D5）
+  - **2026-09-27: 最優先で着手する（ユーザー確認）**
+- [x] **H12【決】リージョンを決める**（ARCHITECTURE D5）
   - H21 で分かった対応リージョン（Agent Runtime・Agent Gateway・Model Armor のテンプレート。**Gateway の入口はエージェントと同一プロジェクト・同一リージョンが必須**）と、Gemini・Firestore との組み合わせで決める。日本国内のレイテンシも考慮する
   - **RAG Engine は東京リージョンに未対応の可能性がある**（ARCHITECTURE V3・V11）。未対応なら、RAG Engine だけ別リージョンに置く（`kuroko-api` から呼ぶだけなので Gateway の同一リージョン制約はかからない）。規程の文書は架空なので、データの所在は致命的ではないが、本番化の論点として説明文に書く
   - H11 の結果（V3・V4）で問題が出たら決め直す
   - 止まる実装: Terraform、すべてのデプロイ
+  - **2026-09-26: 全体を `us-central1` に決定**（ARCHITECTURE D5）。Memory Bank が `us-central1` で作れなければ `us`。H11（V3）で外れたら決め直す
 - [ ] **H11【承】AI が用意する最小の構成を Agent Runtime・Agent Gateway にデプロイする実験を承認する**
   - **用意するもの**（AI が sandbox で作る）: ①最小の ADK エージェント2つ（ツールあり／ツールなし。`agent-kuroko` と `agent-extract` の代わり）②最小の FastAPI に MCP サーバー（`/mcp`）を載せた Cloud Run（非公開）③Agent Gateway・Agent Registry・Model Armor のテンプレート
   - **確かめること**（ARCHITECTURE 13章）:
@@ -129,18 +140,25 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - `agents-cli deploy` は人間の承認なしに実行しない。デプロイは5〜10分かかる。Agent Gateway・Model Armor のテンプレートの作成は課金されるので、実験の前に内容を見せる
   - 結果を ARCHITECTURE 13章に反映する。V1・V2・V6・V7 が外れた場合の代替案は同章に書いてある
   - 止まる実装: `kuroko_agent/` `payment_agent/` `extract_agent/` のツール認証、`/mcp` の実装、Terraform の IAM、Agent identity の分離
+  - **2026-09-27: 最優先で着手する（ユーザー確認）。AI は実験一式の準備を先に進める**
 
 ### E. 外部 API・アカウントの申請（リードタイムあり。先に出す）
 
 - [ ] **H13【人】駅すぱあと API MCP のアクセスキーを申請する**
   - ハッカソン向けの提供枠の申請手順は、公式ページと Discord で確認する。ダイヤ探索は使えず、経路探索（`plain`）だけ（`company_rules.yaml` の記述どおり）
   - 止まる実装: 帰りやすさの計算（`search_accessible_stations` `search_routes`）
-- [ ] **H14【人】ホットペッパー API のキーを申請し、規約を確認する**
+  - **2026-09-27: キーは取得済み。Secret Manager への登録（P3）が残り**。値はチャットに貼らず、手元のターミナルで次を実行する（`infra/terraform/README.md` と同じ手順）:
+    ```
+    printf '%s' '<値>' | gcloud secrets versions add ekispert-api-key --data-file=- --project=kuroko-509311
+    ```
+- [x] **H14【人】ホットペッパー API のキーを申請し、規約を確認する**
   - SPEC 13章の要検証: ハッカソン用途に利用規約が適合するか。**申請できない、または規約に合わない場合**は、Google Maps だけにするか（個室・収容人数の補完をあきらめる）を【決】する
   - 止まる実装: `search_venues` の補完部分
-- [ ] **H15【人】Google Maps Platform（Places API）を有効にし、API キーを作る**
+  - **2026-09-27: 利用しないと決定**（ユーザー確認。「ホットペッパーのAPIは利用できないので諦めます」）。`search_venues` は Google Maps だけで進め、個室・収容人数の補完はあきらめる。SPEC・ARCHITECTURE・TASKS・PLAN と `infra/terraform/secrets.tf`（`hotpepper-api-key` の入れ物を削除・apply 済み）に反映済み
+- [x] **H15【人】Google Maps Platform（Places API）を有効にし、API キーを作る**
   - キーは Places API だけに制限する。Secret Manager に登録する（P3）
   - 止まる実装: `search_venues`
+  - **2026-09-27: 取得・Secret Manager への登録（`maps-api-key`）まで完了**（ユーザー確認）
 - [ ] **H16【決】AP2 SDK・サンプルを動かす認証方式を決める**（SPEC 13章「要準備」。`ap2_mock/` はやめたが、委任状・請求の署名と検証には AP2 SDK を使う）
   - 推奨: API キーを増やさず、Vertex AI（ADC）で動かす
   - 止まる実装: `payment_api/` の AP2 委任状・請求の検証
@@ -151,6 +169,7 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - 個人口座があれば、審査なし・無料で sunabar を使える。口座開設は最短当日（マイナンバーカードの読み取りか自撮り動画で本人確認。**平日14時までの申し込みなどの条件がある**。詳細は [SPEC.md](SPEC.md) 14章のリンク）
   - AI に伝える: 開設したこと（口座番号・パスワードは**貼らない**）。sunabar のクライアント情報は Secret Manager に自分で登録する（P3）
   - 止まる実装: `bank_adapter/` の本実装、H25、支払いのデモすべて
+  - **2026-09-27: 申請中（ユーザー確認）。まだ使える状態ではない**。O1（sunabar 疎通ゲート）と B11（銀行本実装）は、この申請が通るまで着手しない。開設でき次第、口座番号・パスワードを貼らずに AI に伝える
 - [ ] **H23【人】デモ用の sunabar 口座を用意する**（参加者役・幹事役）
   - sunabar は **1ユーザーあたり最大10口座**まで追加できる（初期は個人・法人の各1口座）。**振込先も sunabar 内の口座に限る**ので、**幹事の口座も sunabar 口座**にする。デモの参加者10名分は、チームメンバーで分担して用意する。足りなければ参加者を8名に減らす（SPEC 13章）
   - **全口座を1人が持つと、振込ごとの承認も実際には1人が行う**。デモでは「承認する人が数名いる」形にして、残りは早送りにする（H18 のデモ用ユーザーと、どの口座を誰が持つかを対応させる）
@@ -158,6 +177,7 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
 - [ ] **H24【人】架空の規程の文書（PDF）を作る**（RAG Engine のコーパスに入れる。SPEC 9.7）
   - **`policies/company_rules.yaml` と同じ内容**にする（抽出結果の正解データとして使うため）。表・段組を含めると、日本語PDFの抽出精度（V11）を確かめられる。AI が下書きを作れる
   - 止まる実装: `retrieve_policy` / `extract_policy_values`、規程の抽出のテスト
+  - **2026-09-27: 検証結果を待たず優先して進める（ユーザー確認）**
 - [ ] **H25【承】AI が用意する sunabar の疎通実験を承認する**（ARCHITECTURE V10。**最初の1〜2日で通しで確かめる**）
   - **用意するもの**（AI が sandbox で作る）: 最小のスクリプトと、Cloud Run（`bank-adapter` の試作）
   - **確かめること**: ①OAuth の認可 → 振込依頼 → 承認ページでの承認 → 入出金明細での確認が一通り動くか ②口座を必要な数だけ用意できるか（H23） ③Slack DM のリンクから承認ページへ直接遷移できるか ④承認前に期限が切れた依頼の状態の照会方法と、作り直すときの冪等キー・nonce の扱い ⑤ポーリングの間隔（10分の承認期限に対して十分か）
@@ -170,10 +190,12 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - **確かめること**: ①**対応リージョン**（公式ドキュメントでは `global / us / eu`。東京の記載なし。H12・V3・V11 と連動） ②**アタッチ**: ADK の `VertexAiMemoryBankService` を Agent Runtime のエージェントで使えるか（既定か、明示の指定が要るか）。**`agent-kuroko` の identity に読み取り専用のロール `roles/aiplatform.memoryViewer` だけで `load_memory` が動くか**。書き込みができないこと ③**スコープ**: `user_id` = `team:{company_id}:{team_id}` で分離できるか。**`kuroko-api` が直接書いた記憶を、ADK の検索が引けるか**（スコープの指定が一致しないと見つからない） ④**直接書き込み**（会話からの自動生成を使わずに定型の事実を書けるか）と**類似検索**（日本語の品質） ⑤**既存の記憶との統合が、定型の事実を勝手に書き換えないか** ⑥`before_tool` のコールバックで `load_memory` を止められるか ⑦Terraform で管理できるか（できなければ SDK のスクリプトで作成）
   - 結果を ARCHITECTURE 13章 V12 と SPEC 13章に反映する。**外れた場合**: 統括エージェントに `recall_memory`（MCP ツール。`kuroko-api` が Memory Bank を読んで返す）を持たせる（当初の案）。それも難しければ、Firestore に事実を保存し、読み取りだけを Firestore の検索に差し替える（V12）。その場合は Memory Bank の利用を説明できなくなるので、SPEC 9.8 と提出の説明を書き換える
   - 止まる実装: `backend/src/clients/memory_bank.py` の本実装（書き込み）、`kuroko_agent/` の `load_memory` のアタッチ、`save_memory`（先に Memory Bank のスタブで組める）
+  - **2026-09-27: 検証結果を待たず優先して進める（ユーザー確認）**
 - [ ] **H27【決】デモ用の「過去のイベントの記憶」（seed）の内容を決める**（SPEC 9.8・13章「要準備」）
-  - デモの企画の場面で `load_memory` が引く記憶を、**3件程度**用意する。**文面は定型テンプレートと同じ形**にする（例: 「営業1課の歓送迎会（2026/06）で『○○』（渋谷・個室）を利用。満足度は平均4.3（7名回答）。良かった点は個室・料理。気になった点はドリンクの提供が遅い。」／「営業1課の歓送迎会（2026/06）の1人あたりの会計は5,300円（コース5,000円）。」）
+  - デモの企画の場面で `load_memory` が引く記憶を、**3件程度**用意する。**文面は定型テンプレートと同じ形**にする（**2026-09-26 に、種類を `venue_record`（実績）と `venue_evaluation`（評価）に変更**。SPEC 9.8。例: 実績「営業1課の歓送迎会（2026/06）で『○○』（渋谷・個室）を8名で利用。1人あたり5,300円（コース5,000円）で予算内。最も遠い人の所要時間は38分。」／評価「営業1課の歓送迎会（2026/06）の『○○』の満足度は平均4.3（7名回答）。幹事は次回も使いたい。良かった点は個室・料理。気になった点はドリンクの提供が遅い。」。**同じ店について、実績と評価を1組にして用意する**と、店舗提案の理由（SPEC 9.9）に実績を添えられる）
   - AI が下書きを作れる。**ストーリー（review 04）の店・金額・チームと矛盾しないこと**を人間が確認する。個人名は入れない
   - 止まる実装: 記憶を使った店舗提案のデモ
+  - **2026-09-27: 優先して内容を決める（ユーザー確認）**
 
 - [ ] **H28【人】審査員が触れるサンプルと、サンドボックスの初期データを用意する**（SPEC 7.6・13章「要準備」）
   - **サンプルの領収書と予約画面**（画像。**Web の画面からダウンロードできる**もの）。架空の店・金額を、ストーリー（review 04）と合わせる（会計60,300円、コース5,500円×10名など）。**サンプル自体に個人情報を入れない**
@@ -184,11 +206,12 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - 期限なしの招待リンクにし、審査員が参加できるようにする（Slack App がインストール済みであること）。**参加した審査員が、承認者として按分を承認できる**ように、承認者の割り当て方（審査員の Slack ユーザーを、`sandbox` のイベントの承認者にする方法）を AI と決める（SPEC 7.6・13章）
   - 止まる実装: (B) の体験
 
-### F. Slack
+### F. Slack（**間に合わなければ後回しでよい**。2026-09-27）
 
 - [ ] **H17【人】デモ用の Slack ワークスペースを作る**
   - 本物の業務ワークスペースは使わない
   - **審査員が参加できるように、招待リンクを発行する**（H29。(B) の体験用）
+  - **2026-09-27: 間に合わなければ後回しでよい（ユーザー確認）**。TASKS.md B16 は Phase 2 に回せる。審査員向けデモは sandbox のデモ用代行（B15）で成立させる
 - [ ] **H18【人】デモ用ユーザー10名を用意し、区分・雇用形態・入社日・社員番号を決める**
   - 内訳: 幹事1、承認者1、参加者6、主役2（[review 04](review/2026-09-13_KUROKO_review_04_story.md) の4章）
   - SPEC の方針: 架空アカウント約6名＋bot の併用で10名を賄う。実アカウントは、メールのエイリアス（例: `名前+yamada@gmail.com`）で作れるか試す
@@ -201,6 +224,12 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - Request URL（Events・Interactivity）は `kuroko-gateway` のデプロイ後でないと設定できないので、最初は仮の値でよい（P4 で直す）
   - ワークスペースにインストールし、**Bot Token と Signing Secret は自分で Secret Manager に登録する**（P3）。チャットには貼らない
   - 止まる実装: Slack 連携すべて
+  - **2026-09-27: App は作成済み、Signing Secret は登録済み。Bot Token が見当たらない**（ユーザー確認。代わりに Client Secret・Verification Token を保有）。**Bot Token（`xoxb-`）は、Bot Token Scopes を設定して「Install to Workspace」を実行した後にだけ表示される**ので、まだその操作をしていない可能性が高い。手順:
+    1. [`slack/manifest.yml`](../slack/manifest.yml)（今回用意した）を、そのアプリの **App Manifest** 画面（左メニュー）に貼り付けて保存する（Signing Secret・Client ID・Client Secret はこの操作で変わらない）
+    2. **OAuth & Permissions** → 画面上部の **Install to Workspace**（既にインストール済みなら **Reinstall to Workspace**）を実行する
+    3. 同じ画面に表示される **Bot User OAuth Token**（`xoxb-` で始まる）をコピーする
+    4. 手元のターミナルで登録する（チャットに貼らない）: `printf '%s' 'xoxb-...' | gcloud secrets versions add slack-bot-token --data-file=- --project=kuroko-509311`
+    - **Client Secret・Verification Token は今回の構成では使わない**（署名検証は Signing Secret で行う。複数ワークスペースへの配布もしない）。捨ててよい
 
 ### G. GitHub
 
@@ -221,7 +250,7 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
 | Firebase の設定値 | **貼らない**。自分で記入する | `frontend/.env.local` |
 | Slack の Bot Token・Signing Secret | **貼らない** | Secret Manager に自分で登録。AI にはシークレットの名前だけ伝える |
 | **sunabar のクライアント情報、口座番号・取引パスワード** | **貼らない** | クライアント情報は Secret Manager に自分で登録。**口座番号は `bank-adapter` の対応表**（デモ用の初期データは AI がスクリプトで投入するが、値はチャットに貼らず、ファイルで渡す。コミット禁止）。取引パスワードは AI に渡さない（サンドボックスでは任意の文字列でよい） |
-| 駅すぱあと・ホットペッパー・Maps のキー | **貼らない** | 同上 |
+| 駅すぱあと・Maps のキー | **貼らない** | 同上（**ホットペッパーは2026-09-27に不採用**） |
 | Slack のユーザーID・ワークスペースID（デモ用） | チャットで伝えてよい | デモ用のシードデータ |
 | **デモ用 Slack の招待リンク**（H29） | チャットで伝えてよい（秘密ではない。**公開してよいもの**として提出物に書く） | 提出物・Web の使い方の画面 |
 | Dashboard の許可リスト（メールアドレス・役割） | 伝えてよい（メールは個人情報なので、コミットするファイルには書かない） | Firestore の `dashboard_users`（初期データは AI がデプロイ後に投入する） |
@@ -230,16 +259,18 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
 
 ## Phase 1: 実装と並行して必要になる
 
-- [ ] **P1【承】`terraform apply` を承認する**（課金されるリソースを作る。AI が `terraform plan` の内容を先に見せる。**Agent Gateway・Agent Registry・Model Armor のテンプレート**を含む。Gateway の作成は初回だけ）
+- [x] **P1【承】`terraform apply` を承認する**（課金されるリソースを作る。AI が `terraform plan` の内容を先に見せる。**Agent Gateway・Agent Registry・Model Armor のテンプレート**を含む。Gateway の作成は初回だけ）
+  - **2026-09-26: I1〜I6 の apply を承認・実行（125件の追加）。エージェント系（I7〜I9）の apply は、その時点で改めて承認を取る**
 - [ ] **P2【人】`terraform output` の値を GitHub の Variables / Secrets に登録する**（`infra/terraform/README.md` の手順）
 - [ ] **P3【人】Secret Manager に値を登録する**（`gcloud secrets versions add ...`。Terraform には値を入れない。`.agents/rules/infra.md`）
-  - 対象: Slack の Bot Token・Signing Secret、駅すぱあと・ホットペッパー・Maps のキー、**sunabar のクライアント情報**（H22。**参加者・幹事のアクセストークンは、`bank-adapter` が OAuth のあとに自分で書く**ので、人が登録するのはクライアント情報だけ）
+  - 対象: Slack の Bot Token・Signing Secret、駅すぱあと・Maps のキー、**sunabar のクライアント情報**（H22。**参加者・幹事のアクセストークンは、`bank-adapter` が OAuth のあとに自分で書く**ので、人が登録するのはクライアント情報だけ。**ホットペッパーは2026-09-27に不採用のため対象外**）
+  - **2026-09-27時点**: 登録済み — `slack-signing-secret`、`maps-api-key`。未登録 — `slack-bot-token`（H19 参照）、`ekispert-api-key`（H13 参照。キーは取得済み）、`sunabar-client`（H22 の申請待ち）
 - [ ] **P4【人】`kuroko-gateway` のデプロイ後、Slack App の Request URL を設定する**
   - Events と Interactivity の URL、App Home の有効化。URL 検証（`url_verification`）が通ることを確認する
 - [ ] **P5【承】各サービス・エージェントのデプロイを承認する**（Cloud Run 5サービス、Agent Runtime のエージェント3つ。`agents-cli deploy` は毎回。エージェントは Agent identity と Gateway の設定付き）
 - [ ] **P6【決】Dashboard を見られる人の許可リストを決める**（ARCHITECTURE D8・D14）
-  - 1件ごとに、メールアドレス・**役割（幹事 / 開発者）**。**幹事の Slack ユーザーIDは要らない**（Web の本人確認は Firebase の UID と `organizer_web_uid` の一致。SPEC 7.3）。**審査員（ゲスト）は許可リストに載せない**（匿名認証。SPEC 7.6）
-  - 開発者は**仮名のデータしか見られない**（実名は出ない）。デモで審査員に見せる場合の見せ方も決める（S1）
+  - 1件ごとに、メールアドレス・**役割（幹事のみ。開発者の役割は 2026-09-26 に廃止）**。**幹事の Slack ユーザーIDは要らない**（Web の本人確認は Firebase の UID と `organizer_web_uid` の一致。SPEC 7.3）。**審査員（ゲスト）は許可リストに載せない**（匿名認証。SPEC 7.6）
+  - 開発者は許可リストに載せない。**審査員も開発者も、ゲスト（匿名）として同じ画面を使う**（SPEC 7.6。サンドボックスの自分のイベントだけ）
 - [ ] **P7【決】sunabar の疎通（H25）の結果を見て、送金を sunabar のまま進めるか、AP2 サンプルの模擬決済役に戻すかを決める**（ARCHITECTURE V10。戻す場合も、外部の集金・決済サービスは使わない。SPEC 8章とピッチの言い方を書き換える）
 - [ ] **P8【人】デモ用の画像を用意する**（**H28 と同じもの**。審査員が Web でダウンロードして使う）
   - 架空の店舗の**領収書の写真**（会計60,300円）と、**予約完了画面のスクリーンショット**（コース5,500円×10名）
@@ -252,7 +283,7 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
 
 ## Phase 2: 提出前（すべて 10/15 23:59 まで）
 
-- [ ] **S1【人】3分程度のデモ動画を作り、YouTube に公開して URL を控える**（画面録画・編集は人間。台本は review 04 の9章。**Web アプリ**（**チャットでの依頼、領収書のアップロード**、全体フロー・送金・承諾の状況・**按分の内訳**・**振り返りと記憶**）を映すか、映すなら開発者の仮名表示か幹事の実名表示かを決める。送金の画面には「sunabar（サンドボックス）」の注記が出る。**デモには銀行の承認ページへの切り替えが1回入る**。**振り返り・記憶の場面**（幹事が Web で確認して保存する。次の企画で、過去の記憶を根拠に店を提案する。H27 の seed を使う）を、3分の中のどこに置くかも決める（承認する人を数名にして、残りは早送りにする）。説明は「KUROKO が銀行API で送金を実行する」と言い、幹事Pay など外部の集金・決済サービスに任せる言い方をしない）
+- [ ] **S1【人】3分程度のデモ動画を作り、YouTube に公開して URL を控える**（画面録画・編集は人間。台本は review 04 の9章。**Web アプリ**（**チャットでの依頼、領収書のアップロード**、全体フロー・送金・承諾の状況・**按分の内訳**・**振り返りと記憶**）を映すか、映すなら幹事の画面（実名）かゲストの画面（架空の名前）かを決める。送金の画面には「sunabar（サンドボックス）」の注記が出る。**デモには銀行の承認ページへの切り替えが1回入る**。**振り返り・記憶の場面**（幹事が Web で確認して保存する。次の企画で、過去の記憶を根拠に店を提案する。H27 の seed を使う）を、3分の中のどこに置くかも決める（承認する人を数名にして、残りは早送りにする）。説明は「KUROKO が銀行API で送金を実行する」と言い、幹事Pay など外部の集金・決済サービスに任せる言い方をしない）
 - [ ] **S2【人】システムアーキテクチャ図の画像を用意する**（ARCHITECTURE 2.3 の図が元になる。AI が画像に書き出せる形にする）
 - [ ] **S3【人】プロジェクトの説明文（日本語）を書く**: 対象ユーザー像・課題・ソリューション・特徴。AI が下書きを作れる
 - [ ] **S4【人】「主要機能がモックでない」ことの説明を確認する**: 委任状の署名・検証、**銀行API（sunabar）での振込依頼・本人承認・入出金明細での入金確認**、規程の RAG 参照は実装であること。**環境が sunabar のサンドボックスで資金が仮想であることを、正直に明記する**（SPEC 8.8・8.9）。あわせて、電子決済等代行業の登録が本番化に必要であることを書く（専門家への確認が必要）

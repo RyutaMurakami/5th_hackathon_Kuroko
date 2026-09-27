@@ -20,12 +20,10 @@ export type RetroDecision = { decision: "saved" | "skipped"; includedIds: string
 
 export function RetroSummaryCard({
   retro,
-  canConfirm,
   decided,
   onDecide,
 }: {
   retro: Retrospective;
-  canConfirm: boolean;
   /** この画面で決めた内容（段階が進んだあとも、選んだ事実だけを出す） */
   decided?: RetroDecision | null;
   onDecide?: (decision: RetroDecision) => void;
@@ -58,8 +56,8 @@ export function RetroSummaryCard({
         </div>
       )}
 
-      {/* 記憶の確認は、幹事の役割で awaiting_organizer のときだけ。開発者には出さない */}
-      {status === "awaiting_organizer" && canConfirm && (
+      {/* 記憶の確認は、awaiting_organizer のときだけ */}
+      {status === "awaiting_organizer" && (
         <div className={styles.memory}>
           <p className={styles.memoryTitle}>次回に覚えさせる内容</p>
           <Caption>

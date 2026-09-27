@@ -19,7 +19,6 @@ export function NotificationBell() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const popoverId = useId();
 
-  // 開発者には通知を出さない（宛先は幹事の UID。SPEC 3章 Notification）
   const { extraNotifications } = useToast();
   const notifications = [...extraNotifications, ...listNotifications(role)]
     .slice(0, 10)
@@ -41,8 +40,6 @@ export function NotificationBell() {
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
-
-  if (role === "developer") return null;
 
   return (
     <div className={styles.bellWrap} ref={wrapRef}>

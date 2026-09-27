@@ -9,11 +9,10 @@ import type { EventStatus, Role } from "./types";
 export const ROLES: { value: Role; label: string }[] = [
   { value: "organizer", label: "幹事" },
   { value: "guest", label: "ゲスト" },
-  { value: "developer", label: "開発者" },
 ];
 
 export function parseRole(value: string | null | undefined): Role {
-  return value === "guest" || value === "developer" ? value : "organizer";
+  return value === "guest" ? value : "organizer";
 }
 
 export function useDemoRole(): Role {

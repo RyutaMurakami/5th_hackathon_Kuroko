@@ -4,7 +4,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 6.0"
+      version = "~> 8.4"
     }
   }
 
@@ -18,4 +18,9 @@ terraform {
 provider "google" {
   project = var.project_id
   region  = var.region
+
+  default_labels = {
+    app        = "kuroko"
+    managed_by = "terraform"
+  }
 }

@@ -27,8 +27,7 @@ type DetailTab = "payments" | "split" | "retro" | "log";
 const TABS: DetailTab[] = ["payments", "split", "retro", "log"];
 
 /** 最初に選ばれるタブは段階に合わせる（DESIGN.md「Tab Pill Navigation」） */
-function defaultTab(status: EventStatus, role: Role): DetailTab {
-  if (role === "developer") return "log";
+function defaultTab(status: EventStatus): DetailTab {
   if (status === "split" || status === "approval") return "split";
   if (status === "retro" || status === "closed") return "retro";
   return "payments";
@@ -120,11 +119,9 @@ function EventDetailBody({ event, role }: { event: EventDetail; role: Role }) {
   const venueChosen = venueChosenAt === event.status;
   const [retroDecision, setRetroDecision] = useState<RetroDecision | null>(null);
 
-  // 開発者には確認の部品を出さない（書き込めない。SPEC 7.3）
-  const canConfirm = role !== "developer";
   const isGuest = role === "guest";
   const tabParam = params.get("tab");
-  const tab: DetailTab = TABS.includes(tabParam as DetailTab) ? (tabParam as DetailTab) : defaultTab(event.status, role);
+  const tab: DetailTab = TABS.includes(tabParam as DetailTab) ? (tabParam as DetailTab) : defaultTab(event.status);
 
   const replaceQuery = useCallback(
     (next: Record<string, string | null>) => {
@@ -186,7 +183,7 @@ function EventDetailBody({ event, role }: { event: EventDetail; role: Role }) {
 
       {/* 幹事の確認は、その段階のときだけ Event Summary の直下に出す（カードの中にカードを入れない） */}
       <AnimatePresence mode="popLayout" initial={false}>
-        {canConfirm && event.status === "venue" && event.venueCandidates.length > 0 && (
+        {event.status === "venue" && event.venueCandidates.length > 0 && (
           <motion.div key="venue" {...ENTER}>
             <VenueChoiceCard
               candidates={event.venueCandidates}
@@ -197,7 +194,7 @@ function EventDetailBody({ event, role }: { event: EventDetail; role: Role }) {
             />
           </motion.div>
         )}
-        {canConfirm && event.status === "venue" && venueChosen && event.reservation && (
+        {event.status === "venue" && venueChosen && event.reservation && (
           <motion.div key="reservation" {...ENTER}>
             <ConfirmationCard
               extraction={event.reservation}
@@ -212,7 +209,7 @@ function EventDetailBody({ event, role }: { event: EventDetail; role: Role }) {
             />
           </motion.div>
         )}
-        {canConfirm && event.status === "receipt" && event.receipt && (
+        {event.status === "receipt" && event.receipt && (
           <motion.div key="receipt" {...ENTER}>
             <ConfirmationCard
               extraction={event.receipt}
@@ -263,7 +260,6 @@ function EventDetailBody({ event, role }: { event: EventDetail; role: Role }) {
               (event.retrospective ? (
                 <RetroSummaryCard
                   retro={event.retrospective}
-                  canConfirm={canConfirm}
                   decided={retroDecision}
                   onDecide={(d) => {
                     setRetroDecision(d);
@@ -291,8 +287,7 @@ function EventDetailBody({ event, role }: { event: EventDetail; role: Role }) {
       <KurokoDock
         messages={event.messages}
         activity={event.activity}
-        canChat={canConfirm}
-        defaultOpen={canConfirm && event.status === "planning"}
+        defaultOpen={event.status === "planning"}
         onConfirmPlan={() =>
           advance("rsvp", { tone: "lagoon", text: "イベントの計画を確定しました。Slack で参加者に出欠の依頼を送りました" })
         }
