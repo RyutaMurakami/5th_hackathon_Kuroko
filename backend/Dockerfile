@@ -11,4 +11,5 @@ RUN uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8080
-CMD exec uv run uvicorn src.main:app --host 0.0.0.0 --port "${PORT:-8080}"
+# kuroko-api と kuroko-gateway は同じイメージ。起動するアプリは APP_MODULE で選ぶ（infra/terraform/cloud_run.tf）
+CMD exec uvicorn "${APP_MODULE:-src.main:app}" --host 0.0.0.0 --port "${PORT:-8080}"
