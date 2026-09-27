@@ -35,3 +35,16 @@
 | 運用 | Cloud Logging / Monitoring | TF（API の有効化） | — |
 | 運用 | アラート（5xx・遅延） | 未 | I12 |
 | 運用 | 予算アラート（Billing） | 手動 | — |
+
+## 開発者ページ（`/dev/diagrams`）用の SVG の書き出し
+
+Web の開発者ページ（SPEC 7.3.2、ARCHITECTURE D26）は、`docs/diagrams/export/*.svg` を表示する。**`.drawio` を直したら、SVG を書き出し直してコミットする**（CI では書き出さない）。draw.io のデスクトップ版（`brew install --cask drawio`）の CLI を使う。
+
+```
+mkdir -p docs/diagrams/export
+for f in docs/diagrams/*.drawio docs/user_flow/*.drawio; do
+  drawio -x -f svg --embed-svg-images -o "docs/diagrams/export/$(basename "$f" .drawio).svg" "$f"
+done
+```
+
+図の題名はファイル名（`KUROKO_` と `_v1.0` を除いたもの）から作る。1ファイル1ページを前提にしている（複数ページの図は、先頭のページだけが書き出される）。

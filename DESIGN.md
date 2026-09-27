@@ -6,6 +6,7 @@
 > 旧 `DESIGN.md`（API・データモデル・エージェント設計）は SPEC.md の 3〜4章に統合済みで、本書はそれとは別物（画面の見た目だけを扱う）。
 
 - 作成日: 2026-09-19 / 状態: **合意済み**（2026-09-23。human_task.md H1b）
+- 更新: 2026-09-27 **開発者ページ（`/dev`。SPEC 7.3.2）の部品（Doc Reader・Task Board・Diagram Viewer）と、App Header の「開発者」リンク・ログアウトを追加**。はじめる画面を Google ログインだけにした（匿名認証を使わない決定）
 - 更新: 2026-09-25 配色をアプリアイコンに合わせた（墨紺・月の黄・クリーム）。**1画面の情報量を減らす構成**（イベント詳細を「概要＋タブ」にし、チャットを右から開くパネルへ）と、**動き（Motion）**を追加した
 - 出自: [Refero Styles](https://styles.refero.design/) の DESIGN.md 形式（Sauce Labs のエントリを、ユーザーが書き直した版）を土台にし、**暗い基調と緑を、明るい基調と別のアクセントに置き換えた**。構成（Tokens / Components / Do・Don't / Surfaces / Elevation / Layout / Agent Prompt Guide / CSS）と、ピル型のボタン・大きめの角丸という言語は引き継ぐ。ブランド固有のもの（Aeonik フォント、等角イラスト、ロゴ帯、ヒーロー）は使わない
 - 対象: **幹事とゲスト（審査員・開発者を区別しない）の主導線**（Web アプリ。SPEC 7.3・7.5・7.6）。**依頼と対話（チャット）、アップロード**、確認、閲覧、通知を持つ。入力部品は、幹事の作業（チャットでの依頼、予約画面・領収書のアップロード、予約内容・領収書の金額・店舗候補・予算超過・振り返りのまとめの確認）のためのもの（Chat Panel・Upload Dropzone・Text Input・Checkbox・Radio・Confirmation Card・Venue Choice Card・Retro Summary Card）だけを持つ。**委任・承認・取り消し・振込の実行に当たる操作の部品は持たない**（Slack で行う）
@@ -161,7 +162,7 @@
 ### App Header
 **Role:** 画面上部のナビゲーション
 
-背景 `--color-pure-white`、下に 1px `--color-hairline`、高さ 64px。左にロゴ（角丸 10px の正方形、背景 `--color-sun-signal`（アイコンの月）、「黒」の字は `--color-ink-navy`）と `KUROKO`。右に、ログイン中の役割のピル（`幹事` / `ゲスト`）とアカウント（ゲストも Google ログインだが、**画面には実名・写真を出さず「ゲスト」だけ**表示する。2026-09-27決定）。
+背景 `--color-pure-white`、下に 1px `--color-hairline`、高さ 64px。左にロゴ（角丸 10px の正方形、背景 `--color-sun-signal`（アイコンの月）、「黒」の字は `--color-ink-navy`）と `KUROKO`。ロゴの右にナビ（14px/500。「イベント」「開発者」。選択中は `--color-ink-navy`、ほかは `--color-steel-text`。幅 640px 以下は隠す）。右に、ログイン中の役割のピル（`幹事` / `ゲスト`）とアカウント（ゲストも Google ログインだが、**画面には実名・写真を出さず「ゲスト」だけ**表示する。2026-09-27決定）と、Text Button「ログアウト」。アカウントの部分にも、メールアドレスや名前をツールチップで出さない。
 
 ### Tab Pill Navigation
 **Role:** 画面内の切り替え。**イベント詳細では、概要（Event Summary）の下を「送金・承諾／按分／振り返り／経緯」のタブで切り替え、1画面に出す量を絞る。**
@@ -387,6 +388,29 @@ Participant.`role`（幹事・承認者・参加者・主役）。高さ 22px、
 
 画面の下端に固定した帯。背景 `--color-pure-white`、上に 1px `--color-hairline`、`--shadow-popover`、余白 8px 16px。先頭に Eyebrow Label「DEMO（ダミーデータ）」、続けて Tab Pill Navigation の小さい版で「幹事／ゲスト」、`select`（Text Input と同じ見た目）で段階（Event.`status`）。選んだ値は URL のクエリ（`?role=` `&stage=`）に反映する。**ここに、委任・承認・取り消し・振込に当たる操作は置かない**（見え方を切り替えるだけ）。画面の内容と重ならないよう、表示中は `body` の下に帯の高さの余白を取る。
 
+### Doc Reader（開発者ページの文書。SPEC 7.3.2）
+**Role:** リポジトリの Markdown の文書（PLAN・SPEC・ARCHITECTURE など）を読む
+
+2列。左に目次（幅 240px、`position: sticky`、ヘッダーの下に固定。見出し2・3段目だけ。14px、選択中の節は `--color-ink-navy`/500、ほかは `--color-steel-text`。幅 1024px 以下は本文の上に折りたたみ（Text Button「目次」）で置く）。右に本文を Standard Card に入れる（本文の幅は最大 820px）。
+- 見出し: `#` は `heading`、`##` は `heading-sm`（上に 48px、下に 1px `--color-hairline` の線）、`###` は `subheading`、`####` は `body-lg`/700
+- 本文は `body`、段落の間 16px。リストは左に 24px
+- 表は Data Table の見た目（compact・`body-sm`・見出し行 `--color-cream-subtle`・行の区切り `--color-hairline`）。幅が足りなければ表だけ横にスクロールする
+- インラインのコードは `mono`・背景 `--color-cream-subtle`・角丸 6px・余白 0 4px。コードのまとまりは `mono`・背景 `--color-cream-subtle`・枠 `--color-hairline`・角丸 10px・余白 16px・横スクロール
+- 引用（`>`）は、左に 4px の `--color-navy-tint` の帯と背景 `--color-cream-subtle`、文字 `--color-slate-blue`
+- Mermaid の図は、枠 `--color-hairline`・角丸 20px・背景 `--color-pure-white` の中に描き、はみ出したら横にスクロールする。描画に失敗したら、元のコードをそのまま出す
+- 文書の間のリンクは、開発者ページの中の文書に張り替える。開発者ページにない文書（review など）は、GitHub のファイルへのリンクにする（別タブ）
+- 上に Eyebrow Label（例: 「仕様」）と、元のファイル名（`mono`）と「GitHub で開く」の Text Button
+
+### Task Board（開発者ページのタスク一覧。SPEC 7.3.2）
+**Role:** TASKS.md（AI のタスク）と human_task.md（人間のタスク）の残りを、絞り込んで見る
+
+上に Tab Pill Navigation の小さい版で「AI のタスク／人間のタスク」、その下に絞り込み（状態: 「未完了／完了／すべて」を Tab Pill の小さい版、観点・フェーズ: Chip の並び。既定は「未完了」）。一覧は Data Table の行で、各行に **ID（`mono`）・題名（本文の最初の一文。`body-sm`/500）・観点または節の名前（`caption`）・状態のピル**（完了＝Lagoon「完了」／未完了＝Slate「未完了」／**人間のタスクの未完了＝Sun「人の対応待ち」**）。行を押すと、その下に本文（依存・完了の条件・経過）を Doc Reader と同じ書式で開く。件数「未完了 ○ / 全体 ○」を一覧の上に添える。**編集の操作は置かない**（正は文書）
+
+### Diagram Viewer（開発者ページの構成図。SPEC 7.3.2）
+**Role:** draw.io の構成図・ユーザーフローを見る
+
+1枚ずつ Standard Card に入れ、見出しは図の名前（`subheading`）と元のファイル名（`mono`・`caption`）。図は白地のままカードの幅に合わせて縮小し、はみ出す場合は横にスクロールする。Text Button「原寸で開く」で SVG を別タブに開く。図の色は元の図のまま（トークンに置き換えない）
+
 ### Empty / Loading / Error
 - **空**: 中央に `subheading` の一言と、`--color-steel-text` の説明（次に何が起きるとここに出るか）。イラストは使わない
 - **読み込み**: 表とカードの形をした `--color-hairline` のスケルトン（左から右へ薄い光が流れる。1.4秒）。`prefers-reduced-motion` ではアニメーションを止める
@@ -399,9 +423,10 @@ Participant.`role`（幹事・承認者・参加者・主役）。高さ 22px、
 
 | 画面 | 部品 | 「わかること」 |
 |---|---|---|
-| **はじめる（`/`）** | ログイン前: アプリアイコンの絵（最大 200px、角丸 32px）と一言、Primary Pill Button「ログイン不要で試す」／Secondary「Google でログイン」。ログイン後: Guest Banner、Chat Panel（依頼の入力）、ゲストは「使い方」 | 依頼から始められる |
+| **はじめる（`/`）** | ログイン前: アプリアイコンの絵（最大 200px、角丸 32px）と一言、Primary Pill Button「Google でログイン」（**匿名認証は使わない**。2026-09-27）。ログイン後: Guest Banner、Chat Panel（依頼の入力）、ゲストは「使い方」 | 依頼から始められる |
 | イベント一覧（`/events`） | Info Banner、Data Table、Status Pill、Progress | ②いまの段階、④承諾の数、③送金の進捗、（幹事の列で）①幹事 |
 | イベント詳細（`/events/[id]`） | **Event Summary**（題名・幹事・Flow Stepper・次にすること・小さな数字）→ 直下に **Confirmation Card・Venue Choice Card（幹事の役割で、その段階のときだけ）** → **Tab Pill Navigation**: ［送金・承諾］Payment Table と Consent List（2列。幅 1024px 以下は1列）／［按分］Split Table／［振り返り］Retro Summary Card／［経緯］Decision Timeline。**右下の KUROKO Launcher から KUROKO Panel**（Chat Panel と Activity Timeline）を開く | ①幹事 ②全体フロー ③誰から誰へいくら ④承諾していない人 ⑤按分の内訳 ⑥振り返りと記憶（＋幹事の事務の確認） |
+| **開発者（`/dev`。SPEC 7.3.2）** | 概要: Highlight Card（いまの状態）→ Stat Block と Progress（観点 E・I・F・B・O ごとの完了数）→ Standard Card（人間の未完了タスク。Sun のピル）→ Doc Reader の書式で「KUROKO の要約」「デプロイ単位の一覧」「構成図（Mermaid）」。その下に文書・タスク・構成図への入口。文書は Doc Reader、タスクは Task Board、構成図は Diagram Viewer。上に Tab Pill Navigation「概要／文書／タスク／構成図」 | システムの全体像・構成・残りのタスク（チーム内の共有） |
 
 ## Motion
 
