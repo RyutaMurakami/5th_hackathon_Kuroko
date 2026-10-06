@@ -160,6 +160,7 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - 止まる実装: `kuroko_agent/` `payment_agent/` `extract_agent/` のツール認証、`/mcp` の実装、Agent identity の分離
   - **2026-09-27: 最優先で着手する（ユーザー確認）。AI はコード・IAM・手順書の準備を先に進める**
   - **2026-09-27（2回目）: リソースの作成・デプロイ自体はユーザーが Console で自分の手で行う（学習のため。ユーザー指定）。本番の3エージェント・本番の Gateway 設定は別途 H31・H32 で行う**
+  - **2026-10-01（ユーザー指定）: 開発と並行して設定する。実験用の部品（`kuroko-mcp-lab`・`lab-agent-*`）は作らず、本番の `kuroko-api` の `/mcp` と `kuroko_agent`・`extract_agent` で確かめる**（H31・H32 の前半を H11 に取り込んだ。`payment_agent` と `payment-api` の `/mcp` は、その実装ができてから H31・H32 で足す）。手順書は本番の名前に書き直した。**今すぐできるのは、gcloud の更新・Model Armor のテンプレート・Gateway 2つの作成**（Registry への登録とデプロイは、AI のコードが揃ってから）
 
 ### E. 外部 API・アカウントの申請（リードタイムあり。先に出す）
 
@@ -184,12 +185,15 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
 
 ### E2. 銀行API（sunabar）と規程の文書（リードタイムあり。先に出す）
 
-- [ ] **H22【人】GMOあおぞらネット銀行の個人口座を開設し、sunabar を使えるようにする**（最優先）
+- [x] **H22【人】GMOあおぞらネット銀行の個人口座を開設し、sunabar を使えるようにする**（最優先）
   - 個人口座があれば、審査なし・無料で sunabar を使える。口座開設は最短当日（マイナンバーカードの読み取りか自撮り動画で本人確認。**平日14時までの申し込みなどの条件がある**。詳細は [SPEC.md](SPEC.md) 14章のリンク）
   - AI に伝える: 開設したこと（口座番号・パスワードは**貼らない**）。sunabar のクライアント情報は Secret Manager に自分で登録する（P3）
   - 止まる実装: `bank_adapter/` の本実装、H25、支払いのデモすべて
   - **2026-09-27: 申請中（ユーザー確認）。まだ使える状態ではない**。O1（sunabar 疎通ゲート）と B11（銀行本実装）は、この申請が通るまで着手しない。開設でき次第、口座番号・パスワードを貼らずに AI に伝える
+  - **2026-10-01: まだ取得中（ユーザー確認）**。エージェントまわりの実装は、`bank_adapter` をダミー（B10 のスタブ）にして先に進める
+  - **2026-10-01（2回目）: 完了（ユーザー確認）。sunabar が使えるようになり、口座を10個用意した**。ダミーはやめ、O1・B11 を本線に戻す。次の手順は [guides/h25_sunabar_setup.md](guides/h25_sunabar_setup.md)（口座の割り当て → トークンの登録（P3）→ 疎通の確認（H25））
 - [ ] **H23【人】デモ用の sunabar 口座を用意する**（参加者役・幹事役）
+  - **2026-10-01: 口座は10個用意済み（ユーザー確認）**。必要なのは幹事1＋振込元7の8口座で、2つは予備（ゲストのデモ用・差し替え用）。**残り**: 口座と登場人物の割り当て（[guides/h25_sunabar_setup.md](guides/h25_sunabar_setup.md) 1章）と、振込元の残高の確認
   - sunabar は **1ユーザーあたり最大10口座**まで追加できる（初期は個人・法人の各1口座）。**振込先も sunabar 内の口座に限る**ので、**幹事の口座も sunabar 口座**にする。デモの参加者10名分は、チームメンバーで分担して用意する。足りなければ参加者を8名に減らす（SPEC 13章）
   - **全口座を1人が持つと、振込ごとの承認も実際には1人が行う**。デモでは「承認する人が数名いる」形にして、残りは早送りにする（H18 のデモ用ユーザーと、どの口座を誰が持つかを対応させる）
   - 止まる実装: 支払いのデモ、`bank-adapter` の口座の対応表の初期データ
@@ -198,6 +202,7 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - 止まる実装: `retrieve_policy` / `extract_policy_values`、規程の抽出のテスト
   - **2026-09-27: 検証結果を待たず優先して進める（ユーザー確認）**
 - [ ] **H25【承】AI が用意する sunabar の疎通実験を承認する**（ARCHITECTURE V10。**最初の1〜2日で通しで確かめる**）
+  - **2026-10-01: 手順は [guides/h25_sunabar_setup.md](guides/h25_sunabar_setup.md) 4章**。サンドボックスでは OAuth の流れがなく、口座ごとのトークンをポータルから登録する（下の①の「OAuth の認可」は、トークンの登録に置き換わる）
   - **用意するもの**（AI が sandbox で作る）: 最小のスクリプトと、Cloud Run（`bank-adapter` の試作）
   - **確かめること**: ①OAuth の認可 → 振込依頼 → 承認ページでの承認 → 入出金明細での確認が一通り動くか ②口座を必要な数だけ用意できるか（H23） ③Slack DM のリンクから承認ページへ直接遷移できるか ④承認前に期限が切れた依頼の状態の照会方法と、作り直すときの冪等キー・nonce の扱い ⑤ポーリングの間隔（10分の承認期限に対して十分か）
   - 秘密の値（クライアント情報・トークン）はチャットに貼らない。結果を ARCHITECTURE 13章 V10 と SPEC 13章に反映する
@@ -315,6 +320,7 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - **2026-09-27: Terraform の管理外の `kuroko_slack_client_secret` `kuroko_slack_signing_secret` `kuroko_slack_verification_token` を削除した**（ユーザー承認。今の構成では使わない）
 - [ ] **P4【人】`kuroko-gateway` のデプロイ後、Slack App の Request URL を設定する**
   - Events と Interactivity の URL、App Home の有効化。URL 検証（`url_verification`）が通ることを確認する
+  - **2026-10-06（AI が確認）**: B16a のコードは `kuroko-gateway`・`kuroko-api` にデプロイ済みで、シークレット・キューも配線済み。**あとは Slack 側の操作だけ**（下の手順）
   - **2026-09-27**: `slack/manifest.yml` に実 URL（`https://kuroko-gateway-nbymkfmzpq-uc.a.run.app/slack/events`）を記入済み。**CD で `kuroko-gateway` に B16a のコードが載ったあとに**、App Manifest に貼り直して保存（「Verified」になることを確認）→ Reinstall to Workspace → Slack で KUROKO に DM して、返答が来るかを確かめる
 - [ ] **P5【承】Cloud Run 5サービスのデプロイを承認する**（CI/CD 経由。**Agent Runtime のエージェント3つは、ユーザーが Console で自分の手でデプロイする（H31）ため、ここには含まない**。2026-09-27変更）
 - [ ] **P6【決】Dashboard を見られる人の許可リストを決める**（ARCHITECTURE D8・D14）
