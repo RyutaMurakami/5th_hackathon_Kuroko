@@ -185,3 +185,9 @@ def test_event_id_inside_the_signed_mandate_must_match_the_request(client, env):
     data = pay(client, event="ev2")
     assert data["block_reason"] == "event_mismatch"
     assert env.bank.transfers == []
+
+
+def test_health_uses_the_path_cloud_run_does_not_reserve(client):
+    # Cloud Run では /healthz が Google 側に予約されていてアプリに届かない（404）
+    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/healthz").status_code == 404
