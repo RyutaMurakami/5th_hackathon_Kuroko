@@ -36,7 +36,7 @@ def slack_io(monkeypatch):
     async def fake_post(channel_id, text):
         posted.append((channel_id, text))
 
-    monkeypatch.setattr(slack_conversation.provisional_agent, "reply", fake_reply)
+    monkeypatch.setattr(slack_conversation.kuroko_chat, "reply", fake_reply)
     monkeypatch.setattr(slack_conversation.slack, "post_message", fake_post)
     return posted
 
@@ -68,7 +68,7 @@ async def test_agent_failure_posts_fixed_text(client, slack_io, monkeypatch):
     async def broken(user_key, text):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(slack_conversation.provisional_agent, "reply", broken)
+    monkeypatch.setattr(slack_conversation.kuroko_chat, "reply", broken)
     response = await client.post(
         "/tasks/slack/message", json=MESSAGE, headers={"Authorization": _token(GATEWAY_SA)}
     )

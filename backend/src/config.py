@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # /tasks/slack/* が受け付ける呼び出し元（sa-gateway）
     gateway_service_account: str = ""
 
+    # --- 統括エージェント（Agent Runtime。TASKS B22）---
+    # 空のあいだは仮のエージェント（下）で返す。値は「projects/<番号>/locations/<リージョン>/
+    # reasoningEngines/<ID>」。デプロイ後に Terraform の変数で渡す（infra/terraform/variables.tf）
+    kuroko_agent_engine: str = ""
+    kuroko_agent_timeout_seconds: float = 90.0
+
     # --- 仮のエージェント（TASKS B16a。Agent Runtime の統括エージェントができたら差し替える）---
     provisional_agent_model: str = "gemini-3.8-flash"
 
