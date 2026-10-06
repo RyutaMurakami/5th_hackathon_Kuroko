@@ -1,10 +1,10 @@
-"""Bot への DM に、仮のエージェントで返答する（kuroko-api の後段。TASKS B16a）。"""
+"""Bot への DM に、統括エージェントで返答する（kuroko-api の後段。TASKS B16a・B22）。"""
 
 import logging
 
 from src.clients import slack
 from src.models.schemas import SlackDirectMessage
-from src.services import provisional_agent
+from src.services import kuroko_chat
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +16,9 @@ FALLBACK_TEXT = (
 
 async def handle_direct_message(message: SlackDirectMessage) -> None:
     try:
-        text = await provisional_agent.reply(
-            f"slack:{message.team_id}:{message.user_id}", message.text
-        )
+        text = await kuroko_chat.reply(f"slack:{message.team_id}:{message.user_id}", message.text)
     except Exception:
         # 再試行すると同じ質問に二重に答えかねないので、固定の文面を返して終える
-        logger.exception("provisional agent failed: event_id=%s", message.event_id)
+        logger.exception("agent failed: event_id=%s", message.event_id)
         text = ""
     await slack.post_message(message.channel_id, text or FALLBACK_TEXT)

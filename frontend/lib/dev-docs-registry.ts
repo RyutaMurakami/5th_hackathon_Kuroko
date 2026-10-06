@@ -20,6 +20,8 @@ export const DEV_DOCS: DevDoc[] = [
   { slug: "tasks", path: "docs/TASKS.md", title: "AI のタスク（TASKS）", eyebrow: "タスク", description: "エージェントが行う実装タスク（観点 E・I・F・B・O）" },
   { slug: "human-task", path: "docs/human_task.md", title: "人間のタスク（human_task）", eyebrow: "タスク", description: "アカウント・申請・承認・提出など、人が行うタスクと秘密の受け渡し" },
   { slug: "h11-guide", path: "docs/guides/h11_agent_platform_lab.md", title: "H11 手順書（Agent Platform）", eyebrow: "手順書", description: "Agent Runtime・Gateway・Registry・Model Armor を Console で構築する手順" },
+  { slug: "agent-platform-steps", path: "docs/guides/agent_platform_human_steps.md", title: "Agent Platform のチェックリスト", eyebrow: "手順書", description: "Agent Platform の Console 作業のうち、人が行うものを順に並べたチェックリスト" },
+  { slug: "sunabar-guide", path: "docs/guides/h25_sunabar_setup.md", title: "sunabar 手順書", eyebrow: "手順書", description: "口座の割り当て・トークンの登録・疎通の確認（H23・P3・H25・O1）" },
 ];
 
 export function docBySlug(slug: string): DevDoc | undefined {
