@@ -318,11 +318,13 @@ AI が行う実装・検証の準備・文書の更新は、[TASKS.md](TASKS.md)
   - 対象: Slack の Bot Token・Signing Secret、駅すぱあと・Maps のキー、**sunabar のクライアント情報**（H22。**参加者・幹事のアクセストークンは、`bank-adapter` が OAuth のあとに自分で書く**ので、人が登録するのはクライアント情報だけ。**ホットペッパーは2026-09-27に不採用のため対象外**）
   - **2026-09-27時点（AI が `gcloud secrets versions list` で確認）**: 登録済み — `slack-signing-secret`、`maps-api-key`、`slack-bot-token`（H19）、`ekispert-api-key`（H13。2026-09-27 にバージョン 2 で疎通OK）。未登録 — `sunabar-client`（H22 の申請待ち）
   - **2026-09-27: Terraform の管理外の `kuroko_slack_client_secret` `kuroko_slack_signing_secret` `kuroko_slack_verification_token` を削除した**（ユーザー承認。今の構成では使わない）
-- [ ] **P4【人】`kuroko-gateway` のデプロイ後、Slack App の Request URL を設定する**
+- [x] **P4【人】`kuroko-gateway` のデプロイ後、Slack App の Request URL を設定する**
+  - **2026-10-06 完了（ユーザー確認）**: マニフェストの貼り直し・Reinstall のあと、Slack の DM で返答が来ることを確認
   - Events と Interactivity の URL、App Home の有効化。URL 検証（`url_verification`）が通ることを確認する
   - **2026-10-06（AI が確認）**: B16a のコードは `kuroko-gateway`・`kuroko-api` にデプロイ済みで、シークレット・キューも配線済み。**あとは Slack 側の操作だけ**（下の手順）
   - **2026-09-27**: `slack/manifest.yml` に実 URL（`https://kuroko-gateway-nbymkfmzpq-uc.a.run.app/slack/events`）を記入済み。**CD で `kuroko-gateway` に B16a のコードが載ったあとに**、App Manifest に貼り直して保存（「Verified」になることを確認）→ Reinstall to Workspace → Slack で KUROKO に DM して、返答が来るかを確かめる
-- [ ] **P5【承】Cloud Run 5サービスのデプロイを承認する**（CI/CD 経由。**Agent Runtime のエージェント3つは、ユーザーが Console で自分の手でデプロイする（H31）ため、ここには含まない**。2026-09-27変更）
+- [ ] **P5【承】Cloud Run 5サービスのデプロイを承認する**
+  - **2026-10-06（一部）**: `kuroko-api`・`kuroko-gateway` に加え、`payment-api`・`bank-adapter` を初めてデプロイ（PR #6・#7 のマージ。ユーザー承認済み）。`terraform apply`（`kuroko-api` のエンジン名、`payment-api`・`bank-adapter` の本番側の環境変数）も実施。**`kuroko-dashboard` の更新は frontend の変更時**（CI/CD 経由。**Agent Runtime のエージェント3つは、ユーザーが Console で自分の手でデプロイする（H31）ため、ここには含まない**。2026-09-27変更）
 - [ ] **P6【決】Dashboard を見られる人の許可リストを決める**（ARCHITECTURE D8・D14）
   - 1件ごとに、メールアドレス・**役割（幹事のみ。開発者の役割は 2026-09-26 に廃止）**。**幹事の Slack ユーザーIDは要らない**（Web の本人確認は Firebase の UID と `organizer_web_uid` の一致。SPEC 7.3）。**審査員（ゲスト）は許可リストに載せない**（Google ログインだが許可リストなし。**匿名認証は使わない**。2026-09-27決定。SPEC 7.6）
   - 開発者は許可リストに載せない。**審査員も開発者も、ゲスト（許可リストに載っていない Google アカウント）として同じ画面を使う**（SPEC 7.6。サンドボックスの自分のイベントだけ）
