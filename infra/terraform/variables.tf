@@ -32,6 +32,12 @@ variable "wired_secrets" {
   default     = []
 }
 
+variable "kuroko_agent_engine" {
+  type        = string
+  description = "統括エージェント（kuroko-agent）の Agent Runtime のエンジン名（projects/<番号>/locations/<リージョン>/reasoningEngines/<ID>）。ユーザーがデプロイしたあとに設定する（human_task H11・TASKS B22）。空のあいだ、kuroko-api は仮のエージェントで返す"
+  default     = ""
+}
+
 variable "scheduler_paused" {
   type        = bool
   description = "Cloud Scheduler のジョブを止めておくか。呼び先のルート（TASKS B17）ができるまで true にする"

@@ -26,6 +26,13 @@ locals {
     "networkservices.googleapis.com",
     "agentregistry.googleapis.com",
     "modelarmor.googleapis.com",
+    # Agent Gateway の前提 API（公式の Set up Agent Gateway。H11 手順書 3-2）。telemetry は Terraform 外で有効化済み
+    "compute.googleapis.com",
+    "networksecurity.googleapis.com",
+    "iap.googleapis.com",
+    "serviceextensions.googleapis.com",
+    "observability.googleapis.com",
+    "telemetry.googleapis.com",
   ]
 }
 

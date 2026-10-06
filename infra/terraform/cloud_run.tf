@@ -50,6 +50,7 @@ locals {
         UPLOAD_BUCKET               = google_storage_bucket.uploads.name
         CLAIMS_BUCKET               = google_storage_bucket.claims.name
         KMS_CLAIM_SIGNING_KEY       = google_kms_crypto_key.claim_signing.id
+        KUROKO_AGENT_ENGINE         = var.kuroko_agent_engine
       })
       invokers = ["sa-gateway", "sa-api", "sa-dashboard", "sa-scheduler", "sa-demo-runner"]
     }
@@ -69,6 +70,12 @@ locals {
         SCHEDULER_SERVICE_ACCOUNT   = local.sa["sa-scheduler"]
         KMS_MANDATE_KEY_RING        = google_kms_key_ring.mandates.id
         KMS_PAYMENT_AGENT_KEY       = google_kms_crypto_key.payment_agent_signing.id
+        # ES256 の署名・公開鍵の取得に使う鍵バージョン（payment_api の既定は本番側 = KMS・Firestore・http）
+        KMS_PARTICIPANT_KEY_VERSION   = "${google_kms_crypto_key.participant_signing.id}/cryptoKeyVersions/1"
+        KMS_PAYMENT_AGENT_KEY_VERSION = "${google_kms_crypto_key.payment_agent_signing.id}/cryptoKeyVersions/1"
+        SIGNER_MODE                   = "kms"
+        STORE_BACKEND                 = "firestore"
+        BANK_MODE                     = "http"
       })
       invokers = ["sa-gateway", "sa-api", "sa-payment-api", "sa-scheduler", "sa-demo-runner"]
     }
@@ -78,6 +85,9 @@ locals {
       max    = 3
       env = merge(local.bigquery_env, {
         FIRESTORE_DATABASE          = google_firestore_database.bank.name
+        BANK_MODE                   = "sunabar"
+        STORE_BACKEND               = "firestore"
+        BANK_ADAPTER_URL            = local.service_urls["bank-adapter"]
         SUNABAR_TOKENS_SECRET       = google_secret_manager_secret.this["sunabar-tokens"].id
         API_SERVICE_ACCOUNT         = local.sa["sa-api"]
         PAYMENT_API_SERVICE_ACCOUNT = local.sa["sa-payment-api"]
