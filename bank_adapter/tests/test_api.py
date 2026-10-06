@@ -177,4 +177,4 @@ def test_responses_never_contain_account_numbers_or_tokens(client, bank):
 
 
 def test_health(client):
-    assert client.get("/healthz").json() == {"status": "ok"}
+    assert client.get("/health").json() == {"status": "ok"}
