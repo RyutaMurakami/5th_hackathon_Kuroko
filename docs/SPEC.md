@@ -281,6 +281,7 @@ Firestoreのコレクション/ドキュメント想定。フィールド名は�
 | guest_owner_uid / expires_at | string / timestamp | `sandbox` のとき、作成したゲストの UID（他のゲストからは見えない）と、削除の期限（作成から7日） |
 | guests_of_honor | string[] | 主役のuser_id |
 | policy_id / policy_version | string | 適用した規程の識別（RAG Engine のコーパスとファイル。9.7節） |
+| budget_escalation | map | 予算超過の確認フロー（9.1節）の記録（`organizer_confirmed_at, escalated_to, escalated_at, final_confirmed_at`）。按分の承認より前に起きるので Event に持つ。Policy Gate 6.1 が、幹事・承認者の両方の確認と、承認者が今の `determine_approver` と同じことを確かめる |
 | policy_snapshot | map | 企画時に RAG から抽出し、コードで検証した規程の値（係数・会社補助・上限・承認者の決め方・委任の期限）と、根拠の条文の引用。**このイベントの計算は、この写しだけを使う**（9.7節） |
 | memory_scope | map | `{company_id, team_id}`。**企画時にコードが設定する**（ワークスペースの設定から。LLM・Slackの発言・Webの入力からは変更できない）。Memory Bank の読み書きのスコープになる（9.8節） |
 | status | enum | `planning / rsvp / venue / booked / day_of / receipt / split / approval / payment / completed / retro / closed`（`completed` = 送金完了・経費記録済み、`retro` = 振り返りの収集と確認、`closed` = 終了） |
@@ -302,6 +303,7 @@ Firestoreのコレクション/ドキュメント想定。フィールド名は�
 | bank_authorized | bool | 銀行API（sunabar）のOAuth認可が済んでいるか（8.4節） |
 | preferences | map | `dietary_must[]`（**食べられないもの**: アレルギー・宗教上など。**ハード制約**）、`dietary_avoid[]`（苦手なもの。ソフト制約）、`request_tags[]`（店の希望。**固定の語彙**）、`nearest_station`。語彙と使い方は 9.9節。イベント完了時に削除対象（9.6節） |
 | attendance_confirmed | bool | |
+| slack_user_id | string \| null | Slack 上の本人。承認者の本人確認（Policy Gate 6.2）に使う。署名検証済みの Slack 操作の ID と突き合わせる |
 | subsidy_eligible | bool | `eligible_employment_types` 判定結果（9.3節） |
 | share_yen | int | 按分確定後にセット |
 | payment_status | enum | `not_applicable / waiting / awaiting_bank_approval / completed / blocked / failed` |
@@ -372,7 +374,7 @@ Firestoreのコレクション/ドキュメント想定。フィールド名は�
 | split_hash | string | SplitResult.hash と一致確認 |
 | status | enum | `pending / approved` |
 | approved_at | timestamp | 支払いエージェントを動かすきっかけ |
-| budget_escalation | map | 9.1節のフローを使った場合の記録（`organizer_confirmed_at, escalated_to, escalated_at, final_confirmed_at`） |
+| approved_by_slack_user_id | string | 実際に承認した人の Slack ユーザーID。**署名検証済みの Slack インタラクションから取った値**だけを入れる（自己申告では入れない）。Policy Gate 6.2 で、承認者本人の `slack_user_id` と一致を確かめる |
 
 ### Payment（参加者1人の支払い）
 

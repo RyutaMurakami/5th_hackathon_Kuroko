@@ -59,3 +59,21 @@ def test_split_can_be_recomputed_until_it_is_approved():
     with pytest.raises(ApprovedSplitIsFinal):
         store.save_split(first)  # 承認された金額表は変えられない
     assert store.get_split("ev-demo").hash == corrected.hash
+
+
+def test_receipt_and_budget_escalation_round_trip():
+    from src.models.event import Receipt
+    from src.models.split import BudgetEscalation
+
+    store = MemoryEventStore()
+    now = dt.datetime(2026, 10, 31, tzinfo=dt.UTC)
+    receipt = Receipt(
+        event_id="ev-demo", total_amount_yen=60_300, confirmed_by="uid", confirmed_at=now
+    )
+    store.save_receipt(receipt)
+    assert store.get_receipt("ev-demo") == receipt and store.get_receipt("x") is None
+    event = demo_event().model_copy(
+        update={"budget_escalation": BudgetEscalation(organizer_confirmed_at=now)}
+    )
+    assert Event.model_validate(event.model_dump(mode="json")) == event
+    assert type(receipt).model_validate(receipt.model_dump(mode="json")) == receipt
