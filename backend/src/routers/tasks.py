@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from src.models.schemas import SlackDirectMessage
 from src.models.slack import SlackHomeOpened, SlackInteraction
 from src.services.billing import UnknownEvent
-from src.services.container import get_billing, get_retro, get_slack_actions
+from src.services.container import get_billing, get_dashboard, get_retro, get_slack_actions
 from src.services.slack_conversation import handle_direct_message
 from src.services.task_auth import require_gateway, require_scheduler, require_self
 
@@ -86,6 +86,12 @@ async def budget_requests(ref: EventRef) -> dict:
 async def feedback_requests(ref: EventRef) -> dict:
     """振り返りの依頼を、出席者の DM に送る（完了の翌日。通常は Scheduler 経由）。"""
     return await get_retro().collect_feedback(ref.event_id)
+
+
+@router.post("/scheduled/purge-sandbox", dependencies=[Depends(require_scheduler)])
+def purge_sandbox() -> dict[str, int]:
+    """作成から7日たったゲスト（sandbox）のイベントを削除する（SPEC 7.6）。"""
+    return {"deleted": get_dashboard().purge_expired_sandbox()}
 
 
 @router.post("/scheduled/retrospectives", dependencies=[Depends(require_scheduler)])

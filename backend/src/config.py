@@ -19,6 +19,13 @@ class Settings(BaseSettings):
 
     firestore_database_id: str = "(default)"
 
+    # --- Web ダッシュボード（B14。SPEC 4.3・7.5・7.6）---
+    # Firebase のプロジェクト（ID トークンの aud・iss の検査に使う。空なら全て拒否）
+    firebase_project_id: str = ""
+    # 予約画面・領収書のアップロード先の Cloud Storage バケット（署名付きURLで直接アップロード）
+    upload_bucket: str = ""
+    upload_url_ttl_seconds: int = 300
+
     # --- Slack（値は Secret Manager から Cloud Run の環境変数で渡る。secrets.tf）---
     slack_signing_secret: str = ""  # kuroko-gateway だけ
     slack_bot_token: str = ""  # kuroko-api だけ
@@ -38,6 +45,8 @@ class Settings(BaseSettings):
     bank_adapter_url: str = ""
     # /tasks/internal/* が受け付ける呼び出し元（kuroko-api 自身。sa-api）
     api_service_account: str = ""
+    # /api/dashboard/* が受け付ける呼び出し元（kuroko-dashboard。sa-dashboard）
+    dashboard_service_account: str = ""
     # /tasks/scheduled/* が受け付ける呼び出し元（sa-scheduler。Cloud Scheduler）
     scheduler_service_account: str = ""
     # 請求（Checkout）の署名鍵（Cloud KMS `claim-signing` の鍵バージョン。ES256）

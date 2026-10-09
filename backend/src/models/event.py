@@ -85,6 +85,15 @@ class Event(BaseModel):
     title: str = ""
     datetime: dt.datetime
     organizer_user_id: str
+    # ゲスト（審査員・開発者）の体験用のイベントか。true のときだけ、デモ用の代行を受け付ける
+    sandbox: bool = False
+    guest_owner_uid: str | None = (
+        None  # sandbox のとき、作成したゲストの UID（他のゲストには見えない）
+    )
+    expires_at: dt.datetime | None = None  # sandbox の削除の期限（作成から7日）
+    # 幹事が確認して確定した計画（日時・人数・エリア・予算・主役など）と、選んだ店・予約の内容
+    plan: dict = {}
+    venue: dict | None = None
     # 幹事の Web 上の本人（Firebase の UID）。領収書の金額を確定できるのは、この UID だけ
     # （SPEC 7.3）
     organizer_web_uid: str = ""
