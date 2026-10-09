@@ -140,15 +140,17 @@ async def test_comment_is_cut_to_200_chars_and_attack_text_never_becomes_vocabul
     assert f.liked == [] and f.concerns == []  # 200字より先の語は見ない。語彙以外は残らない
 
 
-def test_extractor_outputs_only_the_fixed_vocabulary():
+async def test_extractor_outputs_only_the_fixed_vocabulary():
     from src.services.vocab import CONCERNS, LIKED
 
     ex = KeywordFeedbackExtractor()
-    out = ex.extract("うるさくて狭かった。提供が遅かった。でも接客は丁寧で、ドリンクが良かった。")
+    out = await ex.extract(
+        "うるさくて狭かった。提供が遅かった。でも接客は丁寧で、ドリンクが良かった。"
+    )
     assert set(out.concerns) <= set(CONCERNS) and set(out.liked) <= set(LIKED)
     assert set(out.concerns) == {"noisy", "small", "slow_service"}
     assert set(out.liked) == {"service", "drinks"}
-    assert ex.extract("特になし") == type(out)()
+    assert await ex.extract("特になし") == type(out)()
 
 
 # ---------------- 集計 ----------------

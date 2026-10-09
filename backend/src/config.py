@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # 空のあいだは、すべて拒否する（fail closed。V1 の確認後に設定する）
     agent_kuroko_principal: str = ""
 
+    # --- 隔離抽出エージェント（Agent Runtime。TASKS B26）---
+    # 空のあいだは、振り返りのコメントだけ、キーワードの仮実装で語彙に落とす
+    extract_agent_engine: str = ""
+
     # --- 統括エージェント（Agent Runtime。TASKS B22）---
     # 空のあいだは仮のエージェント（下）で返す。値は「projects/<番号>/locations/<リージョン>/
     # reasoningEngines/<ID>」。デプロイ後に Terraform の変数で渡す（infra/terraform/variables.tf）

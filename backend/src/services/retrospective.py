@@ -120,7 +120,7 @@ class Retrospectives:
         feedback = self._store.find_open_comment(slack_user_id)
         if feedback is None:
             return None
-        extracted = self._extractor.extract(text[:MAX_COMMENT_CHARS])
+        extracted = await self._extractor.extract(text[:MAX_COMMENT_CHARS])
         feedback.liked, feedback.concerns = extracted.liked, extracted.concerns
         feedback.comment_open = False
         self._store.save_feedback(feedback)

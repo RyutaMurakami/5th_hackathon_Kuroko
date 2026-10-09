@@ -63,13 +63,34 @@ class _SlackClientPort:
 
 @lru_cache
 def get_retro():
-    from src.services.feedback_extract import KeywordFeedbackExtractor
     from src.services.retrospective import Retrospectives
 
-    # コメントの語彙化は、いまはキーワードの仮実装。extract-agent（B26）ができたら差し替える
     return Retrospectives(
-        store=get_event_store(), slack=_SlackClientPort(), extractor=KeywordFeedbackExtractor()
+        store=get_event_store(), slack=_SlackClientPort(), extractor=_feedback_extractor()
     )
+
+
+def get_extract_runner():
+    """`extract-agent` の呼び出し口。エンジンが未設定（まだデプロイしていない）なら None。"""
+    from src.clients.agent_runtime import AgentRuntimeClient
+    from src.services.extract import AgentRuntimeExtractRunner
+
+    s = get_settings()
+    if not s.extract_agent_engine:
+        return None
+    location = s.extract_agent_engine.split("/locations/")[1].split("/")[0]
+    client = AgentRuntimeClient(
+        engine=s.extract_agent_engine, location=location, timeout=s.kuroko_agent_timeout_seconds
+    )
+    return AgentRuntimeExtractRunner(client)
+
+
+def _feedback_extractor():
+    from src.services.feedback_extract import AgentFeedbackExtractor, KeywordFeedbackExtractor
+
+    runner = get_extract_runner()
+    # エンジンが無いあいだは、キーワードの仮実装。あれば extract-agent（隔離抽出）を使う
+    return AgentFeedbackExtractor(runner) if runner else KeywordFeedbackExtractor()
 
 
 @lru_cache
