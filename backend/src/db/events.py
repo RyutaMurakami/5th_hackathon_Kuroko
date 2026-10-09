@@ -23,6 +23,9 @@ class EventStore(Protocol):
 
     def list_participants(self, event_id: str) -> list[Participant]: ...
 
+    def find_by_slack_user(self, slack_user_id: str) -> list[tuple[Event, Participant]]:
+        """この Slack ユーザーが参加者として載っているイベント（App Home の表示用）。"""
+
     def save_receipt(self, receipt: Receipt) -> None: ...
 
     def get_receipt(self, event_id: str) -> Receipt | None: ...
@@ -66,6 +69,14 @@ class MemoryEventStore:
     def list_participants(self, event_id: str) -> list[Participant]:
         rows = self.participants.get(event_id, {})
         return [rows[k].model_copy() for k in sorted(rows)]
+
+    def find_by_slack_user(self, slack_user_id):
+        found = []
+        for event_id, rows in self.participants.items():
+            for p in rows.values():
+                if p.slack_user_id == slack_user_id and event_id in self.events:
+                    found.append((self.events[event_id].model_copy(deep=True), p.model_copy()))
+        return sorted(found, key=lambda x: (x[0].datetime, x[0].event_id))
 
     def save_receipt(self, receipt: Receipt) -> None:
         self.receipts[receipt.event_id] = receipt.model_copy()
@@ -116,6 +127,16 @@ class FirestoreEventStore:
         return sorted(
             (Participant.model_validate(d.to_dict()) for d in docs), key=lambda p: p.user_id
         )
+
+    def find_by_slack_user(self, slack_user_id):
+        found = []
+        docs = self._db.collection_group("participants").where("slack_user_id", "==", slack_user_id)
+        for doc in docs.stream():
+            event_id = doc.reference.parent.parent.id
+            event = self.get_event(event_id)
+            if event is not None:
+                found.append((event, Participant.model_validate(doc.to_dict())))
+        return sorted(found, key=lambda x: (x[0].datetime, x[0].event_id))
 
     def save_receipt(self, receipt: Receipt) -> None:
         self._event(receipt.event_id).collection("receipts").document("current").set(

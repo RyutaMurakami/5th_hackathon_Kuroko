@@ -34,6 +34,12 @@ class ParticipantRole(StrEnum):
     APPROVER = "approver"
 
 
+class RsvpStatus(StrEnum):
+    PENDING = "pending"
+    ATTENDING = "attending"
+    DECLINING = "declining"
+
+
 class Participant(BaseModel):
     user_id: str = Field(min_length=1)
     display_name: str = ""
@@ -44,8 +50,15 @@ class Participant(BaseModel):
     employment_type: str = Field(min_length=1)  # 正社員・契約社員・業務委託 など
     role: ParticipantRole = ParticipantRole.PARTICIPANT
     attendance_confirmed: bool = False
+    # 出欠の回答（Slack の同意ボタン。署名検証済みの操作だけが書く。SPEC 7.2）
+    rsvp_status: RsvpStatus = RsvpStatus.PENDING
+    # 委任状（payment-api が署名）。幹事・主役は持たない
+    mandate_id: str | None = None
     # Slack 上の本人（承認者の本人確認に使う。署名検証済みの Slack 操作の ID と突き合わせる）
     slack_user_id: str | None = None
+    # 幹事の口座に、この人の負担額の入金を確認した時刻（`confirm_incoming_payments`。SPEC 8.6）。
+    # 支払いエージェント側の完了の確認（payment-api）とは独立に記録する
+    collection_confirmed_at: dt.datetime | None = None
 
 
 class Event(BaseModel):

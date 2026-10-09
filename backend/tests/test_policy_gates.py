@@ -209,6 +209,34 @@ def test_6_2_a_split_edited_after_approval_is_detected_by_recomputing():
     assert Gate.SPLIT_TAMPERED in gate(ev, ps2, split, approval, lines).failures
 
 
+def test_6_2_moving_money_between_rows_while_keeping_the_hash_is_detected():
+    """合計も承認のハッシュも変えずに、伊藤の100円を渡辺に付け替える改ざん。"""
+    ev, ps, split, approval, lines = fixture()
+    rows = [
+        r.model_copy(
+            update={"share_yen": r.share_yen + 100 * (1 if r.user_id == "watanabe" else -1)}
+        )
+        if r.user_id in {"ito", "watanabe"}
+        else r
+        for r in split.rows
+    ]
+    tampered = split.model_copy(update={"rows": rows})  # hash は元のまま
+    assert tampered.hash == split.hash
+    moved = [
+        CheckoutLine(
+            x.payer_user_id,
+            x.payee_user_id,
+            x.amount_yen
+            + (100 if x.payer_user_id == "watanabe" else -100 if x.payer_user_id == "ito" else 0),
+            x.split_hash,
+        )
+        for x in lines
+    ]
+    r = gate(ev, ps, tampered, approval, moved)
+    assert Gate.SPLIT_TAMPERED in r.failures
+    assert Gate.TOTAL_MISMATCH not in r.failures  # 合計は変わらない。合計の検査だけでは通ってしまう
+
+
 def test_6_2_the_payee_is_always_the_organizer():
     ev, ps, split, approval, lines = fixture()
     redirected = [

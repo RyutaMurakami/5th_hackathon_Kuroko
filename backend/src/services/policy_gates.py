@@ -176,14 +176,15 @@ def check_before_checkout(
         if approval.split_hash != split.hash:
             failures.append(Gate.SPLIT_HASH_MISMATCH)
 
-    # 保存された金額表が、入力から計算し直した結果と一致する（途中で書き換えられていない）
+    # 保存された金額表が、入力から計算し直した結果と**中身まで**一致する（書き換えられていない）。
+    # ハッシュの欄だけの比較では、負担額を書き換えてもハッシュを残されたら検出できない
     if split is not None and event.policy_snapshot is not None:
         try:
             recomputed = calculate_split(event, participants, event.policy_snapshot)
         except SplitInputError:
             failures.append(Gate.SPLIT_TAMPERED)
         else:
-            if recomputed.hash != split.hash:
+            if recomputed.model_dump() != split.model_dump():
                 failures.append(Gate.SPLIT_TAMPERED)
 
     guests = set(event.guests_of_honor)
