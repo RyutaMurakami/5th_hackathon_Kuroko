@@ -5,6 +5,7 @@
 """
 
 import hashlib
+import unicodedata
 import uuid
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
@@ -22,6 +23,22 @@ from src.models.schemas import (
 _NAMESPACE = uuid.UUID("6f1b0b52-4d0e-4c58-9a57-1d3c6e2c8a10")  # transfer_id を決める固定の名前空間
 
 Caller = Literal["api", "payment"]
+
+
+def _normalize_name(text: str) -> str:
+    """全角・半角の違い（カナ・空白）を揃える。口座の名義（半角カナ）と摘要（全角）を比べるため。"""
+    return " ".join(unicodedata.normalize("NFKC", text).split())
+
+
+def _resolve_counterparty(remarks: str, names: dict[str, str]) -> str | None:
+    """摘要の名義が、知っている口座のうちちょうど1つと一致するときだけ、その user_id を返す。"""
+    text = _normalize_name(remarks)
+    for prefix in ("振込 ", "振込"):
+        if text.startswith(prefix):
+            text = text.removeprefix(prefix).strip()
+            break
+    hits = [uid for uid, name in names.items() if name and name == text]
+    return hits[0] if len(hits) == 1 else None
 
 
 class UnknownUser(Exception):
@@ -168,6 +185,18 @@ class BankService:
             approval_expires_at=record["created_at"] + self._ttl if awaiting else None,
         )
 
+    def _holder_names(self, *, exclude: str) -> dict[str, str]:
+        """相手の解決用: 仮名 user_id → 正規化した口座名義。この外には出さない。"""
+        names: dict[str, str] = {}
+        for uid, label in self._store.list_labels().items():
+            if uid == exclude:
+                continue
+            try:
+                names[uid] = _normalize_name(self._bank.holder_name(label=label))
+            except BankError:
+                continue
+        return names
+
     # --- 明細 ---
     def statements(
         self, *, user_id: str, date_from: date, date_to: date, caller: Caller
@@ -176,6 +205,7 @@ class BankService:
         if not label:
             raise UnknownUser
         rows, has_next = self._bank.transactions(label=label, date_from=date_from, date_to=date_to)
+        names = self._holder_names(exclude=user_id)
         if caller == "api":
             rows = [r for r in rows if r.direction == "in"]  # kuroko-api は幹事口座の入金だけ
         return StatementResponse(
@@ -188,7 +218,7 @@ class BankService:
                     date=r.date,
                     direction=r.direction,
                     amount_yen=r.amount_yen,
-                    remarks=r.remarks,
+                    counterparty_user_id=_resolve_counterparty(r.remarks, names),
                 )
                 for r in rows
             ],

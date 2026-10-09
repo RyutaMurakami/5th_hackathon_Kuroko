@@ -16,6 +16,9 @@ class Store(Protocol):
 
     def delete_label(self, user_id: str) -> bool: ...
 
+    def list_labels(self) -> dict[str, str]:
+        """仮名 user_id → 口座ラベル（明細の相手の解決に使う）。"""
+
     def create_transfer_if_absent(
         self, transfer_id: str, record: dict[str, Any]
     ) -> tuple[dict[str, Any], bool]:
@@ -39,6 +42,9 @@ class MemoryStore:
 
     def delete_label(self, user_id: str) -> bool:
         return self.labels.pop(user_id, None) is not None
+
+    def list_labels(self) -> dict[str, str]:
+        return dict(self.labels)
 
     def create_transfer_if_absent(self, transfer_id, record):
         if transfer_id in self.transfers:
@@ -73,6 +79,9 @@ class FirestoreStore:
         existed = ref.get().exists
         ref.delete()
         return existed
+
+    def list_labels(self):
+        return {d.id: d.to_dict().get("label") for d in self._db.collection("accounts").stream()}
 
     def create_transfer_if_absent(self, transfer_id, record):
         from google.api_core.exceptions import AlreadyExists

@@ -33,6 +33,9 @@ class StubBank:
     def has_account(self, *, label: str) -> bool:
         return not self.labels or label in self.labels
 
+    def holder_name(self, *, label: str) -> str:
+        return _name(label)
+
     def create_transfer(
         self,
         *,
