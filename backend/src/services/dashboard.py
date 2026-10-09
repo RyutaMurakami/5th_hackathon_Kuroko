@@ -31,6 +31,7 @@ from src.models.dashboard import (
     UploadKind,
 )
 from src.models.event import Event, EventStatus, Receipt
+from src.services.scenario_hint import hint_for
 from src.services.vocab import REQUEST_TAGS, only_vocab
 
 Chat = Callable[[str, str], Awaitable[str]]  # (会話の鍵, 発言) → 返答
@@ -113,6 +114,7 @@ class DashboardService:
             "uploads": [u.model_dump(mode="json") for u in self._store.list_uploads(event_id)],
             "messages": [m.model_dump(mode="json") for m in self._store.list_messages(event_id)],
             "waiting_for": waiting_for(e, people),
+            "hint": hint_for(e, people, has_receipt=self._store.get_receipt(event_id) is not None),
         }  # fmt: skip
 
     # ------------------------------------------------------------ チャット

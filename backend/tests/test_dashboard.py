@@ -12,7 +12,12 @@ from src.models.dashboard import Actor, Role, UploadKind
 from src.models.event import EventStatus
 from src.routers import dashboard as router
 from src.services import dashboard_auth
-from src.services.dashboard import DashboardError, DashboardService
+from src.services.dashboard import (
+    DashboardError,
+    DashboardService,
+    validate_plan,
+    validate_reservation,
+)
 from tests.sample_company import demo_participants
 from tests.test_tasks import _token
 
@@ -440,3 +445,55 @@ async def test_http_round_trip_chat_then_detail_and_error_codes(client, http):
         f"/api/dashboard/events/{eid}/confirm-plan", json={"plan": {}}, headers=h
     )
     assert (res.status_code, res.json()["detail"]) == (400, "invalid_plan")
+
+
+# ---------------- 進行ヒント ----------------
+async def test_every_status_has_a_hint_that_only_guides_and_never_acts():
+    svc, store, *_ = make()
+    eid = await new_event(svc)
+    seen = {}
+    for status in EventStatus:
+        store.save_event(store.get_event(eid).model_copy(update={"status": status}))
+        h = svc.get_event(ORG, eid)["hint"]
+        assert (
+            h["total"] == 9
+            and 1 <= h["step"] <= 9
+            and h["where"] in ("web", "slack", "bank", "system")
+        )
+        assert h["title"] and h["do"]
+        seen[status] = h
+    assert (
+        seen[EventStatus.PLANNING]["where"] == "web"
+        and "chat" in seen[EventStatus.PLANNING]["example"]
+    )
+    # Slack・銀行で人が行う段階は、そこで行うことを示すだけ（Web の操作として案内しない）
+    assert (
+        seen[EventStatus.APPROVAL]["where"] == "slack"
+        and seen[EventStatus.PAYMENT]["where"] == "bank"
+    )
+    steps = [seen[s]["step"] for s in EventStatus]
+    assert steps == sorted(steps)  # 段階が進むほど番号が進む
+
+
+async def test_the_planning_example_passes_the_same_plan_validation():
+    svc, *_ = make()
+    eid = await new_event(svc)
+    plan = svc.get_event(ORG, eid)["hint"]["example"]["plan"]
+    validate_plan({**plan, "datetime": "2026-10-23T19:00:00+09:00"})  # 例のまま確定できる
+
+
+async def test_the_reservation_and_receipt_examples_are_valid_values():
+    svc, store, *_ = make()
+    eid = await new_event(svc)
+    store.save_event(store.get_event(eid).model_copy(update={"status": EventStatus.BOOKED}))
+    validate_reservation(svc.get_event(ORG, eid)["hint"]["example"]["reservation"])
+    store.save_event(store.get_event(eid).model_copy(update={"status": EventStatus.RECEIPT}))
+    amount = svc.get_event(ORG, eid)["hint"]["example"]["receipt"]["total_amount_yen"]
+    svc.confirm_extraction(ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": amount}, "extracted")
+    assert svc.get_event(ORG, eid)["hint"]["example"]["confirmed"] is True
+
+
+async def test_me_returns_only_the_role(client, http):
+    h = {"Authorization": _token(DASH_SA), "X-Firebase-Token": "t"}
+    res = await client.get("/api/dashboard/me", headers=h)
+    assert res.json() == {"role": "guest"}

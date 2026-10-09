@@ -59,6 +59,12 @@ class VenueIn(BaseModel):
     name: str
 
 
+@router.get("/me")
+def me(actor: Who) -> dict[str, str]:
+    """利用者の役割（幹事／ゲスト）。画面の出し分けに使う（権限の強制は各操作の側）。"""
+    return {"role": actor.role.value}
+
+
 @router.get("/events")
 def list_events(actor: Who, s: Svc) -> list[dict[str, Any]]:
     return s.list_events(actor)
