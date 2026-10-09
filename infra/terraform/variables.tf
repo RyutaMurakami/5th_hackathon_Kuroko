@@ -38,6 +38,12 @@ variable "kuroko_agent_engine" {
   default     = ""
 }
 
+variable "agent_kuroko_principal" {
+  type        = string
+  description = "kuroko-api の /mcp を呼べる agent-kuroko の身元（Agent Gateway 経由の ID トークンの email か sub）。デプロイ後の V1 の確認で決める（TASKS B21）。空のあいだ、/mcp はすべて拒否する"
+  default     = ""
+}
+
 variable "scheduler_paused" {
   type        = bool
   description = "Cloud Scheduler のジョブを止めておくか。呼び先のルート（TASKS B17）ができるまで true にする"

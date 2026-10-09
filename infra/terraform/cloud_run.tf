@@ -55,6 +55,8 @@ locals {
         # /tasks/internal/*（請求の作成・入金の確認）を受け付ける呼び出し元（自分自身）
         API_SERVICE_ACCOUNT = local.sa["sa-api"]
         KUROKO_AGENT_ENGINE = var.kuroko_agent_engine
+        # /mcp（エージェント用のツール）を呼べる身元。空のあいだは全て拒否（TASKS B21）
+        AGENT_KUROKO_PRINCIPAL = var.agent_kuroko_principal
       })
       invokers = ["sa-gateway", "sa-api", "sa-dashboard", "sa-scheduler", "sa-demo-runner"]
     }

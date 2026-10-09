@@ -426,6 +426,7 @@ sequenceDiagram
 エージェントが呼ぶツールの窓口。**`kuroko-api` と `payment-api` が、自分自身で MCP サーバーを兼ねて Cloud Run にデプロイされる**（D11）。別の MCP サーバー用のサービスは作らない。
 
 - **実装**: FastAPI のアプリに、Python の MCP SDK（FastMCP など）の Streamable HTTP のアプリを `/mcp` として載せる。ツールは、SPEC 4章で「LLM可」としたものだけを `routers/mcp.py` に書き、中身は `services/` を呼ぶだけにする（Slack・KMS・外部APIのキーには、ツールの呼び出し元であるエージェントは触れない）。
+- **公開しているツール（2026-10-09。`backend/mcp_toolspec.json` に一覧）**: `get_event_summary`・`check_budget`・`search_venues` の3つ（B21）。引数はイベントの識別子（と料金）だけで、人数・予算・食べられないもの・最寄り駅・幹事の条件は、API が保存済みのデータから取る（LLM に条件をすり替えさせない）。`/mcp` の呼び出し元は、`AGENT_KUROKO_PRINCIPAL`（Agent Gateway 経由の `agent-kuroko` の ID トークンの email か sub）と一致するものだけで、未設定のあいだは全て拒否する（V1 の確認後に設定）。
 - **記憶のツールは MCP に出さない。**読み取りは統括エージェントにアタッチした `load_memory`（4.2節）、書き込み（`save_memory`）は `kuroko-api` のコードだけ（3章のテストで固定する）。
 - **公開するのは「LLM可」だけ**。`llm_must_not` に当たる処理と、SPEC 4章で「コード / コードのみ」とした処理は、MCP ツールに書かない（3章のテストで固定する）。
 - **`/mcp` の呼び出し元の検査**: `/mcp` は、Agent Gateway 経由で来た**該当エージェントの identity だけ**を受け付ける（`kuroko-api` は `agent-kuroko`、`payment-api` は `agent-payment`）。他のルートは、エージェントの identity を一切受け付けない（6章）。Cloud Run の IAM はサービス単位なので、エージェントの identity を invoker にしても、ルートごとの絞り込みはこのアプリ層で行う（D3）。
