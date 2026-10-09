@@ -49,6 +49,9 @@ def snapshot_from_rules(
             "mandate_valid_days_after_event": rules["payment"]["payer_mandate"][
                 "expires_after_event_days"
             ],
+            "venue_max_travel_minutes": event["venue_access"]["max_travel_minutes"],
+            "venue_relax_step_minutes": event["venue_access"]["relax_step_minutes"],
+            "venue_relax_limit_minutes": event["venue_access"]["relax_limit_minutes"],
         }
     )
 

@@ -13,6 +13,17 @@ API_SA = "sa-api@test.iam.gserviceaccount.com"
 PATHS = ["/tasks/internal/checkouts", "/tasks/internal/collections"]
 
 
+SCHEDULER_SA = "sa-scheduler@test.iam.gserviceaccount.com"
+
+
+class FakeRetro:
+    async def collect_feedback(self, event_id):
+        return {"started": True, "invited": 9}
+
+    async def tick(self):
+        return {"started": 1, "reminded": 0, "closed": 0}
+
+
 class FakeBilling:
     async def create_checkouts(self, event_id):
         if event_id == "nope":
@@ -30,6 +41,8 @@ class FakeBilling:
 @pytest.fixture(autouse=True)
 def billing(monkeypatch):
     monkeypatch.setenv("API_SERVICE_ACCOUNT", API_SA)
+    monkeypatch.setenv("SCHEDULER_SERVICE_ACCOUNT", SCHEDULER_SA)
+    monkeypatch.setattr(tasks, "get_retro", lambda: FakeRetro())
     get_settings.cache_clear()
     monkeypatch.setattr(tasks, "get_billing", lambda: FakeBilling())
 
@@ -82,3 +95,32 @@ async def test_internal_tasks_are_disabled_when_the_service_account_is_not_confi
         "/tasks/internal/checkouts", json={"event_id": "ev1"}, headers={"Authorization": _token("")}
     )
     assert res.status_code == 403
+
+
+async def test_feedback_requests_are_internal_only(client):
+    ok = await client.post(
+        "/tasks/internal/feedback-requests",
+        json={"event_id": "ev1"},
+        headers={"Authorization": _token(API_SA)},
+    )
+    assert ok.json() == {"started": True, "invited": 9}
+    for who in (GATEWAY_SA, SCHEDULER_SA, "attacker@example.com"):
+        res = await client.post(
+            "/tasks/internal/feedback-requests",
+            json={"event_id": "ev1"},
+            headers={"Authorization": _token(who)},
+        )
+        assert res.status_code == 403
+
+
+async def test_the_daily_retrospective_job_accepts_only_the_scheduler(client):
+    ok = await client.post(
+        "/tasks/scheduled/retrospectives", headers={"Authorization": _token(SCHEDULER_SA)}
+    )
+    assert ok.json() == {"started": 1, "reminded": 0, "closed": 0}  # 件数だけ。個人は含まない
+    for who in (API_SA, GATEWAY_SA, "attacker@example.com"):
+        res = await client.post(
+            "/tasks/scheduled/retrospectives", headers={"Authorization": _token(who)}
+        )
+        assert res.status_code == 403
+    assert (await client.post("/tasks/scheduled/retrospectives")).status_code == 403

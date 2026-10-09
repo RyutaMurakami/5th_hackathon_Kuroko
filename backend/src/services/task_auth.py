@@ -35,3 +35,10 @@ def require_self(authorization: str | None = Header(default=None)) -> None:
     expected = get_settings().api_service_account
     if not expected or caller_email(authorization) != expected:
         raise HTTPException(status_code=403, detail="forbidden")
+
+
+def require_scheduler(authorization: str | None = Header(default=None)) -> None:
+    """`/tasks/scheduled/*` は sa-scheduler（Cloud Scheduler）だけを受け付ける。"""
+    expected = get_settings().scheduler_service_account
+    if not expected or caller_email(authorization) != expected:
+        raise HTTPException(status_code=403, detail="forbidden")

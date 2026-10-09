@@ -38,9 +38,21 @@ class Settings(BaseSettings):
     bank_adapter_url: str = ""
     # /tasks/internal/* が受け付ける呼び出し元（kuroko-api 自身。sa-api）
     api_service_account: str = ""
+    # /tasks/scheduled/* が受け付ける呼び出し元（sa-scheduler。Cloud Scheduler）
+    scheduler_service_account: str = ""
     # 請求（Checkout）の署名鍵（Cloud KMS `claim-signing` の鍵バージョン。ES256）
     kms_claim_key_version: str = ""
     checkout_ttl_seconds: int = 3 * 24 * 3600
+
+    # --- 外部 API のキー（Secret Manager から環境変数で渡る。TASKS B18）---
+    ekispert_api_key: str = ""
+    maps_api_key: str = ""
+
+    # --- MCP（エージェント用のツールの入口。TASKS B21）---
+    # `/mcp` を呼べるエージェントの身元（Agent Gateway 経由の agent-kuroko の ID トークンの
+    # email/sub）。
+    # 空のあいだは、すべて拒否する（fail closed。V1 の確認後に設定する）
+    agent_kuroko_principal: str = ""
 
     # --- 統括エージェント（Agent Runtime。TASKS B22）---
     # 空のあいだは仮のエージェント（下）で返す。値は「projects/<番号>/locations/<リージョン>/

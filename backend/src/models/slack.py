@@ -15,6 +15,7 @@ class Action(StrEnum):
     REVOKE = "revoke"  # 委任の取り消し（振込依頼の前まで）
     APPROVE = "approve"  # 按分の承認（承認者）
     BUDGET = "budget"  # 予算超過の最終確認（承認者）
+    RATE = "rate"  # 振り返りの満足度（1〜5。1タップ）
 
 
 class SlackInteraction(BaseModel):

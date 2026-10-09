@@ -152,6 +152,31 @@ def budget_request(
     return text, blocks
 
 
+def feedback_request(
+    event: Event, participant: Participant, *, slack_user_id: str, reminder: bool = False
+) -> tuple[str, Blocks]:
+    """振り返りの依頼（SPEC 7.4）。必須は満足度の1タップだけ。コメントは DM への返信で任意。"""
+    title = event.title or "飲み会"
+    lead = "（リマインドです）" if reminder else ""
+    text = f"{lead}「{title}」はいかがでしたか"
+    base = {"k": "rate", "e": event.event_id, "u": participant.user_id, "s": slack_user_id}
+    blocks: Blocks = [
+        _section(f"{lead}*{title}* はいかがでしたか？ 総合の満足度を、1タップで教えてください。"),
+        {
+            "type": "actions",
+            "elements": [
+                _button(f"{n}", Action.RATE, base | {"r": n}, "primary" if n >= 4 else None)
+                for n in range(1, 6)
+            ],
+        },
+        _section(
+            "1（残念）〜 5（とても良かった）。*個人ごとの回答・コメントは、幹事にも見えません。*"
+            "集計だけが次回の店選びに使われ、コメントの原文は保存されません。"
+        ),
+    ]
+    return text, blocks
+
+
 def resolved(text: str) -> Blocks:
     """ボタンを消して、結果だけを残す（押したあとのメッセージの置き換え）。"""
     return [_section(text)]

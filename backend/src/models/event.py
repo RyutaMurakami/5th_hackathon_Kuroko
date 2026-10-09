@@ -6,10 +6,11 @@
 import datetime as dt
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from src.models.policy import PolicySnapshot
 from src.models.split import BudgetEscalation
+from src.services.vocab import DIETARY, REQUEST_TAGS, only_vocab
 
 
 class EventStatus(StrEnum):
@@ -40,6 +41,22 @@ class RsvpStatus(StrEnum):
     DECLINING = "declining"
 
 
+class Preferences(BaseModel):
+    """参加者の好み（SPEC 3章）。隔離抽出を通した固定の語彙だけ。完了時に削除する（9.6節）。"""
+
+    nearest_station_code: str | None = None  # `verify_station` で一意に決めた駅コード
+    dietary_must: list[str] = []  # 食べられないもの（ハード制約）
+    dietary_avoid: list[str] = []  # 苦手なもの（ソフト制約）
+    request_tags: list[str] = []  # 店の希望（ソフト制約）
+
+    @model_validator(mode="after")
+    def _only_vocabulary(self) -> "Preferences":
+        self.dietary_must = only_vocab(self.dietary_must, DIETARY)
+        self.dietary_avoid = only_vocab(self.dietary_avoid, DIETARY)
+        self.request_tags = only_vocab(self.request_tags, REQUEST_TAGS)
+        return self
+
+
 class Participant(BaseModel):
     user_id: str = Field(min_length=1)
     display_name: str = ""
@@ -54,6 +71,7 @@ class Participant(BaseModel):
     rsvp_status: RsvpStatus = RsvpStatus.PENDING
     # 委任状（payment-api が署名）。幹事・主役は持たない
     mandate_id: str | None = None
+    preferences: Preferences = Preferences()
     # Slack 上の本人（承認者の本人確認に使う。署名検証済みの Slack 操作の ID と突き合わせる）
     slack_user_id: str | None = None
     # 幹事の口座に、この人の負担額の入金を確認した時刻（`confirm_incoming_payments`。SPEC 8.6）。
@@ -71,8 +89,11 @@ class Event(BaseModel):
     # （SPEC 7.3）
     organizer_web_uid: str = ""
     guests_of_honor: list[str] = []
+    # 幹事が計画で決めた店の条件（例: 個室が必須）。幹事が確認した値だけ（LLM・希望ではない）
+    plan_required_tags: list[str] = []
     status: EventStatus = EventStatus.PLANNING
     total_amount_yen: int | None = Field(default=None, gt=0)
+    completed_at: dt.datetime | None = None  # 送金完了・経費記録済みになった時刻（振り返りの起点）
     policy_id: str = ""
     policy_version: str = ""
     # 企画時に規程から取り出し、コードで検証した値（SPEC 9.7）。以後の計算はこの写しだけを使う

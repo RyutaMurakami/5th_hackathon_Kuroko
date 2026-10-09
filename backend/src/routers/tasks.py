@@ -4,9 +4,9 @@ from pydantic import BaseModel
 from src.models.schemas import SlackDirectMessage
 from src.models.slack import SlackHomeOpened, SlackInteraction
 from src.services.billing import UnknownEvent
-from src.services.container import get_billing, get_slack_actions
+from src.services.container import get_billing, get_retro, get_slack_actions
 from src.services.slack_conversation import handle_direct_message
-from src.services.task_auth import require_gateway, require_self
+from src.services.task_auth import require_gateway, require_scheduler, require_self
 
 router = APIRouter(prefix="/tasks")
 
@@ -80,3 +80,15 @@ async def approval_requests(ref: EventRef) -> dict:
 async def budget_requests(ref: EventRef) -> dict:
     """幹事が続行を確認した予算超過について、承認者に最終確認を求める。"""
     return await get_slack_actions().request_budget_confirmation(ref.event_id)
+
+
+@router.post("/internal/feedback-requests", dependencies=[Depends(require_self)])
+async def feedback_requests(ref: EventRef) -> dict:
+    """振り返りの依頼を、出席者の DM に送る（完了の翌日。通常は Scheduler 経由）。"""
+    return await get_retro().collect_feedback(ref.event_id)
+
+
+@router.post("/scheduled/retrospectives", dependencies=[Depends(require_scheduler)])
+async def scheduled_retrospectives() -> dict[str, int]:
+    """1日1回: 完了の翌日の依頼・2日後のリマインド（1回だけ）・3日後の締切。件数だけを返す。"""
+    return await get_retro().tick()

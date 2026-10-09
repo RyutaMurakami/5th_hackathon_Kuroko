@@ -62,6 +62,17 @@ class _SlackClientPort:
 
 
 @lru_cache
+def get_retro():
+    from src.services.feedback_extract import KeywordFeedbackExtractor
+    from src.services.retrospective import Retrospectives
+
+    # コメントの語彙化は、いまはキーワードの仮実装。extract-agent（B26）ができたら差し替える
+    return Retrospectives(
+        store=get_event_store(), slack=_SlackClientPort(), extractor=KeywordFeedbackExtractor()
+    )
+
+
+@lru_cache
 def get_slack_actions():
     from src.clients.cloud_tasks import enqueue_kuroko_api
     from src.db.mandates import FirestoreMandateReader, MemoryMandateReader
@@ -78,4 +89,19 @@ def get_slack_actions():
         slack=_SlackClientPort(),
         enqueue_self=enqueue_kuroko_api,
         mandates=mandates,
+        retro=get_retro(),
+    )
+
+
+@lru_cache
+def get_venue_search():
+    from src.clients.ekispert import EkispertClient
+    from src.clients.maps import MapsClient
+    from src.services.venue_search import VenueSearch
+
+    s = get_settings()
+    return VenueSearch(
+        store=get_event_store(),
+        stations=EkispertClient(api_key=s.ekispert_api_key),
+        maps=MapsClient(api_key=s.maps_api_key),
     )

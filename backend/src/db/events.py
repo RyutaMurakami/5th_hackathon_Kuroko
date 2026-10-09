@@ -11,6 +11,7 @@
 from typing import Protocol
 
 from src.models.event import Event, Participant, Receipt
+from src.models.feedback import Feedback, Retrospective
 from src.models.split import Approval, ApprovalStatus, SplitResult
 
 
@@ -22,6 +23,23 @@ class EventStore(Protocol):
     def save_participant(self, event_id: str, participant: Participant) -> None: ...
 
     def list_participants(self, event_id: str) -> list[Participant]: ...
+
+    def list_events_by_status(self, status: str) -> list[Event]: ...
+
+    def save_feedback(self, feedback: Feedback) -> None: ...
+
+    def get_feedback(self, event_id: str, user_id: str) -> Feedback | None: ...
+
+    def list_feedbacks(self, event_id: str) -> list[Feedback]: ...
+
+    def find_open_comment(self, slack_user_id: str) -> Feedback | None:
+        """この Slack ユーザーの、コメントを受け付け中の振り返り（いちばん新しいもの）。"""
+
+    def save_retro(self, retro: Retrospective) -> None: ...
+
+    def get_retro(self, event_id: str) -> Retrospective | None: ...
+
+    def list_retros_by_status(self, status: str) -> list[Retrospective]: ...
 
     def find_by_slack_user(self, slack_user_id: str) -> list[tuple[Event, Participant]]:
         """この Slack ユーザーが参加者として載っているイベント（App Home の表示用）。"""
@@ -53,6 +71,8 @@ class MemoryEventStore:
         self.events: dict[str, Event] = {}
         self.participants: dict[str, dict[str, Participant]] = {}
         self.receipts: dict[str, Receipt] = {}
+        self.feedbacks: dict[tuple[str, str], Feedback] = {}
+        self.retros: dict[str, Retrospective] = {}
         self.splits: dict[str, SplitResult] = {}
         self.approvals: dict[str, Approval] = {}
 
@@ -69,6 +89,39 @@ class MemoryEventStore:
     def list_participants(self, event_id: str) -> list[Participant]:
         rows = self.participants.get(event_id, {})
         return [rows[k].model_copy() for k in sorted(rows)]
+
+    def list_events_by_status(self, status):
+        return [e.model_copy(deep=True) for e in self.events.values() if e.status.value == status]
+
+    def save_feedback(self, feedback):
+        self.feedbacks[(feedback.event_id, feedback.user_id)] = feedback.model_copy(deep=True)
+
+    def get_feedback(self, event_id, user_id):
+        f = self.feedbacks.get((event_id, user_id))
+        return f.model_copy(deep=True) if f else None
+
+    def list_feedbacks(self, event_id):
+        return [
+            f.model_copy(deep=True) for (e, _), f in sorted(self.feedbacks.items()) if e == event_id
+        ]
+
+    def find_open_comment(self, slack_user_id):
+        mine = []
+        for (event_id, user_id), f in self.feedbacks.items():
+            p = self.participants.get(event_id, {}).get(user_id)
+            if f.comment_open and p and p.slack_user_id == slack_user_id:
+                mine.append(f)
+        return max(mine, key=lambda f: f.submitted_at).model_copy(deep=True) if mine else None
+
+    def save_retro(self, retro):
+        self.retros[retro.event_id] = retro.model_copy(deep=True)
+
+    def get_retro(self, event_id):
+        r = self.retros.get(event_id)
+        return r.model_copy(deep=True) if r else None
+
+    def list_retros_by_status(self, status):
+        return [r.model_copy(deep=True) for r in self.retros.values() if r.status.value == status]
 
     def find_by_slack_user(self, slack_user_id):
         found = []
@@ -127,6 +180,44 @@ class FirestoreEventStore:
         return sorted(
             (Participant.model_validate(d.to_dict()) for d in docs), key=lambda p: p.user_id
         )
+
+    def list_events_by_status(self, status):
+        docs = self._db.collection("events").where("status", "==", status).stream()
+        return [Event.model_validate(d.to_dict()) for d in docs]
+
+    def save_feedback(self, feedback):
+        self._event(feedback.event_id).collection("feedbacks").document(feedback.user_id).set(
+            feedback.model_dump(mode="json")
+        )
+
+    def get_feedback(self, event_id, user_id):
+        snap = self._event(event_id).collection("feedbacks").document(user_id).get()
+        return Feedback.model_validate(snap.to_dict()) if snap.exists else None
+
+    def list_feedbacks(self, event_id):
+        docs = self._event(event_id).collection("feedbacks").stream()
+        return sorted((Feedback.model_validate(d.to_dict()) for d in docs), key=lambda f: f.user_id)
+
+    def find_open_comment(self, slack_user_id):
+        mine = []
+        for event, p in self.find_by_slack_user(slack_user_id):
+            f = self.get_feedback(event.event_id, p.user_id)
+            if f is not None and f.comment_open:
+                mine.append(f)
+        return max(mine, key=lambda f: f.submitted_at) if mine else None
+
+    def save_retro(self, retro):
+        self._event(retro.event_id).collection("retros").document("current").set(
+            retro.model_dump(mode="json")
+        )
+
+    def get_retro(self, event_id):
+        snap = self._event(event_id).collection("retros").document("current").get()
+        return Retrospective.model_validate(snap.to_dict()) if snap.exists else None
+
+    def list_retros_by_status(self, status):
+        docs = self._db.collection_group("retros").where("status", "==", status).stream()
+        return [Retrospective.model_validate(d.to_dict()) for d in docs]
 
     def find_by_slack_user(self, slack_user_id):
         found = []

@@ -9,7 +9,7 @@
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 from src.db.events import ApprovedSplitIsFinal, EventStore
 from src.db.mandates import MandateReader
@@ -20,19 +20,15 @@ from src.services import slack_messages as msg
 from src.services.approver import determine_approver
 from src.services.members import SplitInputError, classify_member
 from src.services.policy_gates import load_and_check_before_split
+from src.services.slack_port import SlackPort
 from src.services.split import calculate_split
+
+if TYPE_CHECKING:
+    from src.services.retrospective import Retrospectives
 
 logger = logging.getLogger(__name__)
 
 FINISHED = {"approval", "payment", "completed", "retro", "closed"}
-
-
-class SlackPort(Protocol):
-    async def post_dm(self, slack_user_id: str, text: str, blocks: list[dict]) -> None: ...
-
-    async def respond(self, response_url: str, text: str, blocks: list[dict]) -> None: ...
-
-    async def publish_home(self, slack_user_id: str, view: dict) -> None: ...
 
 
 Enqueue = Callable[[str, dict, str], Awaitable[None]]  # (path, payload, task_id)
@@ -46,8 +42,10 @@ class SlackActions:
         slack: SlackPort,
         enqueue_self: Enqueue,
         mandates: MandateReader,
+        retro: "Retrospectives | None" = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
+        self._retro = retro
         self._store, self._slack, self._enqueue = store, slack, enqueue_self
         self._mandates, self._now = mandates, now
 
@@ -59,6 +57,7 @@ class SlackActions:
             Action.REVOKE: self._revoke,
             Action.APPROVE: self._approve,
             Action.BUDGET: self._budget,
+            Action.RATE: self._rate,
         }[i.action]
         await handler(i)
 
@@ -152,6 +151,28 @@ class SlackActions:
             f"checkout-{event_id}-{split.hash[:16]}",
         )
         await self._reply(i, "按分を承認しました。請求を作成し、各自の支払いを開始します。")
+
+    async def _rate(self, i: SlackInteraction) -> None:
+        """振り返りの満足度（1タップ）。記録上の本人だけ。1人1回。"""
+        from src.services.retrospective import THANKS
+
+        if self._retro is None:
+            return await self._reply(i, "いまは振り返りを受け付けていません。")
+        try:
+            rating = int(i.value["r"])
+        except (KeyError, TypeError, ValueError):
+            return await self._reply(i, "この操作はできません。")
+        result = self._retro.record_rating(
+            str(i.value.get("e", "")), str(i.value.get("u", "")), i.user_id, rating
+        )
+        await self._reply(
+            i,
+            {
+                "recorded": THANKS,
+                "duplicate": "すでに回答いただいています。ありがとうございました。",
+                "closed": "この振り返りは、すでに締め切りました。",
+            }.get(result, "この操作はできません。"),
+        )
 
     async def _budget(self, i: SlackInteraction) -> None:
         event = self._store.get_event(str(i.value.get("e", "")))

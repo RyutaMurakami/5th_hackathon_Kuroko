@@ -19,6 +19,7 @@ FIELDS = ",".join(
     for f in (
         "id",
         "displayName",
+        "types",
         "formattedAddress",
         "rating",
         "userRatingCount",
@@ -48,6 +49,7 @@ class Venue:
     price_min_yen: int | None  # 1人あたりの目安（Google の推定。取れない店もある）
     price_max_yen: int | None
     maps_uri: str | None
+    types: tuple[str, ...] = ()  # Google の店の種類（例: japanese_restaurant）
     # 口コミ本文（**外部入力。原文のままエージェントに渡さない**。隔離抽出を通す）
     review_snippets: tuple[str, ...] = field(default=(), repr=False)
 
@@ -76,6 +78,7 @@ def parse_venues(result: dict[str, Any]) -> list[Venue]:
                 price_min_yen=_money(price.get("startPrice")),
                 price_max_yen=_money(price.get("endPrice")),
                 maps_uri=p.get("googleMapsUri"),
+                types=tuple(p.get("types") or ()),
                 review_snippets=tuple(
                     t for r in p.get("reviews") or [] if (t := (r.get("text") or {}).get("text"))
                 ),
