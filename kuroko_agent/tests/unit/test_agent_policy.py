@@ -1,5 +1,6 @@
 """統括エージェントの構造の検査（LLM を呼ばない）。LLM の応答は eval で見る（tests/eval）。"""
 
+import json
 import re
 from pathlib import Path
 
@@ -43,9 +44,25 @@ def test_listed_tool_passes(monkeypatch):
     assert callbacks.before_tool_callback(FakeTool("search_venues"), {}, None) is None
 
 
-def test_agent_has_the_callback_and_no_unexpected_tools():
+def test_agent_has_the_callback_and_only_the_mcp_toolset():
     assert root_agent.before_tool_callback is callbacks.before_tool_callback
-    assert root_agent.tools == []  # /mcp のツールセットは B21 で足す
+    assert root_agent.tools == []  # KUROKO_MCP_URL が無いローカルでは、ツールなし
+
+
+def test_toolset_is_built_only_with_a_url_and_filtered_to_the_allowlist(monkeypatch):
+    from app.tools import build_tools
+
+    monkeypatch.delenv("KUROKO_MCP_URL", raising=False)
+    assert build_tools() == []
+    monkeypatch.setenv("KUROKO_MCP_URL", "https://kuroko-api.example/mcp/")
+    (toolset,) = build_tools()
+    assert sorted(toolset.tool_filter) == sorted(callbacks.ALLOWED_TOOLS)
+
+
+def test_allowlist_matches_the_tools_the_api_actually_exposes():
+    """backend/mcp_toolspec.json（/mcp の実際のツール）と一致する。ずれたら、どちらかを直す。"""
+    spec = json.loads((APP_DIR.parent.parent / "backend" / "mcp_toolspec.json").read_text())
+    assert {t["name"] for t in spec["tools"]} == set(callbacks.ALLOWED_TOOLS)
 
 
 def test_agent_code_has_no_memory_write_or_secret_access():

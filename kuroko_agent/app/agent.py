@@ -11,6 +11,7 @@ from google.adk.models import Gemini
 from google.genai import types
 
 from app.callbacks import before_tool_callback
+from app.tools import build_tools
 
 MODEL = "gemini-3.8-flash"
 
@@ -57,8 +58,8 @@ root_agent = Agent(
     ),
     description="飲み会の幹事を代行する統括エージェント（ツールは自分専用の MCP だけ）",
     instruction=INSTRUCTION,
-    # `kuroko-api` の /mcp の McpToolset は B21 でここに足す。それまではツールなし
-    tools=[],
+    # `kuroko-api` の /mcp の MCP ツールセットだけ（KUROKO_MCP_URL があるときだけ接続する）
+    tools=build_tools(),
     before_tool_callback=before_tool_callback,
 )
 
