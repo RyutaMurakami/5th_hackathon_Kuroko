@@ -26,6 +26,13 @@ class Store(Protocol):
 
     def update_payment(self, payment_id: str, fields: dict[str, Any]) -> dict[str, Any]: ...
 
+    def update_mandate_if_exists(self, event_id: str, user_id: str, status: str) -> None: ...
+
+    def list_payments_by_status(self, status: str) -> list[dict[str, Any]]: ...
+
+    def claim_settlement(self, item_key: str, payment_id: str) -> bool:
+        """入金（明細の1件）を1つの支払いにだけ使う。同じ支払いの再確認は True。"""
+
     def find_open_payment(
         self, event_id: str, payer_user_id: str, exclude_payment_id: str | None = None
     ) -> dict[str, Any] | None:
@@ -40,6 +47,7 @@ class MemoryStore:
         self.mandates: dict[str, dict[str, Any]] = {}
         self.payments: dict[str, dict[str, Any]] = {}
         self.nonces: set[str] = set()
+        self.settlements: dict[str, str] = {}
 
     def put_mandate(self, mandate_id, record):
         self.mandates[mandate_id] = deepcopy(record)
@@ -71,6 +79,17 @@ class MemoryStore:
     def update_payment(self, payment_id, fields):
         self.payments[payment_id].update(fields)
         return deepcopy(self.payments[payment_id])
+
+    def update_mandate_if_exists(self, event_id, user_id, status):
+        key = f"{event_id}:{user_id}"
+        if key in self.mandates:
+            self.mandates[key]["status"] = status
+
+    def list_payments_by_status(self, status):
+        return [deepcopy(r) for r in self.payments.values() if r["status"] == status]
+
+    def claim_settlement(self, item_key, payment_id):
+        return self.settlements.setdefault(item_key, payment_id) == payment_id
 
     def find_open_payment(self, event_id, payer_user_id, exclude_payment_id=None):
         for rec in self.payments.values():
@@ -130,6 +149,25 @@ class FirestoreStore:
         ref = self._db.collection("payments").document(payment_id)
         ref.update(fields)
         return ref.get().to_dict()
+
+    def update_mandate_if_exists(self, event_id, user_id, status):
+        ref = self._db.collection("mandates").document(f"{event_id}:{user_id}")
+        if ref.get().exists:
+            ref.update({"status": status})
+
+    def list_payments_by_status(self, status):
+        q = self._db.collection("payments").where("status", "==", status)
+        return [d.to_dict() for d in q.stream()]
+
+    def claim_settlement(self, item_key, payment_id):
+        from google.api_core.exceptions import AlreadyExists
+
+        ref = self._db.collection("settlements").document(item_key)
+        try:
+            ref.create({"payment_id": payment_id})
+        except AlreadyExists:
+            return ref.get().to_dict().get("payment_id") == payment_id
+        return True
 
     def find_open_payment(self, event_id, payer_user_id, exclude_payment_id=None):
         q = (

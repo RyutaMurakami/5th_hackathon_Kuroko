@@ -34,8 +34,10 @@ def token(email: str, aud: str = URL, verified: bool = True) -> dict[str, str]:
     return {"Authorization": f"Bearer {b64({'alg': 'none'})}.{b64(claims)}."}
 
 
+SCHEDULER_SA = "sa-scheduler@kuroko.iam.gserviceaccount.com"
 GATEWAY = token(GATEWAY_SA)
 API = token(API_SA)
+SCHEDULER = token(SCHEDULER_SA)
 
 
 class Clock:
@@ -87,7 +89,10 @@ def env() -> Env:
 
 def make_client(env: Env) -> TestClient:
     settings = Settings(
-        payment_api_url=URL, gateway_service_account=GATEWAY_SA, api_service_account=API_SA
+        payment_api_url=URL,
+        gateway_service_account=GATEWAY_SA,
+        api_service_account=API_SA,
+        scheduler_service_account=SCHEDULER_SA,
     )
     caller_auth.get_settings = lambda: settings
     app = create_app()

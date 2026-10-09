@@ -16,11 +16,16 @@ class Settings(BaseSettings):
     signer_mode: Literal["local", "kms"] = "kms"
     kms_participant_key_version: str = ""
     kms_payment_agent_key_version: str = ""
+    # 請求側（kuroko-api）の署名鍵 `claim-signing` の公開鍵で、請求の署名を検証する（B13）
+    kms_claim_key_version: str = ""
 
     store_backend: Literal["memory", "firestore"] = "firestore"
     # stub: 銀行アダプタを呼ばない（ローカル・テスト）／ http: bank-adapter を呼ぶ
     bank_mode: Literal["stub", "http"] = "http"
     bank_adapter_url: str = ""
+
+    # 参加者への Slack DM の通知（承認の依頼・完了）。Secret Manager から環境変数で渡る
+    slack_bot_token: str = ""
 
     # 呼び出し元の検査（ARCHITECTURE 6章）。audience は自分の URL
     payment_api_url: str = ""

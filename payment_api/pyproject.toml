@@ -13,6 +13,7 @@ dependencies = [
     "pydantic-settings>=2.5",
     # AP2 の公式 SDK は PyPI 未公開。コミットは uv.lock が固定する
     "ap2 @ git+https://github.com/google-agentic-commerce/AP2.git@main",
+    "slack-sdk>=3.45.0",
 ]
 
 [dependency-groups]
