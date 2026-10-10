@@ -197,3 +197,23 @@ def test_toolset_uses_the_provider_only_when_the_invoker_sa_is_configured(monkey
     assert callable(with_provider.header_provider)
     monkeypatch.delenv("KUROKO_MCP_URL")
     assert tools.build_tools() == []  # URL が無ければ、ツールなし
+
+
+def test_the_token_audience_can_differ_from_the_registered_url(monkeypatch):
+    """Registry の登録 URL（宛先のホスト）と、kuroko-api が期待する aud の綴りは別でよい。"""
+    from app import tools
+
+    seen = {}
+    monkeypatch.setattr(
+        tools,
+        "id_token_header_provider",
+        lambda sa, aud: seen.update(sa=sa, aud=aud) or (lambda c: {}),
+    )
+    monkeypatch.setenv("KUROKO_MCP_URL", "https://kuroko-api-hash-uc.a.run.app/mcp")
+    monkeypatch.setenv("KUROKO_MCP_INVOKER_SA", "sa@p")
+    monkeypatch.setenv("KUROKO_MCP_AUDIENCE", "https://kuroko-api-123.us-central1.run.app")
+    tools.build_tools()
+    assert seen["aud"] == "https://kuroko-api-123.us-central1.run.app"
+    monkeypatch.delenv("KUROKO_MCP_AUDIENCE")
+    tools.build_tools()
+    assert seen["aud"] == "https://kuroko-api-hash-uc.a.run.app"  # 未設定なら URL のホスト

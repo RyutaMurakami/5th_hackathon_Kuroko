@@ -69,7 +69,10 @@ def build_tools() -> list:
     provider = None
     invoker = os.environ.get("KUROKO_MCP_INVOKER_SA", "").strip()
     if invoker:
-        provider = id_token_header_provider(invoker, audience_of(url))
+        # トークンの宛先（aud）は、kuroko-api が自分の URL として持っている綴り（KUROKO_API_URL）に合わせる。
+        # Cloud Run は同じサービスの複数の URL を宛先として受けるが、アプリは文字列で比べるため。
+        audience = os.environ.get("KUROKO_MCP_AUDIENCE", "").strip() or audience_of(url)
+        provider = id_token_header_provider(invoker, audience)
     else:
         # ローカルの確認用に、固定の Authorization ヘッダーを足せる
         bearer = os.environ.get("KUROKO_MCP_BEARER", "").strip()

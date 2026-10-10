@@ -15,9 +15,14 @@ OWN = "agents.global.proj-1054683553459.system.id.goog/resources/aiplatform/proj
 LINE = "mcp caller claims={'aud': '%s', 'sub': 'principal://%s'} allowed=False"
 
 
-def test_claims_are_parsed_from_the_log_line_the_api_writes():
-    c = v.parse_claims(LINE % (API, OWN))
-    assert c == {"aud": API, "sub": f"principal://{OWN}"}
+SA = "sa-agent-mcp@kuroko-509311.iam.gserviceaccount.com"
+URL = "https://kuroko-api-1054683553459.us-central1.run.app"
+LINE = "mcp caller claims={'aud': '%s', 'email': '%s'} allowed=%s"
+
+
+def test_claims_and_the_decision_are_parsed_from_the_log_line_the_api_writes():
+    assert v.parse_claims(LINE % (URL, SA, "True")) == ({"aud": URL, "email": SA}, True)
+    assert v.parse_claims(LINE % (URL, SA, "False"))[1] is False
     assert v.parse_claims("no match") is None and v.parse_claims("mcp caller claims={bad allowed=True") is None
 
 
@@ -26,19 +31,26 @@ def test_the_identity_rule_matches_the_apis_email_then_sub_order():
     assert v.identity_of({"sub": "s"}) == "s" and v.identity_of({"aud": "x"}) is None
 
 
-def test_v1_passes_only_when_the_calling_identity_is_the_agents_own_and_the_audience_is_right():
-    ok = v.judge_v1([{"aud": API, "sub": f"principal://{OWN}"}], OWN, API)
-    assert ok["ok"] and ok["principal"] == f"principal://{OWN}"
-    wrong_aud = v.judge_v1([{"aud": "https://other", "sub": f"principal://{OWN}"}], OWN, API)
-    assert not wrong_aud["ok"] and wrong_aud["reason"] == "wrong_audience"
+def test_v1_passes_only_for_the_invoker_sa_with_the_right_audience_and_when_the_api_let_it_in():
+    ok = v.judge_v1([({"aud": URL, "email": SA}, True)], SA, URL)
+    assert ok["ok"] and ok["principal"] == SA
 
 
-def test_v1_fails_when_gateway_or_another_identity_is_what_reaches_the_api():
-    other = v.judge_v1([{"aud": API, "email": "gateway@proj.iam.gserviceaccount.com"}], OWN, API)
-    assert not other["ok"] and other["reason"] == "identity_differs"
-    assert other["principal"] == "gateway@proj.iam.gserviceaccount.com"  # 何が届いたかを返す
-    none = v.judge_v1([], OWN, API)
-    assert not none["ok"] and none["reason"] == "no_call_seen"
+def test_v1_names_the_reason_when_it_fails():
+    cases = [
+        ([], "no_call_seen"),
+        ([({"aud": URL, "email": "other@x"}, True)], "identity_differs"),
+        ([({"aud": "https://kuroko-api-hash-uc.a.run.app", "email": SA}, True)], "wrong_audience"),
+        ([({"aud": URL, "email": SA}, False)], "rejected_by_api"),
+    ]
+    for seen, reason in cases:
+        j = v.judge_v1(seen, SA, URL)
+        assert not j["ok"] and j["reason"] == reason
+
+
+def test_v1_judges_the_latest_call():
+    seen = [({"aud": URL, "email": "x@y"}, False), ({"aud": URL, "email": SA}, True)]
+    assert v.judge_v1(seen, SA, URL)["ok"]  # 設定を直したあとの最新の呼び出しで判定する
 
 
 def test_v2_requires_distinct_identities_and_no_extra_roles_on_the_tool_less_agent():

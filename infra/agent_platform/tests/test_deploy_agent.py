@@ -60,6 +60,7 @@ def test_only_the_minimal_base_roles_are_granted():
 def test_only_the_kuroko_agent_gets_the_mcp_url_and_it_matches_the_registry_entry():
     assert d.AGENTS["kuroko"]["env"]["KUROKO_MCP_URL"].endswith("/mcp")  # Registry の登録と同じ綴り
     assert d.AGENTS["kuroko"]["env"]["KUROKO_MCP_INVOKER_SA"] == "sa-agent-mcp@kuroko-509311.iam.gserviceaccount.com"
+    assert d.AGENTS["kuroko"]["env"]["KUROKO_MCP_AUDIENCE"] == "https://kuroko-api-1054683553459.us-central1.run.app"
     assert d.AGENTS["extract"]["env"] == {}  # ツールなしのエージェントには渡さない（偽装の権限も無い）
 
 
