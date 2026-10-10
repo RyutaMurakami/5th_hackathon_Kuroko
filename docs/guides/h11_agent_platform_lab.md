@@ -132,7 +132,7 @@ gcloud agent-registry --help
 
 ### 手順4-2. Agent Registry に `kuroko-api` の `/mcp` を登録する（段階B）
 
-前提: 🤖 AI が `/mcp` を `kuroko-api` にデプロイし、URL（`https://kuroko-api-nbymkfmzpq-uc.a.run.app/mcp`）と `toolspec.json` を渡していること。
+前提: 🤖 AI が `/mcp` を `kuroko-api` にデプロイし、URL（`https://kuroko-api-nbymkfmzpq-uc.a.run.app/mcp/`。**末尾の `/` つき**。つけないと 307 リダイレクトになり、MCP クライアントが外れる）と `toolspec.json`（`backend/mcp_toolspec.json`）を渡していること（**2026-10-10 に準備完了**）。
 
 1. Console で **Agent Registry** を開き、**MCP servers** タブを選ぶ
 2. **Add MCP server** を押す
@@ -144,7 +144,7 @@ gcloud agent-registry --help
    | Description | `kuroko-api の /mcp（統括エージェント kuroko-agent 専用）` |
    | Region | `us-central1` |
 
-4. **Tool specification**: エンドポイント URL に `https://kuroko-api-nbymkfmzpq-uc.a.run.app/mcp`、本文に `toolspec.json` の中身を貼る
+4. **Tool specification**: エンドポイント URL に `https://kuroko-api-nbymkfmzpq-uc.a.run.app/mcp/`（末尾の `/` つき）、本文に `toolspec.json` の中身を貼る
    - 「URL からツールを取り込む」機能は、**公開されている MCP サーバーにしか使えない**。`kuroko-api` は非公開なので、必ず `toolspec.json` を貼る
    - ツールを足したときは、AI が新しい `toolspec.json` を渡すので、ここを更新する
 5. **Next** → **Select MCP tools** で全部のツールを選び、**Save**
