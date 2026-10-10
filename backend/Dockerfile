@@ -7,6 +7,9 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY src ./src
+# 規程（policies/company_rules.yaml）。リポジトリのルートにあるので、CD がビルドの前に backend/policies/ へ写す
+# （deploy.yml）。コードは、`/policies/company_rules.yaml` を読む（services/policy.py）
+COPY policies /policies
 RUN uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"

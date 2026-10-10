@@ -2,12 +2,30 @@
 
 import datetime as dt
 
-from src.models.event import Event, Participant, ParticipantRole
+from src.models.event import Event, Participant, ParticipantRole, Preferences
 
 EVENT_DATE = dt.datetime(2026, 10, 30, 19, 0)
 
 
+# 最寄り駅（駅すぱあとの `verify_station` で一意に確かめた駅コード。TASKS B18・O6）。
+# Web からイベントを作ると、この名簿が参加者になり、店の候補は、この駅から全員が行きやすい駅で探す
+STATION = {
+    "yamada": "23368",  # 横浜
+    "sasaki": "21987",  # 大宮(埼玉県)
+    "takahashi": "22741",  # 新宿
+    "ito": "22715",  # 渋谷
+    "watanabe": "22799",  # 立川
+    "nakamura": "22361",  # 千葉
+    "kobayashi": "22976",  # 町田
+    "kato": "21982",  # 浦和
+    "matsumoto": "22741",  # 新宿
+    "inoue": "22715",  # 渋谷
+}
+
+
 def person(user_id, title, hire, emp, role=ParticipantRole.PARTICIPANT, **kw) -> Participant:
+    if user_id in STATION and "preferences" not in kw:
+        kw["preferences"] = Preferences(nearest_station_code=STATION[user_id])
     return Participant(
         user_id=user_id,
         display_name=kw.pop("display_name", user_id),

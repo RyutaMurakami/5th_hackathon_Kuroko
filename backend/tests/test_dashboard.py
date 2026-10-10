@@ -557,3 +557,13 @@ async def test_event_detail_returns_the_stored_split_as_is_and_the_approval_stat
                                "approved_at": None, "split_hash": "h" * 8}  # fmt: skip
     with pytest.raises(DashboardError):
         svc.get_event(ORG2, eid)  # 他人には按分も見えない
+
+
+async def test_the_roster_has_a_verified_station_for_everyone_so_venue_search_can_run():
+    svc, store, *_ = make()
+    eid = await new_event(svc)
+    await svc.confirm_event_plan(ORG, eid, PLAN)
+    people = store.list_participants(eid)
+    codes = [p.preferences.nearest_station_code for p in people]
+    assert len(people) == 10 and all(c and c.isdigit() for c in codes)
+    assert len(set(codes)) >= 6  # 全員が同じ駅ではない（帰りやすさの計算に意味がある）

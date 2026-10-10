@@ -32,3 +32,23 @@ def test_unknown_approver_rule_or_duplicate_class_is_rejected():
     dup = base | {"member_classes": base["member_classes"] + base["member_classes"][:1]}
     with pytest.raises(ValidationError):
         type(load_snapshot()).model_validate(dup)
+
+
+def test_the_backend_image_ships_the_company_rules_where_the_code_reads_them():
+    """実機で、規程のファイルがイメージに無く、計画の確定が失敗するところだった。"""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    dockerfile = (root / "backend" / "Dockerfile").read_text()
+    assert re.search(r"^COPY policies /policies$", dockerfile, re.M)
+    # コードは、/app/src/services/policy.py から数えて `/policies/company_rules.yaml` を読む
+    from pathlib import PurePosixPath
+
+    assert PurePosixPath("/app/src/services/policy.py").parents[
+        3
+    ] / "policies" / "company_rules.yaml" == (PurePosixPath("/policies/company_rules.yaml"))
+    # CD は、ビルドの前に policies/ を backend/policies/ に写す
+    workflow = (root / ".github" / "workflows" / "deploy.yml").read_text()
+    assert "cp -r policies backend/policies" in workflow
+    assert (root / "policies" / "company_rules.yaml").exists()

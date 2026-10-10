@@ -50,3 +50,6 @@ sandbox/*
 
 # デモ用の Slack ユーザーIDの対応など、ローカルだけに置く設定（backend/scripts/seed_demo_event.py）
 *.local.json
+
+# CD がビルドの前に policies/ から写す（backend の Docker イメージに同梱）
+backend/policies/

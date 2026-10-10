@@ -116,7 +116,8 @@ def intake(result, stations):
     store = MemoryEventStore()
     store.save_event(demo_event())
     for p in demo_participants():
-        store.save_participant("ev-demo", p)
+        # 名簿には最寄り駅が入っているので、取り込みの前は「好みなし」から始める
+        store.save_participant("ev-demo", p.model_copy(update={"preferences": Preferences()}))
     return PreferenceIntake(store=store, runner=Runner(result), stations=stations), store
 
 

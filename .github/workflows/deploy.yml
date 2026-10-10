@@ -54,7 +54,6 @@ jobs:
               - 'DESIGN.md'
 
   # backend/ は1回ビルドして、kuroko-gateway と kuroko-api に同じイメージを載せる（ARCHITECTURE 10章）
-  # TODO(TASKS E2): ビルドコンテキストをリポジトリルートにして policies/ を同梱する
   backend:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
@@ -70,6 +69,8 @@ jobs:
       - name: Build and push
         run: |
           IMAGE="${REGISTRY}/backend:${GITHUB_SHA}"
+          # 規程はリポジトリのルートにある。ビルドコンテキスト（backend/）に写して、イメージに同梱する
+          rm -rf backend/policies && cp -r policies backend/policies
           docker build -t "$IMAGE" -f backend/Dockerfile backend
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
@@ -144,6 +145,7 @@ jobs:
             --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="${{ vars.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}" \
             --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="${{ vars.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}" \
             --build-arg NEXT_PUBLIC_FIREBASE_APP_ID="${{ vars.NEXT_PUBLIC_FIREBASE_APP_ID }}" \
+            --build-arg NEXT_PUBLIC_DATA_SOURCE="api" \
             frontend
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
