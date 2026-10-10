@@ -73,8 +73,8 @@ Gateway・Registry の設定（下の 1〜6）を待たず、`kuroko-agent` だ�
 
 ## 4. Agent Registry に MCP を登録する（🖱 Console。**待ち: AI が `kuroko-api` の `/mcp` をデプロイしてから**）
 
-- [ ] **4-1. `kuroko-api-mcp` を登録する** — [H11 手順書](h11_agent_platform_lab.md) の 4-2
-  - AI からもらうもの: `/mcp` の URL（`https://kuroko-api-…run.app/mcp/`。**末尾の `/` つき**）と、**`backend/mcp_toolspec.json`**（ツールは `get_event_summary`・`check_budget`・`search_venues` の3つ。2026-10-09 に AI が用意済み。ツールが増えたら AI が再生成する）
+- [x] **4-1. `kuroko-api-mcp` を登録する**（2026-10-10 完了） — [H11 手順書](h11_agent_platform_lab.md) の 4-2
+  - AI からもらうもの: `/mcp` の URL（`https://kuroko-api-…run.app/mcp`。末尾の `/` は有っても無くてもよい）と、**`backend/mcp_toolspec.json`**（ツールは `get_event_summary`・`check_budget`・`search_venues` の3つ。2026-10-09 に AI が用意済み。ツールが増えたら AI が再生成する）
   - AI に返すもの: **登録したリソース名**（`.../mcpServers/...`）
   - ツールが増えたら、AI が新しい `toolspec.json` を渡すので更新する
   - **学ぶこと**: 「エージェントが話しかけてよい相手の名簿」。非公開の MCP を toolspec で登録する理由
@@ -82,7 +82,7 @@ Gateway・Registry の設定（下の 1〜6）を待たず、`kuroko-agent` だ�
 ## 5. エージェントのデプロイ（⌨ コマンド。**待ち: AI が `kuroko_agent`・`extract_agent` とデプロイスクリプトを用意してから**）
 
 - [ ] **5-1. `kuroko-agent` をデプロイし直す（`/mcp` のツールを使えるようにする）** — [H11 手順書](h11_agent_platform_lab.md) の 5-1
-  - **`/mcp` を使うときは、環境変数 `KUROKO_MCP_URL`（`https://kuroko-api-…run.app/mcp/`）を付けてデプロイする**（`agents-cli deploy ... --update-env-vars KUROKO_MCP_URL=<URL>`）。付けなければ、これまでどおりツールなしで動く
+  - **`/mcp` を使うときは、環境変数 `KUROKO_MCP_URL`（`https://kuroko-api-…run.app/mcp`。Registry の登録と同じ綴り）を付けてデプロイする**（`agents-cli deploy ... --update-env-vars KUROKO_MCP_URL=<URL>`）。付けなければ、これまでどおりツールなしで動く
   - **Gateway の出口を通すとき**: Registry に `kuroko-api-mcp` を登録し（4-1）、`kuroko-agent` の Agent identity に `roles/iap.egressor`（AI が付ける。6章）を与えてから確認する。**`/mcp` が agent-kuroko の身元を見分けられるか（V1）は、デプロイ後に AI が確かめ、結果を `AGENT_KUROKO_PRINCIPAL`（Terraform の変数 `agent_kuroko_principal`）に設定する**。それまで `/mcp` は全て拒否する（安全側）
 - [ ] **5-2. `extract-agent` をデプロイする** — 同上
 - [ ] **5-3. Console の Deployments で2つの Identity が別であることを確認する**（V2）

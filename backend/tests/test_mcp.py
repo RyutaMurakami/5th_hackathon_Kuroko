@@ -205,3 +205,18 @@ async def test_the_callers_identity_claims_are_logged_for_v1_but_never_the_token
     assert "principal://agents.global.proj-1" in line and "allowed=False" in line
     token = headers["Authorization"].removeprefix("Bearer ")
     assert token not in caplog.text  # トークン本体は出さない
+
+
+async def test_mcp_without_the_trailing_slash_is_served_in_place_and_still_checks_the_identity(
+    monkeypatch,
+):
+    """Registry の登録 URL は `/mcp`。307 にせず、同じ身元の検査で受ける。"""
+    async with running(monkeypatch) as client:
+        assert (await client.post("/mcp", json={}, headers=HEADERS)).status_code == 403  # 身元なし
+        body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+        res = await client.post("/mcp", json=body, headers={**HEADERS, **bearer(AGENT)})
+        assert res.status_code == 200 and res.status_code != 307
+        other = await client.post("/mcp", json=body, headers={**HEADERS, **bearer("someone-else")})
+        assert other.status_code == 403
+        # ほかのパスは巻き込まない（/mcpx などは、これまでどおり 404）
+        assert (await client.post("/mcpx", json={}, headers=HEADERS)).status_code == 404

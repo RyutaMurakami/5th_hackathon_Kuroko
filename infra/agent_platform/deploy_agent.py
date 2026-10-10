@@ -40,7 +40,7 @@ PROJECT = "kuroko-509311"
 LOCATION = "us-central1"
 INGRESS = "kuroko-agw-c2a"
 EGRESS = "kuroko-agw-a2a"
-KUROKO_MCP_URL = "https://kuroko-api-nbymkfmzpq-uc.a.run.app/mcp/"  # 末尾の / つき
+KUROKO_MCP_URL = "https://kuroko-api-nbymkfmzpq-uc.a.run.app/mcp"  # Registry の登録 URL と同じ
 
 # Agent identity に付ける権限（Gemini の呼び出し・ログ・メトリクスだけ）
 BASE_ROLES = (

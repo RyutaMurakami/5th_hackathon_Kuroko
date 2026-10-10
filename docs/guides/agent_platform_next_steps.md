@@ -193,19 +193,21 @@ AI に返すもの: なし（名前が決まっている）。
 
 詳細な入力値: [h11 手順書 4-2](h11_agent_platform_lab.md)
 
-- [ ] **4-1. 次の値を用意する**
-  - URL: `https://kuroko-api-nbymkfmzpq-uc.a.run.app/mcp/`（**末尾の `/` つき**。`/mcp`（スラッシュなし）は 307 リダイレクトになり、MCP クライアントが外れる）
+- [x] **4-1. 次の値を用意する**
+  - URL: `https://kuroko-api-nbymkfmzpq-uc.a.run.app/mcp`（`kuroko-api` は `/mcp` も `/mcp/` も同じように受ける。リダイレクトしない）
   - ツール一覧: リポジトリの `backend/mcp_toolspec.json`（3 ツール）
-- [ ] **4-2. Console の Agent Registry → MCP servers → Add MCP server**
+- [x] **4-2. Console の Agent Registry → MCP servers → Add MCP server**
   - Display name: `kuroko-api-mcp`、Region: `us-central1`
   - Tool specification に、**`mcp_toolspec.json` の中身を貼る**（`kuroko-api` は非公開なので、URL からの取り込みは使えない）
   - **全部のツールを選んで** Save
-- [ ] **4-3. 一覧に出て、ツールが 3 つあること**
+- [x] **4-3. 一覧に出て、ツールが 3 つあること**
   - ⌨ `gcloud agent-registry mcp-servers list --location=us-central1 --project=kuroko-509311`
 
 **確認すること**: ツール名が `check_budget`・`get_event_summary`・`search_venues` の **3 つだけ**であること。**`calculate_amounts`・`choose_approver`・`choose_payee`・`sign_mandates` などが無いこと**（お金・承認・署名に当たるツールは公開していない設計。あれば登録を止めて AI に連絡）。
 
 **AI に返すもの**: 登録した MCP サーバーのリソース名
+
+> **2026-10-10 完了**: `urn:mcp:projects-1054683553459:projects:1054683553459:locations:us-central1:agentregistry:services:mcp-kuroko-api-mcp-906e-3c222f531534`（ツール 3 つ・URL は `…/mcp`・`gcloud agent-registry mcp-servers describe` で確認済み）。Registry 内の名前: `projects/kuroko-509311/locations/us-central1/mcpServers/agentregistry-00000000-0000-0000-6812-e3622d87b6b7`
 
 ---
 
@@ -335,9 +337,9 @@ AI に返すもの: なし（名前が決まっている）。
 
 - [ ] フェーズ 0: 事前確認（0-1〜0-4）
 - [x] フェーズ 1: `extract-agent` のデプロイと確認（1-1〜1-4）→ 🤖 エンジンの設定（**2026-10-10 完了**。本番の経路で確認済み）
-- [ ] フェーズ 2: Model Armor ×2
+- [x] フェーズ 2: Model Armor ×2（2026-10-10 完了。INSPECT_ONLY・多言語オンを確認）
 - [ ] フェーズ 3: Gateway ×2
-- [ ] フェーズ 4: Registry に `kuroko-api-mcp`
+- [x] フェーズ 4: Registry に `kuroko-api-mcp`（2026-10-10 完了）
 - [x] 🤖 `deploy_agent.py` の用意（2026-10-10。`--dry-run` まで確認）／ [ ] 🤖 `verify_g2.py`（V1・V2・V7・V8。Gateway ができてから）
 - [ ] フェーズ 5: Gateway 付きデプロイ（5-1〜5-5）→ 🤖 IAM・V1・`agent_kuroko_principal`
 - [ ] フェーズ 6: 確かめる・P9 の判断

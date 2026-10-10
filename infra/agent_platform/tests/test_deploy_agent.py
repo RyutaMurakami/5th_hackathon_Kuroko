@@ -56,8 +56,8 @@ def test_only_the_minimal_base_roles_are_granted():
         assert not any(broad in r for r in d.BASE_ROLES)  # kuroko-api・Registry への権限は、V1 のあと別に付ける
 
 
-def test_only_the_kuroko_agent_gets_the_mcp_url_and_it_ends_with_a_slash():
-    assert d.AGENTS["kuroko"]["env"]["KUROKO_MCP_URL"].endswith("/mcp/")
+def test_only_the_kuroko_agent_gets_the_mcp_url_and_it_matches_the_registry_entry():
+    assert d.AGENTS["kuroko"]["env"]["KUROKO_MCP_URL"].endswith("/mcp")  # Registry の登録と同じ綴り
     assert d.AGENTS["extract"]["env"] == {}  # ツールなしのエージェントには渡さない
 
 

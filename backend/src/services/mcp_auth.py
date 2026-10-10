@@ -78,3 +78,19 @@ class AgentOnly:
                 await send({"type": "http.response.body", "body": body})
                 return
         await self._app(scope, receive, send)
+
+
+class McpPathNormalizer:
+    """`/mcp`（末尾の / なし）を `/mcp/` として扱う（307 のリダイレクトにしない）。
+
+    Agent Registry の登録 URL は `/mcp`（末尾の / なし）で、MCP クライアントはリダイレクトを
+    たどらないことがある。どちらの綴りでも、同じように（同じ身元の検査で）受ける。
+    """
+
+    def __init__(self, app: Any) -> None:
+        self._app = app
+
+    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
+        if scope["type"] == "http" and scope["path"] == "/mcp":
+            scope = {**scope, "path": "/mcp/", "raw_path": b"/mcp/"}
+        await self._app(scope, receive, send)
