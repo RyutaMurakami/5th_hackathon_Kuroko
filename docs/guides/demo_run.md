@@ -32,6 +32,13 @@
    uv run python scripts/seed_demo_event.py slack_users.local.json --event-id demo-1
    ```
 
+### 1つの Slack アカウントだけで通す（2026-10-11。検証用）
+10 人分の Slack アカウントは要らない。**登場人物 10 人を、すべて自分の Slack アカウント 1 つが演じる**。
+- Firestore の `config/slack_users`: 10 人の `user_id`（`yamada`・`sasaki`・`takahashi`・`ito`・`watanabe`・`nakamura`・`kobayashi`・`kato`・`matsumoto`・`inoue`）を、すべて自分の Slack メンバー ID にする（**作成済み**）
+- 出欠・委任のボタンは、DM に人数分（承認者・参加者の 7 通ほど）届く。**それぞれのカードのボタンを自分で押す**（ボタンの値は、誰の分かを持っている。押した人が記録上の本人（同じ ID）かを確かめる）
+- 按分の承認は、規程で決まった承認者（部長 `yamada`）の分が届く。自分で承認する
+- 銀行の口座: `bank` の `accounts` に、`yamada → acct01 … inoue → acct10`（名簿の順）で登録済み。**振込の承認は、支払う人ごとに sunabar のサービスサイトで行う**（7 回）
+
 ### Web から通す場合の追加の準備
 - Firestore の `config/slack_users` に、登場人物（`yamada`・`sasaki`・`takahashi`・`ito`…）→ Slack ユーザーID のドキュメントを作る（同じ Slack ユーザーが複数の登場人物を演じてよい）。幹事の `takahashi`・主役の `matsumoto`・`inoue` にも入れる。
 - Web の `/verify`（または `NEXT_PUBLIC_DATA_SOURCE=api` のイベント詳細）で、依頼 → 計画の確定 → 出欠（Slack）→ 店 → 予約 → 開催が終わった → 領収書 → 按分の承認（Slack）→ 銀行での承認 → 入金の確認、の順に進む。**次にやることは、画面の「シナリオの進行」が示す**。
