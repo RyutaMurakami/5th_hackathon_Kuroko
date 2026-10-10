@@ -19,6 +19,12 @@ from src.services import provisional_agent
 logger = logging.getLogger(__name__)
 
 
+def session_key(engine: str, user_key: str) -> str:
+    """セッションの保存のキー。Firestore のドキュメント ID なので、`/` を含めない
+    （エンジンの名前は `projects/…/reasoningEngines/<ID>`。末尾の ID だけを使う）。"""
+    return f"{engine.rsplit('/', 1)[-1]}|{user_key.replace('/', '_')}"
+
+
 def pseudonym(user_key: str) -> str:
     return "u_" + hashlib.sha256(user_key.encode()).hexdigest()[:16]
 
@@ -56,7 +62,7 @@ async def _reply_via_runtime(
     user_id = pseudonym(user_key)
     # セッションはエンジンごとのもの。エンジンを切り替えたあとも古い ID を使い続けないよう、
     # 保存のキーにエンジンを含める（別のエンジンのセッション ID は使えない）
-    key = f"{client.engine}|{user_key}"
+    key = session_key(client.engine, user_key)
     session_id = await store.get(key)
     if session_id is None:
         session_id = await client.create_session(user_id)

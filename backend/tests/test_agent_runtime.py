@@ -149,7 +149,7 @@ async def test_chat_recreates_a_lost_session_once():
     text = await kuroko_chat._reply_via_runtime(make(fake), store, "slack:T:U", "x")
     assert text == "こんにちは"
     assert fake.sessions == 2
-    assert await store.get(f"{ENGINE}|slack:T:U") == "s2"
+    assert await store.get(kuroko_chat.session_key(ENGINE, "slack:T:U")) == "s2"
 
 
 async def test_reply_falls_back_to_the_provisional_agent_until_an_engine_is_configured(
@@ -221,3 +221,31 @@ async def test_two_empty_streams_in_a_row_fail_instead_of_looping():
     with pytest.raises(SessionNotFound):
         await kuroko_chat._reply_via_runtime(make(fake), store, "slack:T:U", "x")
     assert fake.sessions == 2  # 1回だけやり直して終える
+
+
+def test_the_session_key_is_a_valid_firestore_document_id():
+    """実機で、キーにエンジンの完全な名前（`/` を含む）を使って、Firestore が拒否した。"""
+    engine = "projects/1054683553459/locations/us-central1/reasoningEngines/4459953688672206848"
+    key = kuroko_chat.session_key(engine, "slack:T123:UABC")
+    assert "/" not in key and key == "4459953688672206848|slack:T123:UABC"
+    assert "/" not in kuroko_chat.session_key(
+        engine, "web:ev/1:uid"
+    )  # ユーザー側の鍵にも `/` を入れない
+    assert kuroko_chat.session_key(engine, "u") != kuroko_chat.session_key(
+        engine.replace("4459", "9999"), "u"
+    )
+
+
+async def test_the_memory_store_used_in_tests_rejects_a_key_firestore_would_reject():
+    """テストの保存先が、Firestore と同じ制約（`/` を含まない）で確かめる。"""
+    from src.db.agent_sessions import MemorySessionStore
+
+    fake, store = FakeRuntime(), MemorySessionStore()
+    original_put = store.put
+
+    async def strict_put(key, session_id):
+        assert "/" not in key, key
+        await original_put(key, session_id)
+
+    store.put = strict_put
+    await kuroko_chat._reply_via_runtime(make(fake), store, "slack:T:U", "x")
