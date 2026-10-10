@@ -1,9 +1,19 @@
 [
   {
-    "description": "kuroko-agent だけが、Agent Registry に登録された MCP サーバー（kuroko-api-mcp）へ出口 Gateway を通れる。extract-agent にはツールが無いので、何も許可しない（既定は拒否）",
+    "description": "kuroko-agent: 出口 Gateway を通る通信（Vertex AI・Agent Registry の kuroko-api-mcp など）を許可する",
     "effect": "ALLOW",
     "principals": [
       "principal://agents.global.proj-1054683553459.system.id.goog/resources/aiplatform/projects/1054683553459/locations/us-central1/reasoningEngines/4459953688672206848"
+    ],
+    "operation": {
+      "permissions": ["iap.googleapis.com/resources.egressViaIAP"]
+    }
+  },
+  {
+    "description": "extract-agent: 出口 Gateway を通る通信を許可する（Gemini など Google API のため）。MCP サーバーは Registry に登録が無く、ツールも持たない",
+    "effect": "ALLOW",
+    "principals": [
+      "principal://agents.global.proj-1054683553459.system.id.goog/resources/aiplatform/projects/1054683553459/locations/us-central1/reasoningEngines/6968458681117573120"
     ],
     "operation": {
       "permissions": ["iap.googleapis.com/resources.egressViaIAP"]
