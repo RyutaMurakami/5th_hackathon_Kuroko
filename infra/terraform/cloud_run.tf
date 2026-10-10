@@ -54,7 +54,10 @@ locals {
         KMS_CLAIM_KEY_VERSION = "${google_kms_crypto_key.claim_signing.id}/cryptoKeyVersions/1"
         # /tasks/internal/*（請求の作成・入金の確認）を受け付ける呼び出し元（自分自身）
         API_SERVICE_ACCOUNT = local.sa["sa-api"]
-        KUROKO_AGENT_ENGINE = var.kuroko_agent_engine
+        # /api/dashboard/*（Web）。Firebase の ID トークンの aud。空なら全て拒否（TASKS B14）
+        FIREBASE_PROJECT_ID  = var.project_id
+        KUROKO_AGENT_ENGINE  = var.kuroko_agent_engine
+        EXTRACT_AGENT_ENGINE = var.extract_agent_engine
         # /mcp（エージェント用のツール）を呼べる身元。空のあいだは全て拒否（TASKS B21）
         AGENT_KUROKO_PRINCIPAL = var.agent_kuroko_principal
       })

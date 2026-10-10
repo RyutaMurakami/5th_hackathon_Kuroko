@@ -124,3 +124,26 @@ async def test_the_daily_retrospective_job_accepts_only_the_scheduler(client):
         )
         assert res.status_code == 403
     assert (await client.post("/tasks/scheduled/retrospectives")).status_code == 403
+
+
+async def test_the_sandbox_cleanup_job_accepts_only_the_scheduler_and_matches_terraform(
+    client, monkeypatch
+):
+    from pathlib import Path
+
+    from src.services import container  # noqa: F401
+
+    class Dash:
+        def purge_expired_sandbox(self):
+            return 2
+
+    monkeypatch.setattr(tasks, "get_dashboard", lambda: Dash())
+    path = "/tasks/scheduled/sandbox-cleanup"
+    ok = await client.post(path, headers={"Authorization": _token(SCHEDULER_SA)})
+    assert ok.status_code == 200 and ok.json() == {"deleted": 2}
+    for who in (API_SA, GATEWAY_SA, "attacker@example.com"):
+        res = await client.post(path, headers={"Authorization": _token(who)})
+        assert res.status_code == 403
+    # Terraform の Scheduler が呼ぶパスと一致している（食い違うと、削除が動かない）
+    tf = (Path(__file__).resolve().parents[2] / "infra/terraform/tasks.tf").read_text()
+    assert f'path        = "{path}"' in tf

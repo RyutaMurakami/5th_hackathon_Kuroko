@@ -1,0 +1,145 @@
+/* 検証用の画面（/verify）。値は globals.css のトークンだけを使う */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
+  gap: var(--gutter);
+}
+
+@media (max-width: 800px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.side,
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--element-gap);
+  min-width: 0;
+}
+
+.eventButton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  width: 100%;
+  padding: var(--spacing-8) var(--spacing-16);
+  text-align: left;
+  background: var(--color-pure-white);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-smallelements);
+  color: var(--color-ink-navy);
+  cursor: pointer;
+}
+
+.eventButtonActive {
+  border-color: var(--color-ink-navy);
+  background: var(--color-navy-tint);
+}
+
+.eventTitle {
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.hintBar {
+  height: var(--spacing-4);
+  background: var(--color-hairline);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.hintFill {
+  display: block;
+  height: 100%;
+  background: var(--color-ink-navy);
+}
+
+.example {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-8) var(--spacing-16);
+  margin-top: var(--spacing-16);
+  padding: var(--spacing-8) var(--spacing-16);
+  background: var(--color-cream-subtle);
+  border-radius: var(--radius-smallelements);
+}
+
+.exampleLabel {
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  color: var(--color-steel-text);
+}
+
+.exampleText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-16);
+}
+
+@media (max-width: 600px) {
+  .form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.field input {
+  height: var(--control-height);
+  padding: 0 var(--spacing-16);
+  background: var(--color-pure-white);
+  border: var(--border-width-input) solid var(--color-input-border);
+  border-radius: var(--radius-smallelements);
+  color: var(--color-ink-navy);
+  font-size: var(--text-body-sm);
+}
+
+.field input:focus {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.formActions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+}
+
+.uploadRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-8) var(--spacing-16);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.uploadList {
+  list-style: none;
+  margin: var(--spacing-16) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  color: var(--color-steel-text);
+}

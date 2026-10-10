@@ -38,6 +38,12 @@ variable "kuroko_agent_engine" {
   default     = ""
 }
 
+variable "extract_agent_engine" {
+  type        = string
+  description = "隔離抽出エージェント（extract-agent）の Agent Runtime のエンジン名。デプロイしたあとに設定する（TASKS B26）。空のあいだ、振り返りのコメントはキーワードの仮実装で語彙に落とす"
+  default     = ""
+}
+
 variable "agent_kuroko_principal" {
   type        = string
   description = "kuroko-api の /mcp を呼べる agent-kuroko の身元（Agent Gateway 経由の ID トークンの email か sub）。デプロイ後の V1 の確認で決める（TASKS B21）。空のあいだ、/mcp はすべて拒否する"

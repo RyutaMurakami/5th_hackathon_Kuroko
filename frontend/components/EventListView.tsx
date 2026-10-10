@@ -1,15 +1,15 @@
 "use client";
 
 import { useDemoHref, useDemoRole } from "@/lib/demo";
-import { listEvents } from "@/lib/mock-data";
+import { useEventList } from "@/lib/data";
 import { EventTable } from "./EventTable";
-import { ButtonLink, InfoBanner } from "./ui";
+import { ButtonLink, ErrorBanner, InfoBanner } from "./ui";
 import styles from "./event.module.css";
 
 export function EventListView() {
   const role = useDemoRole();
   const href = useDemoHref();
-  const events = listEvents(role);
+  const { data: events, loading, error } = useEventList(role);
 
   return (
     <main className={styles.page}>
@@ -25,7 +25,8 @@ export function EventListView() {
       <InfoBanner>
         委任・承認・取り消しは Slack で行います。予約内容と領収書の金額の確認は、この画面でできます。
       </InfoBanner>
-      <EventTable events={events} />
+      {error && <ErrorBanner>一覧を読み込めませんでした。少し待って、もう一度お試しください。</ErrorBanner>}
+      {loading ? null : <EventTable events={events ?? []} />}
     </main>
   );
 }

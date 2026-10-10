@@ -24,6 +24,7 @@ export function ChatPanel({
   bare = false,
   title = "KUROKOに依頼する",
   autoFocus = false,
+  initialDraft = "",
 }: {
   messages: ChatMessage[];
   onSend: (text: string) => void;
@@ -36,8 +37,13 @@ export function ChatPanel({
   bare?: boolean;
   title?: string;
   autoFocus?: boolean;
+  /** 外から入れる入力欄の文（進行ヒントの入力例） */
+  initialDraft?: string;
 }) {
   const [draft, setDraft] = useState("");
+  useEffect(() => {
+    if (initialDraft) setDraft(initialDraft);
+  }, [initialDraft]);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const inputId = useId();

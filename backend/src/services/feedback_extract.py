@@ -39,12 +39,25 @@ class Extracted:
 
 
 class FeedbackExtractor(Protocol):
-    def extract(self, comment: str) -> Extracted: ...
+    async def extract(self, comment: str) -> Extracted: ...
 
 
 class KeywordFeedbackExtractor:
-    def extract(self, comment: str) -> Extracted:
+    async def extract(self, comment: str) -> Extracted:
         text = comment[:MAX_COMMENT_CHARS]
         liked = [k for k, words in _LIKED_WORDS.items() if any(w in text for w in words)]
         concerns = [k for k, words in _CONCERN_WORDS.items() if any(w in text for w in words)]
         return Extracted(only_vocab(liked, LIKED), only_vocab(concerns, CONCERNS))
+
+
+class AgentFeedbackExtractor:
+    """`extract-agent` で語彙に落とす（本実装。API 側でも、もう一度検証する）。"""
+
+    def __init__(self, runner) -> None:  # noqa: ANN001
+        self._runner = runner
+
+    async def extract(self, comment: str) -> Extracted:
+        from src.services.extract import extract_free_text
+
+        result = await extract_free_text(self._runner, comment[:MAX_COMMENT_CHARS], "feedback")
+        return Extracted(list(result.liked), list(result.concerns))
