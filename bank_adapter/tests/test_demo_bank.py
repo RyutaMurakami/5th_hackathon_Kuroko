@@ -23,7 +23,10 @@ def client(bank, store, clock):
     settings = Settings(
         bank_adapter_url=URL, api_service_account=API_SA, payment_api_service_account=PAYMENT_SA
     )
-    demo = DemoBank(real=bank, store=store, live_payer_labels=frozenset({"acct02"}))
+    # 日付はスタブの銀行（`date.today()`）に合わせる（本番は日本時間。実機の明細と同じ）
+    demo = DemoBank(
+        real=bank, store=store, live_payer_labels=frozenset({"acct02"}), today=date.today
+    )
     service = BankService(
         store=store,
         bank=demo,
@@ -96,7 +99,9 @@ def test_a_resent_simulated_transfer_is_recorded_once_and_survives_a_restart(cli
     assert first["transfer_id"] == again["transfer_id"] and len(store.simulated) == 1
 
     # 別のインスタンス（メモリを持たない）でも、記録から同じ明細が出る
-    other = DemoBank(real=StubBank(), store=store, live_payer_labels=frozenset({"acct02"}))
+    other = DemoBank(
+        real=StubBank(), store=store, live_payer_labels=frozenset({"acct02"}), today=date.today
+    )
     rows, _ = other.transactions(label="acct01", date_from=date.today(), date_to=date.today())
     assert [(r.direction, r.amount_yen) for r in rows] == [("in", 5000)]
     assert other.is_processed(payer_label="acct03", apply_no=first["apply_no"])
