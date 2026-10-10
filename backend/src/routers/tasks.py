@@ -88,7 +88,7 @@ async def feedback_requests(ref: EventRef) -> dict:
     return await get_retro().collect_feedback(ref.event_id)
 
 
-@router.post("/scheduled/purge-sandbox", dependencies=[Depends(require_scheduler)])
+@router.post("/scheduled/sandbox-cleanup", dependencies=[Depends(require_scheduler)])
 def purge_sandbox() -> dict[str, int]:
     """作成から7日たったゲスト（sandbox）のイベントを削除する（SPEC 7.6）。"""
     return {"deleted": get_dashboard().purge_expired_sandbox()}
