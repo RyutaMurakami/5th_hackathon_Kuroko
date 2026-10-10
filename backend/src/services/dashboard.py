@@ -114,8 +114,27 @@ class DashboardService:
             "uploads": [u.model_dump(mode="json") for u in self._store.list_uploads(event_id)],
             "messages": [m.model_dump(mode="json") for m in self._store.list_messages(event_id)],
             "waiting_for": waiting_for(e, people),
+            "split": self._split_view(event_id),
             "hint": hint_for(e, people, has_receipt=self._store.get_receipt(event_id) is not None),
         }  # fmt: skip
+
+    def _split_view(self, event_id: str) -> dict[str, Any] | None:
+        """按分の内訳。保存された SplitResult の値をそのまま返す（Web で再計算しない。7.3.1）。"""
+        split = self._store.get_split(event_id)
+        if split is None:
+            return None
+        approval = self._store.get_approval(event_id)
+        return {
+            **split.model_dump(mode="json"),
+            "approval": {
+                "approver_user_id": split.approver_user_id,
+                "status": approval.status.value if approval else "pending",
+                "approved_at": approval.approved_at.isoformat()
+                if approval and approval.approved_at
+                else None,
+                "split_hash": split.hash,
+            },
+        }
 
     # ------------------------------------------------------------ チャット
     async def send_message(self, actor: Actor, event_id: str | None, text: str) -> dict[str, Any]:

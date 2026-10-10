@@ -3,6 +3,8 @@
 // Demo Toolbar（DESIGN.md）用: 役割と段階を URL のクエリ（?role= &stage=）で持つ。
 // バックエンドにつないだら、役割は Firebase の認証と API から決まる（ARCHITECTURE 4.5）。
 import { usePathname, useSearchParams } from "next/navigation";
+import { useApiRole } from "./api-role";
+import { USE_API } from "./data-source";
 import { isEventStatus } from "./mock-data";
 import type { EventStatus, Role } from "./types";
 
@@ -16,7 +18,9 @@ export function parseRole(value: string | null | undefined): Role {
 }
 
 export function useDemoRole(): Role {
-  return parseRole(useSearchParams().get("role"));
+  const fromQuery = parseRole(useSearchParams().get("role"));
+  const fromApi = useApiRole();
+  return USE_API ? fromApi : fromQuery; // 実 API のときは、役割を API が決める
 }
 
 export function useDemoStage(): EventStatus | undefined {

@@ -3,11 +3,17 @@
 import { AnimatePresence, motion } from "motion/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { errorText } from "@/lib/api-client";
 import { useDemoHref, useDemoRole, useDemoStage } from "@/lib/demo";
-import { getEventDetail } from "@/lib/mock-data";
+import { useEventDetail } from "@/lib/data";
+import { USE_API } from "@/lib/data-source";
+import type { ApiEventDetail } from "@/lib/api-types";
 import { FADE_UP, STAGGER } from "@/lib/motion";
 import { CONSENT_STATE } from "@/lib/status";
 import type { EventDetail, EventStatus, Role } from "@/lib/types";
+import { ApiChatCard } from "./ApiChatCard";
+import { ScenarioHint } from "./ScenarioHint";
+import { StepForms } from "./StepForms";
 import { ConfirmationCard, type InputSource } from "./ConfirmationCard";
 import { ConsentList } from "./ConsentList";
 import { DecisionTimeline } from "./DecisionTimeline";
@@ -88,8 +94,9 @@ export function EventDetailView({ eventId }: { eventId: string }) {
   const role = useDemoRole();
   const stage = useDemoStage();
   const href = useDemoHref();
-  const event = getEventDetail(eventId, role, stage);
+  const { data: event, loading, raw, reload } = useEventDetail(eventId, role, stage);
 
+  if (loading) return <main className={styles.page} aria-busy="true" />;
   if (!event) {
     // 存在するかどうかが推測できる文言にしない（DESIGN.md「Empty / Loading / Error」）
     return (
@@ -104,10 +111,20 @@ export function EventDetailView({ eventId }: { eventId: string }) {
   }
 
   // 役割が変わったら画面の中の状態を最初からにする。段階が変わっても KUROKO Panel は保つ（新着を知らせるため）
-  return <EventDetailBody key={`${eventId}-${role}`} event={event} role={role} />;
+  return <EventDetailBody key={`${eventId}-${role}`} event={event} role={role} api={raw} reload={reload} />;
 }
 
-function EventDetailBody({ event, role }: { event: EventDetail; role: Role }) {
+function EventDetailBody({
+  event,
+  role,
+  api,
+  reload,
+}: {
+  event: EventDetail;
+  role: Role;
+  api: ApiEventDetail | null;
+  reload: () => void;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -118,6 +135,21 @@ function EventDetailBody({ event, role }: { event: EventDetail; role: Role }) {
   const [venueChosenAt, setVenueChosenAt] = useState<EventStatus | null>(null);
   const venueChosen = venueChosenAt === event.status;
   const [retroDecision, setRetroDecision] = useState<RetroDecision | null>(null);
+
+  /** 実 API の操作の実行。失敗は固定の文面でトーストに出す */
+  const runAction = useCallback(
+    async (fn: () => Promise<unknown>, done?: string) => {
+      try {
+        await fn();
+        if (done) toast({ tone: "lagoon", text: done, eventId: event.eventId });
+        return true;
+      } catch (e) {
+        toast({ tone: "coral", text: errorText(e), eventId: event.eventId });
+        return false;
+      }
+    },
+    [event.eventId, toast],
+  );
 
   const isGuest = role === "guest";
   const tabParam = params.get("tab");
@@ -147,6 +179,7 @@ function EventDetailBody({ event, role }: { event: EventDetail; role: Role }) {
   );
 
   useEffect(() => {
+    if (USE_API) return; // 実 API のときは、段階は実際の操作でだけ進む（ダミーの自動進行はしない）
     const step = AUTO[event.status];
     if (!step) return;
     if (step.guestOnly && !(isGuest && event.sandbox)) return;
@@ -180,6 +213,13 @@ function EventDetailBody({ event, role }: { event: EventDetail; role: Role }) {
       </div>
 
       <EventSummary event={event} onJump={() => jumpToTab("payments")} />
+
+      {USE_API && api && (
+        <>
+          <ScenarioHint hint={api.hint} />
+          <StepForms detail={api} onDone={async () => reload()} run={runAction} />
+        </>
+      )}
 
       {/* 幹事の確認は、その段階のときだけ Event Summary の直下に出す（カードの中にカードを入れない） */}
       <AnimatePresence mode="popLayout" initial={false}>
@@ -284,6 +324,9 @@ function EventDetailBody({ event, role }: { event: EventDetail; role: Role }) {
         </AnimatePresence>
       </div>
 
+      {USE_API ? (
+        <ApiChatCard eventId={event.eventId} messages={event.messages} onSent={reload} />
+      ) : (
       <KurokoDock
         messages={event.messages}
         activity={event.activity}
@@ -292,6 +335,7 @@ function EventDetailBody({ event, role }: { event: EventDetail; role: Role }) {
           advance("rsvp", { tone: "lagoon", text: "イベントの計画を確定しました。Slack で参加者に出欠の依頼を送りました" })
         }
       />
+      )}
     </main>
   );
 }

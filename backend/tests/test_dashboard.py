@@ -497,3 +497,26 @@ async def test_me_returns_only_the_role(client, http):
     h = {"Authorization": _token(DASH_SA), "X-Firebase-Token": "t"}
     res = await client.get("/api/dashboard/me", headers=h)
     assert res.json() == {"role": "guest"}
+
+
+async def test_event_detail_returns_the_stored_split_as_is_and_the_approval_state():
+    from src.models.split import Approval, SplitResult, SplitRow
+
+    svc, store, *_ = make()
+    eid = await new_event(svc)
+    assert svc.get_event(ORG, eid)["split"] is None
+    split = SplitResult(
+        event_id=eid, policy_id="p", policy_version="1", total_amount_yen=48000,
+        base_amount_yen=40000, subsidy_yen=8000, weight_sum=10.0, per_weight_yen=4000,
+        rows=[SplitRow(user_id="ito", member_class_id="staff", weight=1.0, ratio_percent=100.0,
+                       subsidy_eligible=True, share_yen=4000)],
+        shortfall_yen=0, shortfall_to="ito", approver_user_id="ito", hash="h" * 8,
+    )  # fmt: skip
+    store.save_split(split)
+    store.save_approval(Approval(event_id=eid, approver_user_id="ito", split_hash=split.hash))
+    out = svc.get_event(ORG, eid)["split"]
+    assert out["rows"][0]["share_yen"] == 4000 and out["total_amount_yen"] == 48000
+    assert out["approval"] == {"approver_user_id": "ito", "status": "pending",
+                               "approved_at": None, "split_hash": "h" * 8}  # fmt: skip
+    with pytest.raises(DashboardError):
+        svc.get_event(ORG2, eid)  # 他人には按分も見えない

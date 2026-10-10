@@ -59,6 +59,40 @@ export type ApiEventDetail = {
   messages: ApiMessage[];
   waiting_for: { who: string; where: string; what: string; users?: string[] } | null;
   hint: ApiHint;
+  /** 保存された SplitResult の値そのまま（再計算しない） */
+  split: ApiSplit | null;
+};
+
+export type ApiSplit = {
+  total_amount_yen: number;
+  base_amount_yen: number;
+  subsidy_yen: number;
+  weight_sum: number;
+  per_weight_yen: number;
+  shortfall_yen: number;
+  shortfall_to: string;
+  rows: {
+    user_id: string;
+    weight: number;
+    ratio_percent: number;
+    subsidy_eligible: boolean;
+    share_yen: number;
+  }[];
+  approval: {
+    approver_user_id: string;
+    status: "pending" | "approved";
+    approved_at: string | null;
+    split_hash: string;
+  };
+};
+
+export type ApiNotification = {
+  notification_id: string;
+  event_id: string;
+  kind: "confirm_needed" | "slack_waiting" | "completed" | "blocked" | "retro_ready";
+  text: string;
+  read: boolean;
+  created_at: string;
 };
 
 export type ApiPlan = {

@@ -4,6 +4,7 @@ import type {
   ApiEventDetail,
   ApiEventSummary,
   ApiMessage,
+  ApiNotification,
   ApiPlan,
   ApiRole,
 } from "./api-types";
@@ -99,3 +100,6 @@ export async function uploadFile(eventId: string, kind: "reservation" | "receipt
   if (!put.ok) throw new ApiError(502, "upload_rejected");
   return call("POST", `events/${eventId}/uploads/${issued.upload_id}/register`);
 }
+
+export const listNotifications = () => call<ApiNotification[]>("GET", "notifications");
+export const markRead = (id: string) => call("POST", `notifications/${id}/read`);

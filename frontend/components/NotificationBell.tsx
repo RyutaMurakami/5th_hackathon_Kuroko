@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { useDemoHref, useDemoRole } from "@/lib/demo";
 import { formatDateTime } from "@/lib/format";
-import { listNotifications } from "@/lib/mock-data";
+import { markRead } from "@/lib/api-client";
+import { useNotificationList } from "@/lib/data";
+import { USE_API } from "@/lib/data-source";
 import { NOTIFICATION_KIND } from "@/lib/status";
 import { Icon } from "./Icon";
 import { useToast } from "./Toast";
@@ -20,7 +22,8 @@ export function NotificationBell() {
   const popoverId = useId();
 
   const { extraNotifications } = useToast();
-  const notifications = [...extraNotifications, ...listNotifications(role)]
+  const list = useNotificationList(role);
+  const notifications = [...extraNotifications, ...(list.data ?? [])]
     .slice(0, 10)
     .map((n) => ({ ...n, read: n.read || readIds.includes(n.notificationId) }));
   const unread = notifications.filter((n) => !n.read).length;
@@ -65,6 +68,7 @@ export function NotificationBell() {
                   href={href(`/events/${n.eventId}`)}
                   onClick={() => {
                     setReadIds((ids) => [...ids, n.notificationId]);
+                    if (USE_API) void markRead(n.notificationId).catch(() => undefined);
                     setOpen(false);
                   }}
                 >
