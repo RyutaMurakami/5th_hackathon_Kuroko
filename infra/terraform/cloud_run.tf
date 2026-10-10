@@ -58,10 +58,10 @@ locals {
         FIREBASE_PROJECT_ID  = var.project_id
         KUROKO_AGENT_ENGINE  = var.kuroko_agent_engine
         EXTRACT_AGENT_ENGINE = var.extract_agent_engine
-        # /mcp（エージェント用のツール）を呼べる身元。空のあいだは全て拒否（TASKS B21）
-        AGENT_KUROKO_PRINCIPAL = var.agent_kuroko_principal
+        # /mcp（エージェント用のツール）を通す身元。既定は sa-agent-mcp（Agent identity だけが偽装できる。TASKS B21）
+        AGENT_KUROKO_PRINCIPAL = var.agent_kuroko_principal != "" ? var.agent_kuroko_principal : local.sa["sa-agent-mcp"]
       })
-      invokers = ["sa-gateway", "sa-api", "sa-dashboard", "sa-scheduler", "sa-demo-runner"]
+      invokers = ["sa-gateway", "sa-api", "sa-dashboard", "sa-scheduler", "sa-demo-runner", "sa-agent-mcp"]
     }
     "payment-api" = {
       sa     = "sa-payment-api"

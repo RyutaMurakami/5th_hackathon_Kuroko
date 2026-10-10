@@ -261,7 +261,7 @@ AI に返すもの: なし（名前が決まっている）。
    - `kuroko-agent`・`extract-agent`: Gemini・ログに必要な権限だけ
    - `kuroko-agent`: Registry の `kuroko-api-mcp` への `roles/iap.egressor`、`kuroko-api` への `roles/run.invoker`
    - **`extract-agent`: 上の Gemini・ログ以外は何も付けない**（外に出られないことの確認 = V2）
-2. **V1**: `kuroko-agent` から `search_venues` を呼び、`kuroko-api` に届いた ID トークンの**身元のクレーム**を確かめる → `AGENT_KUROKO_PRINCIPAL`（`agent_kuroko_principal`）に設定して apply。**この設定までは `/mcp` は全て 403**
+2. **V1（2026-10-10 に方式を決めた）**: Agent identity のトークンはそのままでは Cloud Run に通らない（実測: `/mcp` が 401）。そこで、**`kuroko-agent` の Agent identity が、専用の SA `sa-agent-mcp` を偽装して ID トークンを作る**方式にした（偽装できるのは、この Agent identity だけ。`kuroko-api` は `sa-agent-mcp` のメールだけを `/mcp` に通す）。Terraform は適用済み。あとは `kuroko-agent-gw` の再デプロイ（更新）と `verify_g2.py v1` で確かめる
 3. `extract_agent_engine`・`kuroko_agent_engine` を新しいエンジンに更新して apply
 4. 結果を ARCHITECTURE 13章・SPEC 13章に書く
 
