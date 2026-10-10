@@ -37,7 +37,8 @@
 - Firestore の `config/slack_users`: 10 人の `user_id`（`yamada`・`sasaki`・`takahashi`・`ito`・`watanabe`・`nakamura`・`kobayashi`・`kato`・`matsumoto`・`inoue`）を、すべて自分の Slack メンバー ID にする（**作成済み**）
 - 出欠・委任のボタンは、DM に人数分（承認者・参加者の 7 通ほど）届く。**それぞれのカードのボタンを自分で押す**（ボタンの値は、誰の分かを持っている。押した人が記録上の本人（同じ ID）かを確かめる）
 - 按分の承認は、規程で決まった承認者（部長 `yamada`）の分が届く。自分で承認する
-- 銀行の口座: `bank` の `accounts` に、`yamada → acct01 … inoue → acct10`（名簿の順）で登録済み。**振込の承認は、支払う人ごとに sunabar のサービスサイトで行う**（7 回）
+- 銀行の口座: `bank` の `accounts` に、[h25_sunabar_setup.md](h25_sunabar_setup.md) 1章の割り当て（幹事 `takahashi → acct01`、`yamada → acct02`、`sasaki → acct03`、`ito → acct04`、`watanabe → acct05`、`nakamura → acct06`、`kobayashi → acct07`、`kato → acct08`）で登録済み（2026-10-11 に、名簿の順で入れていた誤りを直した）
+- **銀行で実際に承認するのは1人だけ（既定は加藤 = `acct08`）**。ほかの6人の振込は `bank-adapter` が代行し、承認なしで「支払い済み」になる（SPEC 8.10）。加藤の口座のログインIDで sunabar のサービスサイトに入り、**1回だけ**承認する。加藤の負担額（1,600円ほど）以上の残高が `acct08` に要る
 
 ### Web から通す場合の追加の準備
 - Firestore の `config/slack_users` に、登場人物（`yamada`・`sasaki`・`takahashi`・`ito`…）→ Slack ユーザーID のドキュメントを作る（同じ Slack ユーザーが複数の登場人物を演じてよい）。幹事の `takahashi`・主役の `matsumoto`・`inoue` にも入れる。
@@ -50,8 +51,8 @@
 | 1 | `uv run python scripts/run_step.py rsvp demo-1` | 参加者7名に、出欠＋委任の DM が届く（上限・支払先・期限つき）。幹事・主役には届かない |
 | 2 | 各 DM の「参加して、委任に同意する」を押す | メッセージが「同意しました」に変わる。`payment-api` の `mandates` に委任状ができる（App Home に「委任中」） |
 | 3 | `uv run python scripts/run_step.py approval demo-1` | 承認者（山田）に、按分案（負担額・負担割合・端数）の承認依頼が届く |
-| 4 | 山田の DM の「この按分を承認する」を押す（**山田本人の Slack ユーザーだけが有効**。他の人が押しても何も起きない） | 「承認しました」。続けて請求が作られ、各自に「銀行で承認してください（10分以内）」の DM が届く |
-| 5 | 各自が sunabar サービスサイトで、振込を承認する（**10分以内。取引パスワード**）。振込元の口座のログインIDでログインする | 承認した人から順に、1分以内（ポーリング）に「入金を確認しました」の DM が届く |
+| 4 | 山田の DM の「この按分を承認する」を押す（**山田本人の Slack ユーザーだけが有効**。他の人が押しても何も起きない） | 「承認しました」。続けて請求が作られ、**加藤の分だけ**「銀行で承認してください（10分以内）」の DM が届く |
+| 5 | **加藤（`acct08`）の振込だけ**を、sunabar サービスサイトで承認する（**10分以内。取引パスワード**）。`acct08` のログインIDでログインする。ほかの6人は代行されるので、何もしない（SPEC 8.10） | 代行の6人には、1分以内（ポーリング）に「入金を確認しました」の DM が届く。加藤は、承認してから1分以内に届く |
 | 6 | `uv run python scripts/run_step.py collections demo-1` | 幹事口座の入金明細で、7名分（27,000円）が「回収済み」になる |
 
 - 承認の期限（10分）を過ぎた人は、自動で依頼が作り直され（最大2回）、再通知の DM が届く

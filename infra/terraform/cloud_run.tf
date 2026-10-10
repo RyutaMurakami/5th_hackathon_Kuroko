@@ -97,6 +97,7 @@ locals {
       env = merge(local.bigquery_env, {
         FIRESTORE_DATABASE          = google_firestore_database.bank.name
         BANK_MODE                   = "sunabar"
+        DEMO_LIVE_PAYER_LABELS      = var.demo_live_payer_labels
         STORE_BACKEND               = "firestore"
         BANK_ADAPTER_URL            = local.service_urls["bank-adapter"]
         SUNABAR_TOKENS_SECRET       = google_secret_manager_secret.this["sunabar-tokens"].id

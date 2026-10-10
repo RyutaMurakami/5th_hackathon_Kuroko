@@ -16,6 +16,7 @@ class FakeBankAdapter:
     # 本人の出金明細（user_id → エントリ）
     outgoing_entries: dict[str, list[OutgoingEntry]] = field(default_factory=dict)
     poll_error: bool = False
+    simulated_payers: set[str] = field(default_factory=set)  # デモで代行する振込元
 
     def is_authorized(self, user_id: str) -> bool:
         return self.authorized is None or user_id in self.authorized
@@ -38,6 +39,7 @@ class FakeBankAdapter:
             transfer_id=f"tr-{len(self.transfers)}",
             status="awaiting_approval",
             approval_expires_at=datetime.now(UTC) + timedelta(minutes=10),
+            simulated=payer_user_id in self.simulated_payers,
         )
 
     def get_transfer(self, transfer_id: str) -> TransferInfo:

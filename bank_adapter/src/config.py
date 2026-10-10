@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     sunabar_tokens_secret: str = ""
     sunabar_base_url: str = "https://api.sunabar.gmo-aozora.com/personal/v1"
 
+    # デモ用（SPEC 8.10）: 実際に銀行で承認する振込元の口座ラベル（カンマ区切り）。
+    # 空（既定）なら全員が実機。入れると、**それ以外の人の振込は代行**（銀行を呼ばず承認済みにする）
+    demo_live_payer_labels: str = ""
+
     # 呼び出し元の検査（ARCHITECTURE 6章）。audience は自分の URL
     bank_adapter_url: str = ""
     api_service_account: str = ""  # sa-api: 幹事口座の入金明細だけ

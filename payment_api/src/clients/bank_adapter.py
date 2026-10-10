@@ -21,6 +21,7 @@ class TransferInfo:
     transfer_id: str
     status: str
     approval_expires_at: datetime | None
+    simulated: bool = False  # デモで代行した振込（本人の承認は要らない。SPEC 8.10）
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,7 @@ class HttpBankAdapter:
             transfer_id=data["transfer_id"],
             status=data["status"],
             approval_expires_at=datetime.fromisoformat(expires) if expires else None,
+            simulated=bool(data.get("simulated")),
         )
 
     def get_transfer(self, transfer_id: str) -> TransferInfo:
@@ -107,6 +109,7 @@ class HttpBankAdapter:
             transfer_id=data["transfer_id"],
             status=data["status"],
             approval_expires_at=datetime.fromisoformat(expires) if expires else None,
+            simulated=bool(data.get("simulated")),
         )
 
     def outgoing(self, user_id: str, date_from: date, date_to: date) -> list[OutgoingEntry]:
