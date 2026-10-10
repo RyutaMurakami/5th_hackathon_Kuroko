@@ -86,3 +86,18 @@ resource "google_firestore_field" "participants_slack_user" {
     }
   }
 }
+
+# 振り返りの締切・リマインドで、状態から振り返りを探す（events/*/retros を横断する検索。TASKS B29）
+resource "google_firestore_field" "retros_status" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "retros"
+  field      = "status"
+
+  index_config {
+    indexes {
+      order       = "ASCENDING"
+      query_scope = "COLLECTION_GROUP"
+    }
+  }
+}

@@ -5,6 +5,7 @@ import logging
 from src.clients import slack
 from src.models.schemas import SlackDirectMessage
 from src.services import kuroko_chat
+from src.services.container import get_retro
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,11 @@ FALLBACK_TEXT = (
 
 
 async def handle_direct_message(message: SlackDirectMessage) -> None:
+    # 満足度のあとの返信は、振り返りのコメント（語彙に落として原文は捨てる。LLM には渡さない）
+    captured = await get_retro().try_capture_comment(message.user_id, message.text)
+    if captured:
+        await slack.post_message(message.channel_id, captured)
+        return
     try:
         text = await kuroko_chat.reply(f"slack:{message.team_id}:{message.user_id}", message.text)
     except Exception:

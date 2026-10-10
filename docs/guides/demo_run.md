@@ -32,6 +32,10 @@
    uv run python scripts/seed_demo_event.py slack_users.local.json --event-id demo-1
    ```
 
+### Web から通す場合の追加の準備
+- Firestore の `config/slack_users` に、登場人物（`yamada`・`sasaki`・`takahashi`・`ito`…）→ Slack ユーザーID のドキュメントを作る（同じ Slack ユーザーが複数の登場人物を演じてよい）。幹事の `takahashi`・主役の `matsumoto`・`inoue` にも入れる。
+- Web の `/verify`（または `NEXT_PUBLIC_DATA_SOURCE=api` のイベント詳細）で、依頼 → 計画の確定 → 出欠（Slack）→ 店 → 予約 → 開催が終わった → 領収書 → 按分の承認（Slack）→ 銀行での承認 → 入金の確認、の順に進む。**次にやることは、画面の「シナリオの進行」が示す**。
+
 ## 1. 通し
 
 | 手順 | 操作 | 確かめること |

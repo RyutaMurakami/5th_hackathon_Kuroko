@@ -28,7 +28,7 @@ const AuthContext = createContext<AuthState | null>(null);
 
 let authInstance: Auth | undefined;
 
-function getFirebaseAuth(): Auth {
+export function getFirebaseAuth(): Auth {
   if (!authInstance) {
     authInstance = getAuth(getFirebaseApp());
     if (process.env.NEXT_PUBLIC_FIREBASE_EMULATOR === "true") {

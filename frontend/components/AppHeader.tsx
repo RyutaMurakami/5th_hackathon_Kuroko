@@ -37,6 +37,13 @@ export function AppHeader() {
             イベント
           </Link>
           <Link
+            className={`${styles.navLink} ${pathname.startsWith("/verify") ? styles.navLinkActive : ""}`}
+            href="/verify"
+            aria-current={pathname.startsWith("/verify") ? "page" : undefined}
+          >
+            検証
+          </Link>
+          <Link
             className={`${styles.navLink} ${onDev ? styles.navLinkActive : ""}`}
             href="/dev"
             aria-current={onDev ? "page" : undefined}

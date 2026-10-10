@@ -1,0 +1,60 @@
+{
+  "tools": [
+    {
+      "name": "check_budget",
+      "description": "コースの1人あたりの料金が、規程の上限以内か確かめる（超過は人の確認が要る）。",
+      "inputSchema": {
+        "properties": {
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "course_price_yen": {
+            "title": "Course Price Yen",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_id",
+          "course_price_yen"
+        ],
+        "title": "check_budgetArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "get_event_summary",
+      "description": "イベントの概要（題名・日時・状態・出席者数・1人あたりの予算の上限）。個人は含まない。",
+      "inputSchema": {
+        "properties": {
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id"
+        ],
+        "title": "get_event_summaryArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "search_venues",
+      "description": "このイベントの、店の候補（最大3件）。足切り・順位・帰りやすさ・理由の元になる事実はコードが決める。\n\n    条件は保存済みのデータから取る（引数で変えられない）。`selection_reason` は定型の文なので、\n    `reason_facts` の事実だけを使って言い換える（ない数値・店名は書かない）。\n    ",
+      "inputSchema": {
+        "properties": {
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id"
+        ],
+        "title": "search_venuesArguments",
+        "type": "object"
+      }
+    }
+  ]
+}

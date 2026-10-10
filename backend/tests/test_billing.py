@@ -83,6 +83,7 @@ def build(approved=True, **kw):
         checkout_ttl_seconds=3 * 86400,
         now=lambda: NOW,
         today=lambda: date(2026, 11, 2),
+        lifecycle=kw.pop("lifecycle", None),
     )
     return svc, store, api, bank, signer, split
 
@@ -243,3 +244,68 @@ async def test_a_payer_is_not_marked_received_without_a_split():
     store.splits.clear()
     with pytest.raises(UnknownEvent):
         await svc.confirm_incoming_payments("ev-demo")
+
+
+# ---------------- 入金がそろったら完了（SPEC 8.6） ----------------
+def with_lifecycle(entries, approved=True):
+    from src.services.lifecycle import Lifecycle
+
+    svc, store, *rest = build(entries=entries, approved=approved)
+    svc._life = Lifecycle(store=store, now=lambda: NOW)
+    return svc, store, rest
+
+
+async def test_everyone_paid_completes_the_event_once_and_leaves_a_log_and_a_notification():
+    from src.models.event import EventStatus
+
+    entries = [entry(f"k{i}", u, a) for i, (u, a) in enumerate(EXPECTED.items())]
+    svc, store, _ = with_lifecycle(entries)
+    event = store.get_event("ev-demo")
+    store.save_event(event.model_copy(update={"status": EventStatus.PAYMENT}))
+    await svc.confirm_incoming_payments("ev-demo")
+    done = store.get_event("ev-demo")
+    assert done.status is EventStatus.COMPLETED and done.completed_at == NOW  # 振り返りの起点
+    assert [d.summary for d in store.list_decisions("ev-demo")] == [
+        "全員の入金を明細で確認しました"
+    ]
+    assert [n.kind.value for n in store.list_notifications("uid")] == ["completed"]
+    await svc.confirm_incoming_payments("ev-demo")  # もう一度確認しても、完了の記録は増えない
+    assert len(store.list_decisions("ev-demo")) == 1 and len(store.list_notifications("uid")) == 1
+
+
+async def test_a_missing_payment_keeps_the_event_in_payment_and_logs_the_wait():
+    from src.models.event import EventStatus
+
+    entries = [entry(f"k{i}", u, a) for i, (u, a) in enumerate(EXPECTED.items()) if u != "ito"]
+    svc, store, _ = with_lifecycle(entries)
+    store.save_event(store.get_event("ev-demo").model_copy(update={"status": EventStatus.PAYMENT}))
+    await svc.confirm_incoming_payments("ev-demo")
+    assert store.get_event("ev-demo").status is EventStatus.PAYMENT
+    assert store.get_event("ev-demo").completed_at is None
+    assert "待っています" in store.list_decisions("ev-demo")[0].summary
+    assert store.list_notifications("uid") == []
+
+
+async def test_confirming_incoming_payments_does_not_complete_an_event_before_payment():
+    from src.models.event import EventStatus
+
+    entries = [entry(f"k{i}", u, a) for i, (u, a) in enumerate(EXPECTED.items())]
+    svc, store, _ = with_lifecycle(entries)
+    store.save_event(store.get_event("ev-demo").model_copy(update={"status": EventStatus.APPROVAL}))
+    await svc.confirm_incoming_payments("ev-demo")
+    assert store.get_event("ev-demo").status is EventStatus.APPROVAL  # 承認の前に完了にしない
+
+
+async def test_a_split_with_nobody_to_collect_from_is_not_reported_as_everyone_paid():
+    from src.models.event import EventStatus
+
+    svc, store, _ = with_lifecycle([], approved=False)
+    split = store.get_split("ev-demo")
+    store.save_split(
+        split.model_copy(
+            update={"rows": [r.model_copy(update={"share_yen": 0}) for r in split.rows]}
+        )
+    )
+    store.save_event(store.get_event("ev-demo").model_copy(update={"status": EventStatus.PAYMENT}))
+    run = await svc.confirm_incoming_payments("ev-demo")
+    assert run.all_received and store.get_event("ev-demo").status is EventStatus.PAYMENT

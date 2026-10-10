@@ -10,8 +10,9 @@ from google.adk.tools import BaseTool
 from google.adk.tools.tool_context import ToolContext
 
 # 呼んでよいツール名の許可リスト。`kuroko-api` の /mcp の「LLM可」のツール（SPEC 4.1）だけを入れる。
-# 追加は B21（/mcp の実装）と一緒に行い、`llm_must_not` に当たるものは入れない（テストで固定）。
-ALLOWED_TOOLS: frozenset[str] = frozenset()
+# `backend/mcp_toolspec.json`（/mcp が実際に公開するツール）と一致することと、`llm_must_not` に
+# 当たるものが無いことは、テストで固定する。ツールを足すときは両方を直す。
+ALLOWED_TOOLS: frozenset[str] = frozenset({"get_event_summary", "check_budget", "search_venues"})
 
 
 def before_tool_callback(

@@ -43,6 +43,10 @@ class PolicySnapshot(BaseModel):
     hard_limit_per_person_yen: int = Field(gt=0)
     # 委任状の有効期限（開催日から数えた日数。payment.payer_mandate.expires_after_event_days）
     mandate_valid_days_after_event: int = Field(default=7, gt=0, le=30)
+    # 帰りやすさ（venue_access）。全員がこの時間以内に着ける駅を探し、無ければ刻みで緩める
+    venue_max_travel_minutes: int = Field(default=45, ge=10, le=200)
+    venue_relax_step_minutes: int = Field(default=15, ge=0, le=60)
+    venue_relax_limit_minutes: int = Field(default=75, ge=10, le=200)
 
     @model_validator(mode="after")
     def _check(self) -> "PolicySnapshot":

@@ -19,6 +19,7 @@ from src.clients.claim_signer import ClaimSigner
 from src.clients.payment_api import PaymentApi, PaymentApiError, PaymentOutcome
 from src.db.events import EventStore
 from src.db.payments import PaymentReader
+from src.models.dashboard import NotificationKind
 from src.models.event import EventStatus
 from src.models.split import Approval, SplitResult
 from src.services.policy_gates import CheckoutLine, Gate, check_before_checkout
@@ -67,6 +68,7 @@ class BillingService:
         bank: BankAdapter,
         payments: PaymentReader,
         checkout_ttl_seconds: int,
+        lifecycle=None,  # noqa: ANN001
         now=lambda: datetime.now(UTC),
         today=None,
     ) -> None:
@@ -74,6 +76,7 @@ class BillingService:
         self._payment_api, self._bank, self._payments = payment_api, bank, payments
         self._ttl = timedelta(seconds=checkout_ttl_seconds)
         self._now = now
+        self._life = lifecycle
         self._today = today or (lambda: self._now().astimezone(JST).date())
 
     # ---- 請求 ----
@@ -128,6 +131,13 @@ class BillingService:
         if run.outcomes:
             event.status = EventStatus.PAYMENT
             self._store.save_event(event)
+            if self._life:
+                self._life.log(
+                    event_id,
+                    "payment_agent",
+                    "ツール",
+                    f"{len(run.outcomes)}名の振込を依頼しました",
+                )
         return run
 
     async def _start(self, event_id: str, line: CheckoutLine, token: str) -> PaymentOutcome | str:
@@ -188,6 +198,17 @@ class BillingService:
                     event_id, p.model_copy(update={"collection_confirmed_at": stamp})
                 )
         run.all_received = not run.missing and not run.amount_mismatch
+        if run.all_received and expected and event.status is EventStatus.PAYMENT:
+            event.status = EventStatus.COMPLETED  # 全員の入金を明細で確認した（SPEC 8.6）
+            event.completed_at = stamp
+            self._store.save_event(event)
+            if self._life:
+                self._life.log(event_id, "payment_agent", "確認", "全員の入金を明細で確認しました")
+                self._life.notify(event, NotificationKind.COMPLETED, "全員の入金を確認しました")
+        elif run.missing and self._life:
+            self._life.log(
+                event_id, "payment_agent", "待機", f"{len(run.missing)}名の入金を待っています"
+            )
         return run
 
 
