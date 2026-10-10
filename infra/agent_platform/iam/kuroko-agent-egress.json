@@ -1,0 +1,12 @@
+[
+  {
+    "description": "kuroko-agent だけが、Agent Registry に登録された MCP サーバー（kuroko-api-mcp）へ出口 Gateway を通れる。extract-agent にはツールが無いので、何も許可しない（既定は拒否）",
+    "effect": "ALLOW",
+    "principals": [
+      "principal://agents.global.proj-1054683553459.system.id.goog/resources/aiplatform/projects/1054683553459/locations/us-central1/reasoningEngines/4459953688672206848"
+    ],
+    "operation": {
+      "permissions": ["iap.googleapis.com/resources.egressViaIAP"]
+    }
+  }
+]
