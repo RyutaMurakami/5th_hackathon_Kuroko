@@ -29,6 +29,10 @@ class GcsUploadSigner:
             access_token=creds.token,
         )
 
+    def read_bytes(self, path: str) -> bytes | None:
+        blob = self._client.bucket(self._bucket).get_blob(path)
+        return blob.download_as_bytes() if blob is not None else None
+
     def object_size(self, path: str) -> int | None:
         blob = self._client.bucket(self._bucket).get_blob(path)
         return blob.size if blob is not None else None
@@ -39,6 +43,9 @@ class DisabledUploadSigner:
 
     def signed_put_url(self, path: str, content_type: str, ttl_seconds: int) -> str:
         raise RuntimeError("uploads_not_configured")
+
+    def read_bytes(self, path: str) -> bytes | None:
+        return None
 
     def object_size(self, path: str) -> int | None:
         return None

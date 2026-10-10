@@ -31,6 +31,7 @@ from src.models.dashboard import (
     UploadKind,
 )
 from src.models.event import Event, EventStatus, Receipt
+from src.services.receipt_ocr import ReceiptModel, ocr_receipt
 from src.services.scenario_hint import hint_for
 from src.services.vocab import REQUEST_TAGS, only_vocab
 
@@ -45,6 +46,8 @@ class DashboardError(Exception):
 
 
 class UploadSigner(Protocol):
+    def read_bytes(self, path: str) -> bytes | None: ...
+
     def signed_put_url(self, path: str, content_type: str, ttl_seconds: int) -> str: ...
 
     def object_size(self, path: str) -> int | None:
@@ -68,10 +71,12 @@ class DashboardService:
         signer: UploadSigner,
         dispatcher: RsvpDispatcher,
         upload_ttl_seconds: int = 300,
+        ocr: ReceiptModel | None = None,
         now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
     ) -> None:
         self._store, self._chat, self._signer = store, chat, signer
         self._dispatcher, self._ttl, self._now = dispatcher, upload_ttl_seconds, now
+        self._ocr = ocr
 
     # ------------------------------------------------------------ 権限
     def _own(self, actor: Actor, event_id: str) -> Event:
@@ -223,7 +228,7 @@ class DashboardService:
         url = self._signer.signed_put_url(path, content_type, self._ttl)
         return {"upload_id": upload_id, "url": url, "expires_in": self._ttl}
 
-    def register_upload(self, actor: Actor, event_id: str, upload_id: str) -> dict[str, Any]:
+    async def register_upload(self, actor: Actor, event_id: str, upload_id: str) -> dict[str, Any]:
         """アップロード後の登録。実際のサイズをサーバー側でも検査し、超過・無いものは却下する。"""
         self._own(actor, event_id)
         up = self._store.get_upload(event_id, upload_id)
@@ -233,8 +238,26 @@ class DashboardService:
         if size is None or size > MAX_UPLOAD_BYTES:
             self._store.save_upload(up.model_copy(update={"status": "rejected"}))
             raise DashboardError("upload_rejected")
-        self._store.save_upload(up.model_copy(update={"status": "registered"}))
-        return {"upload_id": upload_id, "status": "registered", "extraction": "pending"}
+        up = up.model_copy(update={"status": "registered"})
+        if up.kind is UploadKind.RECEIPT:
+            up = await self._read_receipt(up)  # 登録後に ocr_receipt を起動する（SPEC 4.3）
+        self._store.save_upload(up)
+        return {"upload_id": upload_id, "status": "registered", "extraction": up.extraction_status}
+
+    async def _read_receipt(self, up: Upload) -> Upload:
+        """読み取れなければ failed（手入力に切り替えられる）。結果は確認するまで使われない。"""
+        data = self._signer.read_bytes(up.object_path) if self._ocr else None
+        reading = await ocr_receipt(self._ocr, data) if self._ocr and data else None
+        if reading is None or not reading.ok:
+            return up.model_copy(update={"extraction_status": "failed"})
+        return up.model_copy(update={
+            "extraction_status": "done",
+            "extraction": {
+                "venue_name": reading.venue_name, "date": reading.date,
+                "total_amount_yen": reading.total_amount_yen, "line_items": reading.line_items,
+                "warnings": reading.warnings,
+            },
+        })  # fmt: skip
 
     # ------------------------------------------------------------ 確定
     def confirm_extraction(
@@ -249,6 +272,10 @@ class DashboardService:
                 raise DashboardError("invalid_amount")
             if source == "manual" and not self._receipt_extraction_failed(event_id):
                 raise DashboardError("manual_not_allowed")  # 手入力は、読み取りに失敗したときだけ
+            if source == "extracted" and not self._receipt_extraction_done(event_id):
+                raise DashboardError(
+                    "no_extraction"
+                )  # 読み取り結果が無いものを「読み取り」と名乗れない
             self._store.save_receipt(Receipt(
                 event_id=event_id, total_amount_yen=amount,
                 source="manual" if source == "manual" else "upload",
@@ -259,6 +286,10 @@ class DashboardService:
         venue = validate_reservation(values)
         self._store.save_event(event.model_copy(update={"venue": {**venue, "source": source}}))
         return {"confirmed": "reservation", "source": source}
+
+    def _receipt_extraction_done(self, event_id: str) -> bool:
+        ups = [u for u in self._store.list_uploads(event_id) if u.kind is UploadKind.RECEIPT]
+        return any(u.extraction_status == "done" for u in ups)
 
     def _receipt_extraction_failed(self, event_id: str) -> bool:
         ups = [u for u in self._store.list_uploads(event_id) if u.kind is UploadKind.RECEIPT]

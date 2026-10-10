@@ -151,6 +151,7 @@ def get_dashboard():
     from src.clients.uploads import DisabledUploadSigner, GcsUploadSigner
     from src.services import kuroko_chat
     from src.services.dashboard import DashboardService
+    from src.services.receipt_ocr import GeminiReceiptModel
 
     s = get_settings()
     signer = (
@@ -164,4 +165,5 @@ def get_dashboard():
         signer=signer,
         dispatcher=_TasksRsvpDispatcher(),
         upload_ttl_seconds=s.upload_url_ttl_seconds,
+        ocr=GeminiReceiptModel(project=s.google_cloud_project) if s.google_cloud_project else None,
     )

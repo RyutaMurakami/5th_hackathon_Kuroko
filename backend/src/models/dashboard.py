@@ -70,6 +70,8 @@ class Upload(BaseModel):
     source: Literal["upload", "paste"] = "upload"  # 貼り付けも、同じ検査・保存の経路を通る
     status: Literal["issued", "registered", "rejected"] = "issued"
     extraction_status: Literal["pending", "done", "failed"] = "pending"
+    # 読み取り結果（幹事が確認するまで使われない）。ocr_receipt の検証済みの値だけ
+    extraction: dict | None = None
     uploaded_by: str  # Firebase の UID
     created_at: datetime
 

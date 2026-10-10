@@ -36,12 +36,16 @@ PLAN = {
 class Signer:
     def __init__(self):
         self.sizes: dict[str, int] = {}
+        self.blobs: dict[str, bytes] = {}
 
     def signed_put_url(self, path, content_type, ttl_seconds):
         return f"https://storage.test/{path}?ct={content_type}&ttl={ttl_seconds}"
 
     def object_size(self, path):
         return self.sizes.get(path)
+
+    def read_bytes(self, path):
+        return self.blobs.get(path)
 
 
 class Dispatcher:
@@ -64,6 +68,12 @@ def make(chat=None):
 
 async def new_event(svc, actor=ORG):
     return (await svc.send_message(actor, None, "来週金曜に飲み会"))["event_id"]
+
+
+def mark_receipt_extracted(svc, store, eid):
+    up = svc.issue_upload_url(ORG, eid, UploadKind.RECEIPT, "image/png", 10)
+    store.save_upload(store.get_upload(eid, up["upload_id"]).model_copy(
+        update={"status": "registered", "extraction_status": "done"}))  # fmt: skip
 
 
 # ---------------- 権限の分離 ----------------
@@ -213,9 +223,9 @@ async def test_upload_flow_checks_type_size_count_and_the_real_size():
     )
     up = store.get_upload(eid, issued["upload_id"])
     signer.sizes[up.object_path] = 999
-    assert svc.register_upload(ORG, eid, up.upload_id)["status"] == "registered"
+    assert (await svc.register_upload(ORG, eid, up.upload_id))["status"] == "registered"
     with pytest.raises(DashboardError):  # 二重の登録はできない
-        svc.register_upload(ORG, eid, up.upload_id)
+        await svc.register_upload(ORG, eid, up.upload_id)
 
 
 async def test_a_server_side_size_check_rejects_oversized_or_missing_objects():
@@ -224,11 +234,11 @@ async def test_a_server_side_size_check_rejects_oversized_or_missing_objects():
     big = svc.issue_upload_url(ORG, eid, UploadKind.RECEIPT, "application/pdf", 1000)
     signer.sizes[store.get_upload(eid, big["upload_id"]).object_path] = 6 * 1024 * 1024
     with pytest.raises(DashboardError):
-        svc.register_upload(ORG, eid, big["upload_id"])  # 申告より実際が大きい
+        await svc.register_upload(ORG, eid, big["upload_id"])  # 申告より実際が大きい
     assert store.get_upload(eid, big["upload_id"]).status == "rejected"
     gone = svc.issue_upload_url(ORG, eid, UploadKind.RECEIPT, "image/png", 10)
     with pytest.raises(DashboardError):
-        svc.register_upload(ORG, eid, gone["upload_id"])  # 実際には置かれていない
+        await svc.register_upload(ORG, eid, gone["upload_id"])  # 実際には置かれていない
 
 
 async def test_upload_counts_are_limited_per_event_and_pasting_a_receipt_is_not_allowed():
@@ -254,15 +264,16 @@ async def test_someone_elses_upload_id_cannot_be_registered():
     up = svc.issue_upload_url(ORG, a, UploadKind.RECEIPT, "image/png", 10)
     signer.sizes[store.get_upload(a, up["upload_id"]).object_path] = 10
     with pytest.raises(DashboardError):
-        svc.register_upload(ORG2, b, up["upload_id"])  # 別のイベントの upload_id
+        await svc.register_upload(ORG2, b, up["upload_id"])  # 別のイベントの upload_id
     with pytest.raises(DashboardError):
-        svc.register_upload(ORG2, a, up["upload_id"])
+        await svc.register_upload(ORG2, a, up["upload_id"])
 
 
 # ---------------- 確定（Policy Gate 6.1 の「幹事により確定済み」）----------------
 async def test_confirming_a_receipt_records_who_confirmed_and_feeds_gate_6_1():
     svc, store, *_ = make()
     eid = await new_event(svc)
+    mark_receipt_extracted(svc, store, eid)
     svc.confirm_extraction(ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 48000}, "extracted")
     r = store.get_receipt(eid)
     assert (r.total_amount_yen, r.source, r.confirmed_by) == (48000, "upload", "u-org")
@@ -489,6 +500,7 @@ async def test_the_reservation_and_receipt_examples_are_valid_values():
     validate_reservation(svc.get_event(ORG, eid)["hint"]["example"]["reservation"])
     store.save_event(store.get_event(eid).model_copy(update={"status": EventStatus.RECEIPT}))
     amount = svc.get_event(ORG, eid)["hint"]["example"]["receipt"]["total_amount_yen"]
+    mark_receipt_extracted(svc, store, eid)
     svc.confirm_extraction(ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": amount}, "extracted")
     assert svc.get_event(ORG, eid)["hint"]["example"]["confirmed"] is True
 

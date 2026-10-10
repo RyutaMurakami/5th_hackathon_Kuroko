@@ -105,9 +105,9 @@ def issue_upload(event_id: str, body: UploadIn, actor: Who, s: Svc) -> dict[str,
 
 
 @router.post("/events/{event_id}/uploads/{upload_id}/register")
-def register_upload(event_id: str, upload_id: str, actor: Who, s: Svc) -> dict[str, Any]:
+async def register_upload(event_id: str, upload_id: str, actor: Who, s: Svc) -> dict[str, Any]:
     try:
-        return s.register_upload(actor, event_id, upload_id)
+        return await s.register_upload(actor, event_id, upload_id)
     except DashboardError as e:
         raise _raise(e) from None
 
