@@ -2,6 +2,8 @@
 
 > エージェントへ: 本書は、Agent Platform（Agent Gateway・Agent Registry・Model Armor・Agent Runtime・Memory Bank・RAG Engine）のうち、**ユーザーが学びながら自分の手で行う作業だけ**を、順番に並べたチェックリスト（2026-10-01 ユーザー指定）。画面の入力値などの詳しい手順は各手順書に置き、本書には「何を・どの順で・終わったら AI に何を返すか」だけを書く。ユーザーが項目を終えたら、AI はチェックを付け、[human_task.md](../human_task.md) の該当項目にも結果を書く。
 
+> **2026-10-10: 現状に合わせた順序と確認項目は、[agent_platform_next_steps.md](agent_platform_next_steps.md) にまとめた。まずそちらを見る。**
+
 - 作成日: 2026-10-01
 - 対象プロジェクト: `kuroko-509311`／リージョン: `us-central1`
 - **進め方**: 上から順に進める。「待ち」と書いた項目は、AI の準備ができたら AI から声をかける。それまでは先の項目に進んでよい
