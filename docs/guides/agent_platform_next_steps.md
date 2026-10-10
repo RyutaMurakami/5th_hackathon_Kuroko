@@ -17,10 +17,10 @@
 | Agent Gateway | **0 件**（入口・出口とも未作成） | 作成が必要（フェーズ 3） |
 | Agent Registry の MCP サーバー | **0 件** | 登録が必要（フェーズ 4） |
 | `kuroko-agent`（Agent Runtime） | **デプロイ済み**（2026-10-06）。エンジン: `projects/1054683553459/locations/us-central1/reasoningEngines/2398800395150295040`。Slack の DM から本物のエージェントが返答する（確認済み） | ただし**旧コード**（ツールなし・`KUROKO_MCP_URL` なし）。Gateway なしのデプロイ |
-| `extract-agent` | **未デプロイ**（コードとテストはできている） | `kuroko-api` の `EXTRACT_AGENT_ENGINE` が空のため、振り返りのコメントは**キーワードの仮実装**で語彙に落としている |
+| `extract-agent` | **デプロイ済み**（2026-10-10。`…/reasoningEngines/3489568706462220288`。Gateway なし）。`kuroko-api` の `EXTRACT_AGENT_ENGINE` に設定済みで、**振り返りのコメントは本物の隔離抽出で語彙に落としている** | あとで Gateway 付きに作り直す（フェーズ 5） |
 | `kuroko-api` の `/mcp` | **デプロイ済み**（`get_event_summary`・`check_budget`・`search_venues`） | 呼び出し元の設定 `AGENT_KUROKO_PRINCIPAL` が**空**なので、**全て 403（安全側）** |
 | `kuroko-api` を呼べる主体（Cloud Run invoker） | `sa-api`・`sa-dashboard`・`sa-gateway`・`sa-scheduler`・`sa-demo-runner` | **エージェントの身元は未登録**。V1 のあと、AI が `roles/run.invoker` を付ける |
-| デプロイスクリプト `infra/agent_platform/deploy_agent.py` | **まだ無い**（手順書には「AI が用意」とある） | `agents-cli deploy` には **Gateway を付けるオプションが無い**（`--agent-identity` はある）。**Gateway 付きのデプロイには、AI が書くスクリプトが要る** |
+| デプロイスクリプト `infra/agent_platform/deploy_agent.py` | **用意済み（2026-10-10）**。Gateway なしの環境で `--dry-run` まで確認。**実際の作成は、Gateway ができてから初めて通る**（未検証） | `agents-cli deploy` には Gateway を付けるオプションが無いため、SDK（`client.agent_engines`）で同じ経路に `agent_gateway_config` と Agent identity を足した |
 | `agents-cli` | 1.3.1（1.9.0 が出ている） | 今回は更新しなくてよい（更新するなら `uv tool upgrade google-agents-cli`。挙動が変わるので、更新するなら先に AI に伝える） |
 | Memory Bank・RAG Engine | **未作成。コードも未実装**（B27・B28） | 今は人間の作業なし。AI の手順書ができるまで待つ（フェーズ 7） |
 | Firestore `config/slack_users` | **無い** | シナリオを Slack で通すのに必要（Agent Platform ではないが、同時に済ませる。フェーズ 8） |
@@ -87,10 +87,10 @@
 
 **目的**: 振り返りのコメントを、キーワードの仮実装から、本物の隔離抽出に切り替える。ツールを持たないエージェントなので、リスクは低い。
 
-- [ ] **1-1. コードを読む**（学習）— `extract_agent/app/agent.py`・`callbacks.py`・`sanitize.py`
+- [x] **1-1. コードを読む**（学習）— `extract_agent/app/agent.py`・`callbacks.py`・`sanitize.py`
   - 見どころ: ツールが空（`tools=[]`）／`before_model` で用途と長さを検査／`after_model` で出力を語彙・形に検証し、外れたら空の結果／`before_tool` は全て拒否
 
-- [ ] **1-2. デプロイ**（⌨。5〜10 分）
+- [x] **1-2. デプロイ**（⌨。5〜10 分）
 
   ```bash
   cd extract_agent
@@ -104,7 +104,7 @@
   - 終わると `extract_agent/deployment_metadata.json` に `remote_agent_runtime_id` が入る（コミットしない。`.gitignore` 済み）
   - `--min-instances 0` は、使っていないときの課金を避ける（最初の1回は起動に数十秒かかる）
 
-- [ ] **1-3. 動作を確かめる**（⌨）
+- [x] **1-3. 動作を確かめる**（⌨）
 
   **`--url` には、サービス名（`extract-agent`）ではなく、エンジンの完全な名前**（`projects/<番号>/locations/us-central1/reasoningEngines/<ID>`）を入れる。サービス名を入れると、`/v1/extract-agent/apps/app/users/.../sessions` が 404 になる。デプロイで `extract_agent/deployment_metadata.json` に入った値を、次のように取る。
 
@@ -135,11 +135,11 @@
 
   **見るところ**: 出力が**固定の形の JSON だけ**であること（文章・承認・振込に関する言葉が出ていないこと）。
 
-- [ ] **1-4. AI に伝える**: `remote_agent_runtime_id` の値（`projects/.../reasoningEngines/<ID>`）。秘密ではない。
+- [x] **1-4. AI に伝える**: `remote_agent_runtime_id` の値（`projects/.../reasoningEngines/<ID>`）。秘密ではない。
 
-- 🤖 **AI がやること**（あなたの連絡を受けてから）
-  1. `terraform.tfvars` の `extract_agent_engine` に設定し、`terraform apply`（`kuroko-api` の `EXTRACT_AGENT_ENGINE` が入る）
-  2. 本物のエンジンに対して `AgentRuntimeExtractRunner` を呼ぶ確認（本番と同じ経路）
+- 🤖 **AI がやったこと（2026-10-10 完了）**
+  1. `terraform.tfvars` の `extract_agent_engine` に設定し、`terraform apply`（`kuroko-api` の `EXTRACT_AGENT_ENGINE` が入った。差分 0）
+  2. 本物のエンジンに対して `AgentRuntimeExtractRunner` を呼ぶ確認（本番と同じ経路。通常・攻撃文入りとも想定どおり）
   3. TASKS B26 の「デプロイ後の残り」を更新
 
 - **戻し方**: `extract_agent_engine = ""` に戻して apply すれば、キーワードの仮実装に戻る（エンジンは残してよい）。
@@ -211,26 +211,44 @@ AI に返すもの: なし（名前が決まっている）。
 
 ## 8. フェーズ 5: エージェントを Gateway 付きでデプロイする（**待ち: AI のデプロイスクリプト**）
 
-### 🤖 AI の未実施（先に AI が片づける）
+### 🤖 AI の準備（2026-10-10 に `deploy_agent.py` を用意した）
 
-| # | AI がやること | 完了の目安 |
+| # | AI がやること | 状態 |
 |---|---|---|
-| 1 | `infra/agent_platform/deploy_agent.py` を作る。`identity_type=AGENT_IDENTITY`、`agent_gateway_config`（入口 `kuroko-agw-c2a`・出口 `kuroko-agw-a2a`）、`min_instances=0`、**既存エンジンの更新**（エンジンIDを変えない）に対応。`kuroko-agent` には `KUROKO_MCP_URL`（上の URL）を渡す | `--dry-run` で内容が見える。**実行はあなた** |
-| 2 | 渡された Gateway 名・Registry 名を、スクリプトと Terraform の変数に反映 | — |
-| 3 | 検証スクリプト `infra/agent_platform/verify_g2.py`（V1・V2・V7・V8） | — |
+| 1 | `infra/agent_platform/deploy_agent.py`: `identity_type=AGENT_IDENTITY`、`agent_gateway_config`（**入口・出口の両方**）、`min_instances=0`。`kuroko-agent` には `KUROKO_MCP_URL` を渡す | **完了**（`--dry-run`・単体テスト 17 件。**実際の作成は、Gateway ができてから初めて通る**） |
+| 2 | 検証スクリプト `infra/agent_platform/verify_g2.py`（V1・V2・V7・V8） | Gateway ができてから |
 
-> AI は、**あなたがフェーズ 2〜4 を終えたこと**（または終えるのを待たずに）スクリプトを用意できる。完成したら AI から声をかける。
+スクリプトが行うこと（読んでから実行する）:
+- **両方のエージェントを入口 Gateway につなぐ**（入口の Model Armor が `streamQuery` の入力を検査する）
+- 作る前に、**Gateway が存在し、入口と出口を取り違えていないか**を `gcloud` で確かめる（無ければここで止まる）
+- **既存のエンジン（identity なし）は更新できない**（Agent identity は作成時にしか決められない）。**別の表示名（`-gw`）で新しく作る**。旧エンジンは動いたまま（Slack の返答は止まらない）
+- Agent identity に、**最小の4つだけ**を付ける（Gemini・ログ・メトリクス）。`kuroko-api` への `run.invoker` や Registry の `iap.egressor` は付けない（V1 のあと、AI が Terraform で付ける）
+- `.env` はアップロードしない。`GOOGLE_CLOUD_PROJECT`（予約済みの変数）は外す。本文を記録に残さない設定を入れる
 
-### あなたがやること（スクリプトが用意できてから）
+### あなたがやること（Gateway ができてから）
 
-- [ ] **5-1. スクリプトを読んでから `--dry-run` で実行する**（⌨）
-  - 読むところ: `identity_type`・`agent_gateway_config`・環境変数・`min_instances`
-- [ ] **5-2. `kuroko-agent` をデプロイする**（⌨。5〜10 分）
-- [ ] **5-3. `extract-agent` を Gateway 付きで作り直す**（⌨）— エンジンIDが変わる
+- [ ] **5-1. 内容を確かめる**（⌨）— `kuroko_agent/` と `extract_agent/` でそれぞれ。**Gateway の確認を通ること**が最初の関門
+
+  ```bash
+  cd kuroko_agent
+  uv run --with pathspec python ../infra/agent_platform/deploy_agent.py --agent kuroko --display-name kuroko-agent-gw --dry-run
+  cd ../extract_agent
+  uv run --with pathspec python ../infra/agent_platform/deploy_agent.py --agent extract --display-name extract-agent-gw --dry-run
+  ```
+
+  期待: `【create】…-gw`、入口・出口のパス、identity、環境変数が表示され、「何もデプロイしていない」で終わる。`Gateway「…」が見つからない` が出たら、フェーズ 3 の名前を確認する。
+
+- [ ] **5-2. `kuroko-agent-gw` を作る**（⌨。5〜10 分。確認で `y`）— `--dry-run` を外して実行
+- [ ] **5-3. `extract-agent-gw` を作る**（⌨）
 - [ ] **5-4. Console の Deployments で確認する**（🖱）
-  - 2 つのエージェントが並ぶ
-  - **Identity の列が 2 つで異なる**（`principal://agents.global.proj-1054683553459.system.id.goog/...`。**同じなら V2 は外れ**。AI に伝える）
-- [ ] **5-5. Slack で KUROKO に DM して、返答が来ること**（⌨/Slack）— **ここで壊れたら、すぐ AI に連絡**（`kuroko_agent` を直前のエンジンに戻す手順を AI が用意する）
+  - 新しい 2 つ（`-gw`）と、旧い 2 つが並ぶ
+  - **新しい 2 つの Identity の列が、互いに異なる**（`principal://agents.global.proj-1054683553459.system.id.goog/...`。**同じなら V2 は外れ**。AI に伝える）
+- [ ] **5-5. 新エンジンを `agents-cli run --url` で単体確認する**（⌨。`kuroko_agent/deployment_metadata.json` のエンジン名で。ガイド 1-3 と同じ要領）
+
+**切り替えと後片付け**（AI が行う。旧エンジンは、切り替えて確かめるまで消さない）:
+1. 🤖 `kuroko_agent_engine`・`extract_agent_engine` を新エンジンに更新して apply → Slack で DM して返答が来ることを確認
+2. 🤖 IAM・V1・`agent_kuroko_principal` の設定（下記）
+3. 問題がなければ、旧エンジンを削除する（`--delete-old <旧エンジンの名前>`、または Console）。**問題があれば、tfvars を旧エンジンに戻すだけで元に戻る**
 
 **AI に返すもの**: 2 つの**エンジンID**（`projects/.../reasoningEngines/<ID>`）。Identity の principal の文字列（`principal://...` の全体）
 
@@ -316,11 +334,11 @@ AI に返すもの: なし（名前が決まっている）。
 ## 進捗チェックリスト（上の項目の再掲）
 
 - [ ] フェーズ 0: 事前確認（0-1〜0-4）
-- [ ] フェーズ 1: `extract-agent` のデプロイと確認（1-1〜1-4）→ 🤖 エンジンの設定
+- [x] フェーズ 1: `extract-agent` のデプロイと確認（1-1〜1-4）→ 🤖 エンジンの設定（**2026-10-10 完了**。本番の経路で確認済み）
 - [ ] フェーズ 2: Model Armor ×2
 - [ ] フェーズ 3: Gateway ×2
 - [ ] フェーズ 4: Registry に `kuroko-api-mcp`
-- [ ] 🤖 `deploy_agent.py`・`verify_g2.py` の用意
+- [x] 🤖 `deploy_agent.py` の用意（2026-10-10。`--dry-run` まで確認）／ [ ] 🤖 `verify_g2.py`（V1・V2・V7・V8。Gateway ができてから）
 - [ ] フェーズ 5: Gateway 付きデプロイ（5-1〜5-5）→ 🤖 IAM・V1・`agent_kuroko_principal`
 - [ ] フェーズ 6: 確かめる・P9 の判断
 - [ ] フェーズ 7: Memory Bank・RAG（AI の手順書待ち）
