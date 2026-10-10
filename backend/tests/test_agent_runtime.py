@@ -149,7 +149,7 @@ async def test_chat_recreates_a_lost_session_once():
     text = await kuroko_chat._reply_via_runtime(make(fake), store, "slack:T:U", "x")
     assert text == "こんにちは"
     assert fake.sessions == 2
-    assert await store.get("slack:T:U") == "s2"
+    assert await store.get(f"{ENGINE}|slack:T:U") == "s2"
 
 
 async def test_reply_falls_back_to_the_provisional_agent_until_an_engine_is_configured(
@@ -183,3 +183,41 @@ async def test_reply_uses_the_runtime_when_an_engine_is_configured(monkeypatch, 
     monkeypatch.setattr(kuroko_chat.provisional_agent, "reply", must_not_be_called)
     assert await kuroko_chat.reply("slack:T:U", "やあ") == "こんにちは"
     kuroko_chat._store.cache_clear()
+
+
+async def test_a_session_saved_for_another_engine_is_never_used():
+    """エンジンを切り替えたあと、古いエンジンのセッション ID を使わない（実機で返答が止まった）。"""
+    fake, store = FakeRuntime(), MemorySessionStore()
+    await store.put("other-engine|slack:T:U", "stale-session")  # 切り替え前のエンジンのもの
+    await kuroko_chat._reply_via_runtime(make(fake), store, "slack:T:U", "x")
+    stream = [json.loads(r.content)["input"] for r in fake.requests if "streamQuery" in r.url.path]
+    assert [s["session_id"] for s in stream] == ["s1"] and fake.sessions == 1
+
+
+async def test_an_empty_200_stream_is_treated_as_a_missing_session_and_retried_once():
+    """ADK は、セッションが無いと、ストリームを 200 で始めたあとに例外にする（本文が空になる）。"""
+
+    class EmptyOnce(FakeRuntime):
+        def handler(self, request):
+            if request.url.path.endswith(":streamQuery") and self.sessions == 1:
+                self.requests.append(request)
+                return httpx.Response(200, content=b"")
+            return super().handler(request)
+
+    fake, store = EmptyOnce(), MemorySessionStore()
+    text = await kuroko_chat._reply_via_runtime(make(fake), store, "slack:T:U", "x")
+    assert text == "こんにちは" and fake.sessions == 2
+
+
+async def test_two_empty_streams_in_a_row_fail_instead_of_looping():
+    class AlwaysEmpty(FakeRuntime):
+        def handler(self, request):
+            if request.url.path.endswith(":streamQuery"):
+                self.requests.append(request)
+                return httpx.Response(200, content=b"")
+            return super().handler(request)
+
+    fake, store = AlwaysEmpty(), MemorySessionStore()
+    with pytest.raises(SessionNotFound):
+        await kuroko_chat._reply_via_runtime(make(fake), store, "slack:T:U", "x")
+    assert fake.sessions == 2  # 1回だけやり直して終える
