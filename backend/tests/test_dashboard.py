@@ -51,9 +51,17 @@ class Signer:
 class Dispatcher:
     def __init__(self):
         self.started: list[str] = []
+        self.approvals: list[str] = []
+        self.budgets: list[str] = []
 
     async def start_rsvp(self, event_id):
         self.started.append(event_id)
+
+    async def start_split_approval(self, event_id):
+        self.approvals.append(event_id)
+
+    async def start_budget_request(self, event_id):
+        self.budgets.append(event_id)
 
 
 def make(chat=None):
@@ -68,6 +76,14 @@ def make(chat=None):
 
 async def new_event(svc, actor=ORG):
     return (await svc.send_message(actor, None, "来週金曜に飲み会"))["event_id"]
+
+
+async def at(svc, status, actor=ORG):
+    """指定の段階のイベント（段階は事実で進むので、テストでは直接そこに置く）。"""
+    eid = await new_event(svc, actor)
+    e = svc._store.get_event(eid)
+    svc._store.save_event(e.model_copy(update={"status": status}))
+    return eid
 
 
 def mark_receipt_extracted(svc, store, eid):
@@ -92,7 +108,7 @@ async def test_other_peoples_events_look_nonexistent_for_every_operation():
         calls = [
             lambda a=actor: svc.get_event(a, eid),
             lambda a=actor: svc.issue_upload_url(a, eid, UploadKind.RECEIPT, "image/png", 10),
-            lambda a=actor: svc.confirm_extraction(a, eid, UploadKind.RECEIPT, {}, "extracted"),
+            lambda a=actor: svc.mark_event_held(a, eid),
             lambda a=actor: svc.select_venue(a, eid, "p", "n"),
         ]
         for call in calls:
@@ -272,9 +288,11 @@ async def test_someone_elses_upload_id_cannot_be_registered():
 # ---------------- 確定（Policy Gate 6.1 の「幹事により確定済み」）----------------
 async def test_confirming_a_receipt_records_who_confirmed_and_feeds_gate_6_1():
     svc, store, *_ = make()
-    eid = await new_event(svc)
+    eid = await at(svc, EventStatus.RECEIPT)
     mark_receipt_extracted(svc, store, eid)
-    svc.confirm_extraction(ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 48000}, "extracted")
+    await svc.confirm_extraction(
+        ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 48000}, "extracted"
+    )
     r = store.get_receipt(eid)
     assert (r.total_amount_yen, r.source, r.confirmed_by) == (48000, "upload", "u-org")
     assert store.get_event(eid).total_amount_yen == 48000
@@ -283,13 +301,13 @@ async def test_confirming_a_receipt_records_who_confirmed_and_feeds_gate_6_1():
 @pytest.mark.parametrize("amount", [0, -5, 10_000_001, "48000", 480.5, None, True])
 async def test_receipt_amounts_are_range_and_type_checked_for_manual_and_extracted_alike(amount):
     svc, store, *_ = make()
-    eid = await new_event(svc)
+    eid = await at(svc, EventStatus.RECEIPT)
     up = svc.issue_upload_url(ORG, eid, UploadKind.RECEIPT, "image/png", 1)
     store.save_upload(store.get_upload(eid, up["upload_id"]).model_copy(
         update={"extraction_status": "failed"}))  # fmt: skip
     for source in ("extracted", "manual"):
         with pytest.raises(DashboardError):
-            svc.confirm_extraction(
+            await svc.confirm_extraction(
                 ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": amount}, source
             )
     assert store.get_receipt(eid) is None
@@ -297,28 +315,32 @@ async def test_receipt_amounts_are_range_and_type_checked_for_manual_and_extract
 
 async def test_manual_receipt_entry_is_only_allowed_after_a_failed_reading():
     svc, store, *_ = make()
-    eid = await new_event(svc)
+    eid = await at(svc, EventStatus.RECEIPT)
     with pytest.raises(DashboardError) as e:
-        svc.confirm_extraction(ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 100}, "manual")
+        await svc.confirm_extraction(
+            ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 100}, "manual"
+        )
     assert e.value.code == "manual_not_allowed"
     up = svc.issue_upload_url(ORG, eid, UploadKind.RECEIPT, "image/png", 1)
     store.save_upload(store.get_upload(eid, up["upload_id"]).model_copy(
         update={"extraction_status": "failed"}))  # fmt: skip
-    svc.confirm_extraction(ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 100}, "manual")
+    await svc.confirm_extraction(ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 100}, "manual")
     assert store.get_receipt(eid).source == "manual"
 
 
 async def test_reservation_values_are_validated_and_the_source_is_recorded():
     svc, store, *_ = make()
-    eid = await new_event(svc)
+    eid = await at(svc, EventStatus.VENUE)
     ok = {"venue_name": "炭火 酒場", "datetime": "2026-10-23T19:00:00+09:00",
           "party_size": 8, "course_price_yen": 4500}  # fmt: skip
-    svc.confirm_extraction(ORG, eid, UploadKind.RESERVATION, ok, "manual")
+    await svc.confirm_extraction(ORG, eid, UploadKind.RESERVATION, ok, "manual")
     assert store.get_event(eid).venue["source"] == "manual"
     for patch in ({"venue_name": ""}, {"party_size": 0}, {"course_price_yen": 0},
                   {"course_price_yen": "4500"}, {"datetime": "x"}):  # fmt: skip
         with pytest.raises(DashboardError):
-            svc.confirm_extraction(ORG, eid, UploadKind.RESERVATION, {**ok, **patch}, "extracted")
+            await svc.confirm_extraction(
+                ORG, eid, UploadKind.RESERVATION, {**ok, **patch}, "extracted"
+            )
 
 
 # ---------------- 通知 ----------------
@@ -496,13 +518,16 @@ async def test_the_planning_example_passes_the_same_plan_validation():
 async def test_the_reservation_and_receipt_examples_are_valid_values():
     svc, store, *_ = make()
     eid = await new_event(svc)
-    store.save_event(store.get_event(eid).model_copy(update={"status": EventStatus.BOOKED}))
+    store.save_event(store.get_event(eid).model_copy(update={"status": EventStatus.VENUE}))
     validate_reservation(svc.get_event(ORG, eid)["hint"]["example"]["reservation"])
     store.save_event(store.get_event(eid).model_copy(update={"status": EventStatus.RECEIPT}))
     amount = svc.get_event(ORG, eid)["hint"]["example"]["receipt"]["total_amount_yen"]
     mark_receipt_extracted(svc, store, eid)
-    svc.confirm_extraction(ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": amount}, "extracted")
-    assert svc.get_event(ORG, eid)["hint"]["example"]["confirmed"] is True
+    assert svc.get_event(ORG, eid)["hint"]["example"]["confirmed"] is False
+    await svc.confirm_extraction(
+        ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": amount}, "extracted"
+    )
+    assert store.get_receipt(eid).total_amount_yen == amount
 
 
 async def test_me_returns_only_the_role(client, http):

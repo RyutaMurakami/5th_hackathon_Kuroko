@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Literal, Protocol
 
 from src.db.events import EventStore
+from src.db.payments import PaymentReader
 from src.models.dashboard import (
     ALLOWED_CONTENT_TYPES,
     GUEST_MAX_EVENTS,
@@ -31,6 +32,8 @@ from src.models.dashboard import (
     UploadKind,
 )
 from src.models.event import Event, EventStatus, Receipt
+from src.models.split import BudgetEscalation
+from src.services.lifecycle import Lifecycle
 from src.services.receipt_ocr import ReceiptModel, ocr_receipt
 from src.services.scenario_hint import hint_for
 from src.services.vocab import REQUEST_TAGS, only_vocab
@@ -57,6 +60,8 @@ class UploadSigner(Protocol):
 class RsvpDispatcher(Protocol):
     async def start_rsvp(self, event_id: str) -> None: ...
 
+    async def start_split_approval(self, event_id: str) -> None: ...
+
 
 def _id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:16]}"
@@ -72,11 +77,15 @@ class DashboardService:
         dispatcher: RsvpDispatcher,
         upload_ttl_seconds: int = 300,
         ocr: ReceiptModel | None = None,
+        lifecycle: Lifecycle | None = None,
+        payments: PaymentReader | None = None,
         now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
     ) -> None:
         self._store, self._chat, self._signer = store, chat, signer
         self._dispatcher, self._ttl, self._now = dispatcher, upload_ttl_seconds, now
         self._ocr = ocr
+        self._life = lifecycle or Lifecycle(store=store, now=now)
+        self._payments = payments
 
     # ------------------------------------------------------------ 権限
     def _own(self, actor: Actor, event_id: str) -> Event:
@@ -120,6 +129,11 @@ class DashboardService:
             "messages": [m.model_dump(mode="json") for m in self._store.list_messages(event_id)],
             "waiting_for": waiting_for(e, people),
             "split": self._split_view(event_id),
+            "budget_overrun": _budget_view(e),
+            "payments": self._payments.list_payments(event_id) if self._payments else [],
+            "decision_log": [
+                d.model_dump(mode="json") for d in self._store.list_decisions(event_id)
+            ],
             "hint": hint_for(e, people, has_receipt=self._store.get_receipt(event_id) is not None),
         }  # fmt: skip
 
@@ -199,7 +213,10 @@ class DashboardService:
             "title": clean["title"], "datetime": clean["datetime"], "plan": clean["plan"],
             "plan_required_tags": clean["required_tags"], "status": EventStatus.RSVP,
         })  # fmt: skip
+        event = self._life.prepare_event(event)  # 規程の写しと参加者を用意する
         self._store.save_event(event)
+        self._life.log(event_id, "human", "確認", "幹事が計画を確定しました")
+        self._life.log(event_id, "kuroko", "送信", "参加者に出欠の依頼を送ります（Slack）")
         await self._dispatcher.start_rsvp(event_id)
         return {"event_id": event_id, "status": event.status.value}
 
@@ -260,32 +277,86 @@ class DashboardService:
         })  # fmt: skip
 
     # ------------------------------------------------------------ 確定
-    def confirm_extraction(
+    async def confirm_extraction(
         self, actor: Actor, event_id: str, kind: UploadKind, values: dict[str, Any],
         source: Literal["extracted", "manual"],
     ) -> dict[str, Any]:  # fmt: skip
         """読み取り結果・手入力を、幹事が確定する（Policy Gate 6.1「幹事により確定済み」）。"""
         event = self._own(actor, event_id)
         if kind is UploadKind.RECEIPT:
+            if event.status is not EventStatus.RECEIPT:
+                raise DashboardError("invalid_state", 409)
             amount = values.get("total_amount_yen")
             if not _is_int(amount) or not 0 < amount <= 10_000_000:
                 raise DashboardError("invalid_amount")
             if source == "manual" and not self._receipt_extraction_failed(event_id):
                 raise DashboardError("manual_not_allowed")  # 手入力は、読み取りに失敗したときだけ
             if source == "extracted" and not self._receipt_extraction_done(event_id):
-                raise DashboardError(
-                    "no_extraction"
-                )  # 読み取り結果が無いものを「読み取り」と名乗れない
+                raise DashboardError("no_extraction")  # 読み取り結果が無いものは名乗れない
             self._store.save_receipt(Receipt(
                 event_id=event_id, total_amount_yen=amount,
                 source="manual" if source == "manual" else "upload",
                 confirmed_by=actor.uid, confirmed_at=self._now(),
             ))  # fmt: skip
-            self._store.save_event(event.model_copy(update={"total_amount_yen": amount}))
+            self._store.save_event(
+                event.model_copy(update={"total_amount_yen": amount, "status": EventStatus.SPLIT})
+            )
+            how = "手入力" if source == "manual" else "読み取り結果"
+            self._life.log(event_id, "human", "確認", f"幹事が領収書の金額を確定しました（{how}）")
+            self._life.log(event_id, "kuroko", "送信", "按分を計算し、承認者に承認を依頼します")
+            await self._dispatcher.start_split_approval(event_id)
             return {"confirmed": "receipt", "total_amount_yen": amount, "source": source}
+        if event.status is not EventStatus.VENUE:
+            raise DashboardError("invalid_state", 409)
         venue = validate_reservation(values)
-        self._store.save_event(event.model_copy(update={"venue": {**venue, "source": source}}))
-        return {"confirmed": "reservation", "source": source}
+        limit = event.policy_snapshot.hard_limit_per_person_yen if event.policy_snapshot else None
+        over = limit is not None and venue["course_price_yen"] > limit
+        booked = EventStatus.VENUE if over else EventStatus.BOOKED
+        self._store.save_event(
+            event.model_copy(update={"venue": {**venue, "source": source}, "status": booked})
+        )
+        how = "手入力" if source == "manual" else "読み取り結果"
+        self._life.log(event_id, "human", "確認", f"幹事が予約の内容を確定しました（{how}）")
+        if over:
+            self._life.log(event_id, "kuroko", "規程", "コース単価が規程の上限を超えています")
+            self._life.notify(
+                event, NotificationKind.CONFIRM_NEEDED, "予算超過です。続行するか確認してください"
+            )
+        return {"confirmed": "reservation", "source": source, "over_budget": over}
+
+    async def confirm_budget_overrun(self, actor: Actor, event_id: str) -> dict[str, Any]:
+        """予算超過の確認（幹事の側。SPEC 9.1）。承認者への最終確認は Slack で行う。"""
+        event = self._own(actor, event_id)
+        price = (event.venue or {}).get("course_price_yen")
+        limit = event.policy_snapshot.hard_limit_per_person_yen if event.policy_snapshot else None
+        if event.status is not EventStatus.VENUE or not _is_int(price) or limit is None:
+            raise DashboardError("invalid_state", 409)
+        if price <= limit:
+            raise DashboardError("not_over_budget", 409)
+        esc = event.budget_escalation
+        if esc is not None and esc.organizer_confirmed_at is not None:
+            raise DashboardError("already_confirmed", 409)
+        people = [p for p in self._store.list_participants(event_id) if p.attendance_confirmed]
+        self._store.save_event(event.model_copy(update={
+            "budget_escalation": BudgetEscalation(organizer_confirmed_at=self._now()),
+            "total_amount_yen": price * max(len(people), 1),  # 予約時点の見積り（領収書で置換）
+        }))  # fmt: skip
+        self._life.log(event_id, "human", "確認", "幹事が予算超過での続行を確認しました")
+        self._life.log(event_id, "kuroko", "送信", "承認者に最終確認を依頼します（Slack）")
+        await self._dispatcher.start_budget_request(event_id)
+        return {"event_id": event_id, "status": "awaiting_approver"}
+
+    def mark_event_held(self, actor: Actor, event_id: str) -> dict[str, Any]:
+        """幹事が「開催が終わった」と伝える。領収書のアップロードに進む。"""
+        event = self._own(actor, event_id)
+        if event.status is not EventStatus.BOOKED:
+            raise DashboardError("invalid_state", 409)
+        self._store.save_event(event.model_copy(update={"status": EventStatus.RECEIPT}))
+        self._life.log(event_id, "human", "確認", "幹事が開催の終了を伝えました")
+        self._life.notify(
+            event, NotificationKind.CONFIRM_NEEDED, "領収書をアップロードしてください"
+        )
+        return {"event_id": event_id, "status": "receipt"}
 
     def _receipt_extraction_done(self, event_id: str) -> bool:
         ups = [u for u in self._store.list_uploads(event_id) if u.kind is UploadKind.RECEIPT]
@@ -305,6 +376,7 @@ class DashboardService:
         self._store.save_event(
             event.model_copy(update={"venue": venue, "status": EventStatus.VENUE})
         )
+        self._life.log(event_id, "human", "確認", f"幹事が店を選びました（{name[:40]}）")
         return {"event_id": event_id, "venue": venue}
 
     # ------------------------------------------------------------ 通知
@@ -329,6 +401,23 @@ class DashboardService:
         for e in expired:
             self._store.delete_event(e.event_id)
         return len(expired)
+
+
+def _budget_view(e: Event) -> dict[str, Any] | None:
+    """予約のコース単価が規程の上限を超えているか（超えていなければ None）。"""
+    price = (e.venue or {}).get("course_price_yen")
+    if e.policy_snapshot is None or not _is_int(price):
+        return None
+    limit = e.policy_snapshot.hard_limit_per_person_yen
+    if price <= limit:
+        return None
+    esc = e.budget_escalation
+    return {
+        "course_price_yen": price,
+        "limit_yen": limit,
+        "organizer_confirmed": bool(esc and esc.organizer_confirmed_at),
+        "approver_confirmed": bool(esc and esc.final_confirmed_at),
+    }
 
 
 def _is_int(v: Any) -> bool:

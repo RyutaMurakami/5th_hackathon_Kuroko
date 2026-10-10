@@ -42,30 +42,31 @@ def hint_for(event: Event, people: list[Participant], *, has_receipt: bool) -> d
         )
     if s is EventStatus.VENUE:
         return _hint(
-            3,
-            "web",
-            "幹事",
-            "店の候補から選ぶ",
-            "チャットで「お店を探して」と頼むと、帰りやすさと希望から候補が出ます。"
-            "選んだら「この店にする」を押します。",
-            {"chat": "お店を探して"},
-        )
-    if s is EventStatus.BOOKED:
-        return _hint(
-            4, "web", "幹事", "予約の内容を確定する",
-            "店で予約したら、予約画面をアップロードするか、手入力で内容を確定します。",
-            {"reservation": {"venue_name": "炭火酒場 渋谷店", "party_size": 8,
+            3, "web", "幹事", "店を選び、予約の内容を確定する",
+            "チャットで「お店を探して」と頼むと、帰りやすさと希望から候補が出ます。選んだら「この店にする」を押し、"
+            "店で予約したあと、予約の内容を確定します。コース単価が規程の上限を超えると、"
+            "予算超過の確認（幹事 → 承認者）に進みます。",
+            {"chat": "お店を探して",
+             "reservation": {"venue_name": "炭火酒場 渋谷店", "party_size": 8,
                              "datetime": "2026-10-23T19:00:00+09:00", "course_price_yen": 4500}},
         )  # fmt: skip
+    if s is EventStatus.BOOKED:
+        return _hint(
+            4,
+            "web",
+            "幹事",
+            "開催後に「開催が終わった」を押す",
+            "予約が確定しました。開催が終わったら「開催が終わった」を押すと、領収書のアップロードに進みます。",
+        )
     if s in (EventStatus.DAY_OF, EventStatus.RECEIPT):
         return _hint(
             5,
             "web",
             "幹事",
             "領収書の金額を確定する",
-            "開催後、領収書をアップロードして金額を確かめます（読み取りに失敗したときだけ"
+            "領収書をアップロードして、読み取った金額を確かめます（読み取りに失敗したときだけ"
             "手入力できます）。確定すると按分の計算に進みます。",
-            {"receipt": {"total_amount_yen": 48000}, "confirmed": has_receipt},
+            {"receipt": {"total_amount_yen": 49500}, "confirmed": has_receipt},
         )
     if s in (EventStatus.SPLIT, EventStatus.APPROVAL):
         approvers = [p.display_name or p.user_id for p in people if p.role.value == "approver"]

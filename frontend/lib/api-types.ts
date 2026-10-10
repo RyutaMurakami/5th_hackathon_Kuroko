@@ -26,6 +26,14 @@ export type ApiUpload = {
   status: "issued" | "registered" | "rejected";
   extraction_status: "pending" | "done" | "failed";
   content_type: string;
+  /** 読み取り結果（幹事が確認するまで使われない） */
+  extraction?: {
+    venue_name: string | null;
+    date: string | null;
+    total_amount_yen: number | null;
+    line_items: { name: string; unit_price_yen: number | null; quantity: number | null; amount_yen: number | null }[];
+    warnings: string[];
+  } | null;
 };
 
 /** 進行ヒント（SPEC 7.5）。案内だけで、操作の代行ではない */
@@ -61,6 +69,34 @@ export type ApiEventDetail = {
   hint: ApiHint;
   /** 保存された SplitResult の値そのまま（再計算しない） */
   split: ApiSplit | null;
+  /** 予約のコース単価が規程の上限を超えているときだけ入る（SPEC 9.1） */
+  budget_overrun: {
+    course_price_yen: number;
+    limit_yen: number;
+    organizer_confirmed: boolean;
+    approver_confirmed: boolean;
+  } | null;
+  payments: ApiPayment[];
+  decision_log: ApiDecision[];
+};
+
+export type ApiPayment = {
+  payment_id: string;
+  payer_user_id: string;
+  payee_user_id: string;
+  amount_yen: number;
+  status: string;
+  approval_deadline: string | null;
+  retry_count: number | null;
+  block_reason: string | null;
+  updated_at: string | null;
+};
+
+export type ApiDecision = {
+  at: string;
+  actor: "kuroko" | "payment_agent" | "human";
+  action_type: string;
+  summary: string;
 };
 
 export type ApiSplit = {

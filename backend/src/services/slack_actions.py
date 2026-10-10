@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.db.events import ApprovedSplitIsFinal, EventStore
 from src.db.mandates import MandateReader
+from src.models.dashboard import NotificationKind
 from src.models.event import Event, EventStatus, Participant, ParticipantRole, RsvpStatus
 from src.models.slack import Action, SlackHomeOpened, SlackInteraction
 from src.models.split import Approval, ApprovalStatus
@@ -24,6 +25,7 @@ from src.services.slack_port import SlackPort
 from src.services.split import calculate_split
 
 if TYPE_CHECKING:
+    from src.services.lifecycle import Lifecycle
     from src.services.retrospective import Retrospectives
 
 logger = logging.getLogger(__name__)
@@ -43,9 +45,11 @@ class SlackActions:
         enqueue_self: Enqueue,
         mandates: MandateReader,
         retro: "Retrospectives | None" = None,
+        lifecycle: "Lifecycle | None" = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._retro = retro
+        self._life = lifecycle
         self._store, self._slack, self._enqueue = store, slack, enqueue_self
         self._mandates, self._now = mandates, now
 
@@ -91,7 +95,8 @@ class SlackActions:
             self._store.save_participant(
                 event.event_id, person.model_copy(update={"rsvp_status": RsvpStatus.DECLINING})
             )
-            return await self._reply(i, "欠席で回答しました。")
+            await self._reply(i, "欠席で回答しました。")
+            return self._after_rsvp(event.event_id)
         cap = int(i.value["c"])
         mandate_id = f"{event.event_id}:{person.user_id}"
         self._store.save_participant(
@@ -105,6 +110,11 @@ class SlackActions:
             f"参加で回答し、支払いの委任に同意しました（上限 {msg.yen(cap)}・幹事のみ）。"
             "按分の承認のあと、銀行での承認をお願いします。取り消しは App Home からできます。",
         )
+        self._after_rsvp(event.event_id)
+
+    def _after_rsvp(self, event_id: str) -> None:
+        if self._life:
+            self._life.after_rsvp(event_id)  # 出欠が出そろったら、店の選択へ進める
 
     async def _revoke(self, i: SlackInteraction) -> None:
         # 取り消しの本体は、ゲートウェイが payment-api に直接投入済み。ここは表示を更新するだけ
@@ -144,6 +154,11 @@ class SlackActions:
         self._store.save_approval(approved)
         event.status = EventStatus.PAYMENT
         self._store.save_event(event)
+        if self._life:
+            self._life.log(event.event_id, "human", "署名", "承認者が按分を承認しました（Slack）")
+            self._life.notify(
+                event, NotificationKind.SLACK_WAITING, "参加者の銀行での承認を待っています"
+            )
         # 承認を起点に、Policy Gate 6.2 を通った請求だけが作られる（kuroko-api 自身のタスク）
         await self._enqueue(
             "/tasks/internal/checkouts",
@@ -186,6 +201,8 @@ class SlackActions:
         if esc.final_confirmed_at is None:
             event.budget_escalation = esc.model_copy(update={"final_confirmed_at": self._now()})
             self._store.save_event(event)
+            if self._life:
+                self._life.after_budget_final(event.event_id)
         await self._reply(i, "予算超過での続行を承認しました。")
 
     # ------------------------------------------------------------------ 依頼の送信
@@ -225,6 +242,8 @@ class SlackActions:
         """Policy Gate 6.1 を通ったら按分を計算し、承認者に承認依頼を送る。"""
         gate = load_and_check_before_split(self._store, event_id)
         if not gate.ok:
+            if self._life:
+                self._life.log(event_id, "kuroko", "ブロック", "按分の前の検査で止まりました")
             return {"ok": False, "failures": [f.value for f in gate.failures]}
         event = self._store.get_event(event_id)
         people = self._store.list_participants(event_id)
@@ -251,6 +270,13 @@ class SlackActions:
         await self._slack.post_dm(approver.slack_user_id, text, blocks)
         event.status = EventStatus.APPROVAL
         self._store.save_event(event)
+        if self._life:
+            self._life.log(
+                event_id, "kuroko", "送信", "按分を計算し、承認者に承認を依頼しました（Slack）"
+            )
+            self._life.notify(
+                event, NotificationKind.SLACK_WAITING, "承認者の按分の承認を Slack で待っています"
+            )
         return {"ok": True, "failures": [], "approver": approver.user_id, "hash": split.hash}
 
     async def request_budget_confirmation(self, event_id: str) -> dict[str, Any]:

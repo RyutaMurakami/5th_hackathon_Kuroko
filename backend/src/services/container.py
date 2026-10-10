@@ -39,6 +39,7 @@ def get_billing() -> BillingService:
         bank=HttpBankAdapter(base_url=s.bank_adapter_url),
         payments=payments,
         checkout_ttl_seconds=s.checkout_ttl_seconds,
+        lifecycle=get_lifecycle(),
     )
 
 
@@ -111,6 +112,7 @@ def get_slack_actions():
         enqueue_self=enqueue_kuroko_api,
         mandates=mandates,
         retro=get_retro(),
+        lifecycle=get_lifecycle(),
     )
 
 
@@ -135,15 +137,22 @@ def get_firebase_verifier():
     return GoogleFirebaseVerifier(get_settings().firebase_project_id)
 
 
-class _TasksRsvpDispatcher:
-    """出欠依頼（Slack）の投入。同じイベントは Cloud Tasks が重複として弾く。"""
+class _TasksDispatcher:
+    """Slack への依頼・按分の承認の投入。同じイベントは Cloud Tasks が重複として弾く。"""
 
-    async def start_rsvp(self, event_id: str) -> None:
+    async def _enqueue(self, path: str, event_id: str, prefix: str) -> None:
         from src.clients.cloud_tasks import enqueue_kuroko_api
 
-        await enqueue_kuroko_api(
-            "/tasks/internal/rsvp-requests", {"event_id": event_id}, f"rsvp-{event_id}"
-        )
+        await enqueue_kuroko_api(path, {"event_id": event_id}, f"{prefix}-{event_id}")
+
+    async def start_rsvp(self, event_id: str) -> None:
+        await self._enqueue("/tasks/internal/rsvp-requests", event_id, "rsvp")
+
+    async def start_budget_request(self, event_id: str) -> None:
+        await self._enqueue("/tasks/internal/budget-requests", event_id, "budget")
+
+    async def start_split_approval(self, event_id: str) -> None:
+        await self._enqueue("/tasks/internal/approval-requests", event_id, "approval")
 
 
 def get_dashboard():
@@ -163,7 +172,25 @@ def get_dashboard():
         store=get_event_store(),
         chat=kuroko_chat.reply,
         signer=signer,
-        dispatcher=_TasksRsvpDispatcher(),
+        dispatcher=_TasksDispatcher(),
+        lifecycle=get_lifecycle(),
+        payments=_payment_reader(),
         upload_ttl_seconds=s.upload_url_ttl_seconds,
         ocr=GeminiReceiptModel(project=s.google_cloud_project) if s.google_cloud_project else None,
     )
+
+
+@lru_cache
+def get_lifecycle():
+    from src.services.lifecycle import Lifecycle
+
+    return Lifecycle(store=get_event_store())
+
+
+def _payment_reader() -> PaymentReader:
+    s = get_settings()
+    if s.google_cloud_project:
+        return FirestorePaymentReader(
+            project=s.google_cloud_project, database=s.firestore_database_id
+        )
+    return MemoryPaymentReader()

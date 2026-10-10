@@ -8,13 +8,14 @@ import json
 import pytest
 
 from src.models.dashboard import UploadKind
+from src.models.event import EventStatus
 from src.services.receipt_ocr import (
     FAILED,
     ocr_receipt,
     sniff_mime,
     validate_reading,
 )
-from tests.test_dashboard import ORG, make, new_event
+from tests.test_dashboard import ORG, at, make
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 20
 GOOD = {
@@ -91,7 +92,7 @@ async def setup_receipt(result=None, error=None, blob=PNG):
     svc, store, signer, _ = make()
     model = Model(result, error)
     svc._ocr = model
-    eid = await new_event(svc)
+    eid = await at(svc, EventStatus.RECEIPT)
     up = svc.issue_upload_url(ORG, eid, UploadKind.RECEIPT, "image/png", len(PNG))
     path = store.get_upload(eid, up["upload_id"]).object_path
     signer.sizes[path] = len(PNG)
@@ -109,14 +110,18 @@ async def test_registering_a_receipt_reads_it_and_the_result_waits_for_the_organ
     assert store.get_receipt(eid) is None  # 幹事が確定するまで、領収書の金額は使われない
     assert store.get_event(eid).total_amount_yen is None
     # 読み取り結果があれば、幹事は「読み取り」として確定できる（金額は直してよい）
-    svc.confirm_extraction(ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 49000}, "extracted")
+    await svc.confirm_extraction(
+        ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 49000}, "extracted"
+    )
     assert store.get_receipt(eid).total_amount_yen == 49000
 
 
 async def test_an_unreadable_receipt_allows_manual_entry_and_nothing_else_changes():
     svc, store, eid, uid, _ = await setup_receipt(error=RuntimeError("x"))
     assert (await svc.register_upload(ORG, eid, uid))["extraction"] == "failed"
-    svc.confirm_extraction(ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 49500}, "manual")
+    await svc.confirm_extraction(
+        ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 49500}, "manual"
+    )
     assert store.get_receipt(eid).source == "manual"
 
 
@@ -124,7 +129,9 @@ async def test_a_reading_that_does_not_exist_cannot_be_claimed_as_extracted():
     svc, store, eid, uid, _ = await setup_receipt(error=RuntimeError("x"))
     await svc.register_upload(ORG, eid, uid)
     with pytest.raises(Exception) as e:
-        svc.confirm_extraction(ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 1}, "extracted")
+        await svc.confirm_extraction(
+            ORG, eid, UploadKind.RECEIPT, {"total_amount_yen": 1}, "extracted"
+        )
     assert getattr(e.value, "code", "") == "no_extraction"
 
 
@@ -138,7 +145,7 @@ async def test_reservation_uploads_are_not_read_as_receipts():
     svc, store, signer, _ = make()
     model = Model(GOOD)
     svc._ocr = model
-    eid = await new_event(svc)
+    eid = await at(svc, EventStatus.VENUE)
     up = svc.issue_upload_url(ORG, eid, UploadKind.RESERVATION, "image/png", len(PNG))
     signer.sizes[store.get_upload(eid, up["upload_id"]).object_path] = len(PNG)
     out = await svc.register_upload(ORG, eid, up["upload_id"])

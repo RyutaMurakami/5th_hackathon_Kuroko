@@ -3,7 +3,14 @@
 // 段階ごとの入力フォーム（計画・店・予約・領収書）。実 API につなぐ。検証用の画面とイベント詳細で共通。
 // 委任・承認・振込の操作は置かない（Slack・銀行で行う）。
 import { useState } from "react";
-import { confirmExtraction, confirmPlan, selectVenue, uploadFile } from "@/lib/api-client";
+import {
+  confirmBudgetOverrun,
+  confirmExtraction,
+  confirmPlan,
+  markHeld,
+  selectVenue,
+  uploadFile,
+} from "@/lib/api-client";
 import type { ApiEventDetail } from "@/lib/api-types";
 import { Button, Caption, Card } from "./ui";
 import styles from "./verify.module.css";
@@ -43,9 +50,13 @@ export function StepForms({
     <>
       {s === "planning" && <PlanForm id={id} example={ex.plan} onDone={onDone} run={run} />}
       {(s === "rsvp" || s === "venue") && <VenueForm id={id} onDone={onDone} run={run} />}
-      {s === "booked" && (
+      {s === "venue" && (
         <ReservationForm id={id} example={ex.reservation} onDone={onDone} run={run} />
       )}
+      {s === "venue" && detail.budget_overrun && (
+        <BudgetOverrunCard id={id} over={detail.budget_overrun} onDone={onDone} run={run} />
+      )}
+      {s === "booked" && <HeldCard id={id} onDone={onDone} run={run} />}
       {(s === "day_of" || s === "receipt") && (
         <ReceiptForm id={id} example={ex.receipt} detail={detail} onDone={onDone} run={run} />
       )}
@@ -182,6 +193,14 @@ function ReceiptForm({
 }: FormProps & { example?: Record<string, unknown>; detail: ApiEventDetail }) {
   const [amount, setAmount] = useState(String(example?.total_amount_yen ?? ""));
   const failed = detail.uploads.some((u) => u.kind === "receipt" && u.extraction_status === "failed");
+  const read = [...detail.uploads].reverse().find((u) => u.kind === "receipt" && u.extraction) ?? null;
+  const reading = read?.extraction ?? null;
+  const [seeded, setSeeded] = useState<string | null>(null);
+  // 読み取れた金額を入力欄に入れる（幹事が見て直せる）
+  if (read && reading?.total_amount_yen && seeded !== read.upload_id) {
+    setSeeded(read.upload_id);
+    setAmount(String(reading.total_amount_yen));
+  }
   return (
     <Card
       title="領収書の金額を確定する"
@@ -208,10 +227,30 @@ function ReceiptForm({
           </li>
         ))}
       </ul>
+      {reading && (
+        <Caption>
+          読み取り結果：{reading.venue_name ?? "店名不明"}／{reading.date ?? "日付不明"}／合計{" "}
+          {reading.total_amount_yen?.toLocaleString()}円（明細 {reading.line_items.length}件）。
+          {reading.warnings.length > 0 && ` 注意：${reading.warnings.join("、")}`}
+        </Caption>
+      )}
       <div className={styles.form}>
         <Field label="合計金額（円）" type="number" value={amount} onChange={setAmount} />
         <div className={styles.formActions}>
+          {reading && (
+            <Button
+              onClick={() =>
+                void run(async () => {
+                  await confirmExtraction(id, "receipt", { total_amount_yen: Number(amount) }, "extracted");
+                  await onDone();
+                }, "金額を確定しました。按分に進みます。")
+              }
+            >
+              この金額で確定する
+            </Button>
+          )}
           <Button
+            variant="secondary"
             disabled={!failed}
             onClick={() =>
               void run(async () => {
@@ -224,8 +263,56 @@ function ReceiptForm({
           </Button>
         </div>
       </div>
-      {!failed && <Caption>読み取りの結果の確認は、読み取りの機能（B19）ができてから使えます。</Caption>}
+      {!failed && !reading && <Caption>アップロードすると、金額を読み取って、ここに出します。</Caption>}
     </Card>
   );
 }
 
+
+function BudgetOverrunCard({
+  id,
+  over,
+  onDone,
+  run,
+}: FormProps & { over: NonNullable<ApiEventDetail["budget_overrun"]> }) {
+  return (
+    <Card
+      title="予算超過の確認"
+      description={`コース単価 ${over.course_price_yen.toLocaleString()}円が、規程の上限 ${over.limit_yen.toLocaleString()}円を超えています。続行するか、幹事が確認します。そのあと承認者に最終確認が Slack で届きます。`}
+    >
+      {over.organizer_confirmed ? (
+        <Caption>
+          幹事の確認は済みました。承認者の最終確認（Slack）を待っています。
+        </Caption>
+      ) : (
+        <Button
+          onClick={() =>
+            void run(async () => {
+              await confirmBudgetOverrun(id);
+              await onDone();
+            }, "予算超過での続行を確認しました。承認者に最終確認を依頼しています。")
+          }
+        >
+          超過を確認して続行する
+        </Button>
+      )}
+    </Card>
+  );
+}
+
+function HeldCard({ id, onDone, run }: FormProps) {
+  return (
+    <Card title="開催後の操作" description="開催が終わったら押してください。領収書のアップロードに進みます">
+      <Button
+        onClick={() =>
+          void run(async () => {
+            await markHeld(id);
+            await onDone();
+          }, "開催の終了を記録しました。領収書をアップロードしてください。")
+        }
+      >
+        開催が終わった
+      </Button>
+    </Card>
+  );
+}

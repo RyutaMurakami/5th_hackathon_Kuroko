@@ -10,7 +10,7 @@
 
 from typing import Protocol
 
-from src.models.dashboard import Message, Notification, Upload
+from src.models.dashboard import DecisionEntry, Message, Notification, Upload
 from src.models.event import Event, Participant, Receipt
 from src.models.feedback import Feedback, Retrospective
 from src.models.split import Approval, ApprovalStatus, SplitResult
@@ -52,6 +52,13 @@ class EventStore(Protocol):
     def get_upload(self, event_id: str, upload_id: str) -> Upload | None: ...
 
     def list_uploads(self, event_id: str) -> list[Upload]: ...
+
+    def save_decision(self, event_id: str, entry: DecisionEntry) -> None: ...
+
+    def list_decisions(self, event_id: str) -> list[DecisionEntry]: ...
+
+    def slack_user_map(self) -> dict[str, str]:
+        """登場人物の user_id → Slack ユーザーID（Firestore `config/slack_users`。検証用）。"""
 
     def dashboard_role(self, email: str) -> str | None:
         """許可リスト（`dashboard_users`）の役割。載っていなければ None（= ゲスト）。"""
@@ -110,6 +117,8 @@ class MemoryEventStore:
         self.messages: dict[str, dict[str, Message]] = {}
         self.notifications: dict[str, Notification] = {}
         self.uploads: dict[str, dict[str, Upload]] = {}
+        self.decisions: dict[str, list[DecisionEntry]] = {}
+        self.slack_users: dict[str, str] = {}
         self.users: dict[str, str] = {}  # メール → 役割
         self.guest_switch = True
         self.retros: dict[str, Retrospective] = {}
@@ -147,7 +156,7 @@ class MemoryEventStore:
 
     def delete_event(self, event_id):
         self.events.pop(event_id, None)
-        for table in (self.participants, self.messages, self.uploads):
+        for table in (self.participants, self.messages, self.uploads, self.decisions):
             table.pop(event_id, None)
         for table in (self.receipts, self.splits, self.approvals, self.retros):
             table.pop(event_id, None)
@@ -185,6 +194,15 @@ class MemoryEventStore:
     def list_uploads(self, event_id):
         rows = self.uploads.get(event_id, {}).values()
         return [u.model_copy() for u in sorted(rows, key=lambda u: (u.created_at, u.upload_id))]
+
+    def save_decision(self, event_id, entry):
+        self.decisions.setdefault(event_id, []).append(entry)
+
+    def list_decisions(self, event_id):
+        return list(self.decisions.get(event_id, []))
+
+    def slack_user_map(self):
+        return dict(self.slack_users)
 
     def dashboard_role(self, email):
         return self.users.get(email.lower())
@@ -342,6 +360,18 @@ class FirestoreEventStore:
         docs = self._event(event_id).collection("uploads").stream()
         rows = [Upload.model_validate(d.to_dict()) for d in docs]
         return sorted(rows, key=lambda u: (u.created_at, u.upload_id))
+
+    def save_decision(self, event_id, entry):
+        self._event(event_id).collection("decisions").add(entry.model_dump(mode="json"))
+
+    def list_decisions(self, event_id):
+        docs = self._event(event_id).collection("decisions").stream()
+        rows = [DecisionEntry.model_validate(d.to_dict()) for d in docs]
+        return sorted(rows, key=lambda d: d.at)
+
+    def slack_user_map(self):
+        snap = self._db.collection("config").document("slack_users").get()
+        return {str(k): str(v) for k, v in (snap.to_dict() or {}).items()} if snap.exists else {}
 
     def dashboard_role(self, email):
         snap = self._db.collection("dashboard_users").document(email.lower()).get()

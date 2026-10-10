@@ -103,3 +103,8 @@ export async function uploadFile(eventId: string, kind: "reservation" | "receipt
 
 export const listNotifications = () => call<ApiNotification[]>("GET", "notifications");
 export const markRead = (id: string) => call("POST", `notifications/${id}/read`);
+
+export const confirmBudgetOverrun = (eventId: string) =>
+  call("POST", `events/${eventId}/confirm-budget-overrun`);
+
+export const markHeld = (eventId: string) => call("POST", `events/${eventId}/mark-held`);

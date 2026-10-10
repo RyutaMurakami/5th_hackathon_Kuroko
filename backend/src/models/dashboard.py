@@ -76,6 +76,28 @@ class Upload(BaseModel):
     created_at: datetime
 
 
+class DecisionEntry(BaseModel):
+    """経緯（判断ログ）の1件。誰が・何をしたかの要約だけ（個人情報・原文は入れない。SPEC 10章）。"""
+
+    at: datetime
+    actor: Literal["kuroko", "payment_agent", "human"]
+    action_type: Literal[
+        "判断",
+        "規程",
+        "ツール",
+        "送信",
+        "照会",
+        "ブロック",
+        "検査",
+        "記録",
+        "更新",
+        "待機",
+        "確認",
+        "署名",
+    ]
+    summary: str = Field(max_length=200)
+
+
 # ---- 入力の検査（型・範囲） ----
 ALLOWED_CONTENT_TYPES = ("image/jpeg", "image/png", "application/pdf")
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 1ファイル 5MB まで

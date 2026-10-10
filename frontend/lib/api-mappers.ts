@@ -7,8 +7,11 @@ import type {
   EventDetail,
   EventStatus,
   EventSummary,
+  DecisionActionType,
   Participant,
   ParticipantRole,
+  Payment,
+  PaymentStatus,
   SplitResult,
 } from "./types";
 
@@ -71,6 +74,24 @@ function toSplit(s: NonNullable<ApiEventDetail["split"]>): SplitResult {
   };
 }
 
+const PAYMENT_STATUSES: PaymentStatus[] = [
+  "not_applicable", "waiting", "awaiting_bank_approval", "completed", "blocked", "failed",
+]; // prettier-ignore
+
+function toPayments(e: ApiEventDetail): Payment[] {
+  return e.payments.map((p) => ({
+    paymentId: p.payment_id,
+    payerUserId: p.payer_user_id,
+    payeeUserId: p.payee_user_id,
+    amountYen: p.amount_yen,
+    status: (PAYMENT_STATUSES as string[]).includes(p.status) ? (p.status as PaymentStatus) : "waiting",
+    approvalDeadline: p.approval_deadline,
+    retryCount: p.retry_count ?? 0,
+    blockReason: p.block_reason,
+    updatedAt: p.updated_at,
+  }));
+}
+
 export function toEventDetail(e: ApiEventDetail): EventDetail {
   const participants: Participant[] = e.participants.map((p) => ({
     userId: p.user_id,
@@ -85,6 +106,7 @@ export function toEventDetail(e: ApiEventDetail): EventDetail {
   const organizer = participants.find((p) => p.role === "organizer");
   const venueName = typeof e.venue?.name === "string" ? e.venue.name : typeof e.venue?.venue_name === "string" ? e.venue.venue_name : null;
   const w = e.waiting_for;
+  const payments = toPayments(e);
   return {
     eventId: e.event_id,
     title: e.title || "（題名未定）",
@@ -93,7 +115,7 @@ export function toEventDetail(e: ApiEventDetail): EventDetail {
     status: status(e.status),
     consentedCount: payers.filter((p) => p.consent === "consented").length,
     consentTargetCount: payers.length,
-    paidYen: 0,
+    paidYen: payments.filter((p) => p.status === "completed").reduce((sum, p) => sum + p.amountYen, 0),
     billedYen: e.split ? e.split.rows.reduce((sum, r) => sum + r.share_yen, 0) : 0,
     sandbox: e.sandbox,
     companyName: e.sandbox ? "サンプル商事（体験用）" : "",
@@ -102,7 +124,7 @@ export function toEventDetail(e: ApiEventDetail): EventDetail {
     nextStep: e.hint.title,
     workers: [],
     participants,
-    payments: [], // 送金の一覧は API がまだ返さない
+    payments,
     split: e.split ? toSplit(e.split) : null,
     venueCandidates: [],
     reservation: null,
@@ -115,7 +137,12 @@ export function toEventDetail(e: ApiEventDetail): EventDetail {
       createdAt: m.created_at,
     })),
     activity: [],
-    decisionLog: [],
+    decisionLog: e.decision_log.map((d) => ({
+      at: d.at,
+      actor: d.actor,
+      actionType: d.action_type as DecisionActionType,
+      summary: d.summary,
+    })),
     handoff:
       w && w.where !== "web"
         ? { who: w.who, what: w.what, detail: e.hint.do, demoProxy: null }

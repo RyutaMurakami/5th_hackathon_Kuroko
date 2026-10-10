@@ -113,9 +113,25 @@ async def register_upload(event_id: str, upload_id: str, actor: Who, s: Svc) -> 
 
 
 @router.post("/events/{event_id}/confirm-extraction")
-def confirm_extraction(event_id: str, body: ConfirmIn, actor: Who, s: Svc) -> dict[str, Any]:
+async def confirm_extraction(event_id: str, body: ConfirmIn, actor: Who, s: Svc) -> dict[str, Any]:
     try:
-        return s.confirm_extraction(actor, event_id, body.kind, body.values, body.source)
+        return await s.confirm_extraction(actor, event_id, body.kind, body.values, body.source)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
+@router.post("/events/{event_id}/confirm-budget-overrun")
+async def confirm_budget_overrun(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
+    try:
+        return await s.confirm_budget_overrun(actor, event_id)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
+@router.post("/events/{event_id}/mark-held")
+def mark_held(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
+    try:
+        return s.mark_event_held(actor, event_id)
     except DashboardError as e:
         raise _raise(e) from None
 
