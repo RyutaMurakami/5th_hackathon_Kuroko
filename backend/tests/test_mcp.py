@@ -186,3 +186,37 @@ async def test_search_venues_returns_the_service_result_and_hides_failures(monke
         )
         out = await call(client, "search_venues", {"event_id": "e"})
         assert out == {"ok": False, "error": "external_api_station_not_found"}
+
+
+async def test_the_callers_identity_claims_are_logged_for_v1_but_never_the_token(
+    monkeypatch, caplog
+):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="src.services.mcp_auth")
+    async with running(
+        monkeypatch, principal=""
+    ) as client:  # 設定が空 = 拒否。それでも実際の値が分かる
+        headers = bearer("principal://agents.global.proj-1.system.id.goog/resources/x", claim="sub")
+        assert (
+            await client.post("/mcp/", json={}, headers={**HEADERS, **headers})
+        ).status_code == 403
+    line = next(r.getMessage() for r in caplog.records if "mcp caller" in r.getMessage())
+    assert "principal://agents.global.proj-1" in line and "allowed=False" in line
+    token = headers["Authorization"].removeprefix("Bearer ")
+    assert token not in caplog.text  # トークン本体は出さない
+
+
+async def test_mcp_without_the_trailing_slash_is_served_in_place_and_still_checks_the_identity(
+    monkeypatch,
+):
+    """Registry の登録 URL は `/mcp`。307 にせず、同じ身元の検査で受ける。"""
+    async with running(monkeypatch) as client:
+        assert (await client.post("/mcp", json={}, headers=HEADERS)).status_code == 403  # 身元なし
+        body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+        res = await client.post("/mcp", json=body, headers={**HEADERS, **bearer(AGENT)})
+        assert res.status_code == 200 and res.status_code != 307
+        other = await client.post("/mcp", json=body, headers={**HEADERS, **bearer("someone-else")})
+        assert other.status_code == 403
+        # ほかのパスは巻き込まない（/mcpx などは、これまでどおり 404）
+        assert (await client.post("/mcpx", json={}, headers=HEADERS)).status_code == 404

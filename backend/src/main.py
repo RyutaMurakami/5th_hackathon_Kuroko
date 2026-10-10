@@ -14,7 +14,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from src.config import get_settings
 from src.routers import dashboard, health, tasks
 from src.routers.mcp import build_mcp
-from src.services.mcp_auth import AgentOnly
+from src.services.mcp_auth import AgentOnly, McpPathNormalizer
 
 
 def create_app() -> FastAPI:
@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router)
     # `/mcp` は、Agent Gateway 経由の agent-kuroko だけ（それ以外のエージェント・SA は 403）
     app.mount("/mcp", AgentOnly(mcp_app))
+    app.add_middleware(McpPathNormalizer)  # `/mcp` も `/mcp/` と同じに扱う（リダイレクトしない）
 
     return app
 

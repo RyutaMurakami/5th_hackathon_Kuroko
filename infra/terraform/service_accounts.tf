@@ -12,6 +12,7 @@ locals {
     "sa-dashboard"    = "kuroko-dashboard（Web）"
     "sa-demo-runner"  = "デモ用の代行（sandbox のイベントだけ。Cloud Tasks の OIDC 主体としてだけ使う）"
     "sa-scheduler"    = "Cloud Scheduler（Cloud Run を呼ぶ権限だけ）"
+    "sa-agent-mcp"    = "agent-kuroko が kuroko-api の /mcp を呼ぶための身元（Agent identity だけが偽装して ID トークンを作る）"
   }
 }
 
@@ -66,4 +67,15 @@ resource "google_project_iam_member" "api_bigquery_job_user" {
   project = var.project_id
   role    = "roles/bigquery.jobUser"
   member  = "serviceAccount:${local.sa["sa-api"]}"
+}
+
+# agent-kuroko（Agent identity）だけが、sa-agent-mcp を偽装して ID トークンを作れる。
+# kuroko-api は、この SA のメールだけを /mcp に通す（AGENT_KUROKO_PRINCIPAL）。
+# 空のあいだは、だれも偽装できない（/mcp は呼べない）。
+resource "google_service_account_iam_member" "agent_kuroko_impersonates_mcp" {
+  count = var.kuroko_agent_identity == "" ? 0 : 1
+
+  service_account_id = google_service_account.runtime["sa-agent-mcp"].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = var.kuroko_agent_identity
 }

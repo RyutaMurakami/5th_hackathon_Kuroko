@@ -44,6 +44,12 @@ variable "extract_agent_engine" {
   default     = ""
 }
 
+variable "kuroko_agent_identity" {
+  type        = string
+  description = "kuroko-agent（Gateway つき）の Agent identity。`principal://agents.global.proj-<番号>.system.id.goog/resources/aiplatform/projects/<番号>/locations/<リージョン>/reasoningEngines/<ID>`。sa-agent-mcp を偽装して /mcp 用の ID トークンを作れるのは、この身元だけ（TASKS I8・B21）。空のあいだは、だれも偽装できない"
+  default     = ""
+}
+
 variable "agent_kuroko_principal" {
   type        = string
   description = "kuroko-api の /mcp を呼べる agent-kuroko の身元（Agent Gateway 経由の ID トークンの email か sub）。デプロイ後の V1 の確認で決める（TASKS B21）。空のあいだ、/mcp はすべて拒否する"

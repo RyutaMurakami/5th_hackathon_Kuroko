@@ -3,6 +3,7 @@
 import json
 import re
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -90,3 +91,109 @@ def test_instruction_states_the_hard_limits():
 
 def test_model_is_the_verified_one():
     assert MODEL == "gemini-3.8-flash"  # 変更は、動作確認のうえ明示的に行う
+
+
+# ---------------- /mcp の認証（Agent identity が呼び出し用 SA を偽装する） ----------------
+def test_audience_is_the_scheme_and_host_only():
+    from app.tools import audience_of
+
+    assert audience_of("https://kuroko-api-x.a.run.app/mcp") == "https://kuroko-api-x.a.run.app"
+    assert audience_of("https://kuroko-api-x.a.run.app/mcp/") == "https://kuroko-api-x.a.run.app"
+
+
+class _FakeCreds:
+    minted: ClassVar[list[dict]] = []
+
+    def __init__(self, target, target_audience, include_email):
+        self.target_audience = target_audience
+        self.token = f"token-for-{target_audience}"
+        self.expiry = None
+        self._invoker = target.target_principal
+        self._include_email = include_email
+
+    def refresh(self, _request):
+        _FakeCreds.minted.append(
+            {"aud": self.target_audience, "sa": self._invoker, "email": self._include_email}
+        )
+
+
+class _FakeImpersonated:
+    def __init__(self, source_credentials, target_principal, target_scopes):
+        self.target_principal = target_principal
+
+
+def _patch_google_auth(monkeypatch):
+    import google.auth
+    from google.auth import impersonated_credentials
+
+    _FakeCreds.minted = []
+    monkeypatch.setattr(google.auth, "default", lambda scopes=None: (object(), "p"))
+    monkeypatch.setattr(impersonated_credentials, "Credentials", _FakeImpersonated)
+    monkeypatch.setattr(impersonated_credentials, "IDTokenCredentials", _FakeCreds)
+
+
+def test_the_token_is_minted_for_the_api_audience_via_the_invoker_sa_and_reused(monkeypatch):
+    from app.tools import id_token_header_provider
+
+    _patch_google_auth(monkeypatch)
+    p = id_token_header_provider("sa-agent-mcp@p.iam.gserviceaccount.com", "https://api.example")
+    assert p(None) == {"Authorization": "Bearer token-for-https://api.example"}
+    p(None)
+    p(None)
+    assert _FakeCreds.minted == [
+        {
+            "aud": "https://api.example",
+            "sa": "sa-agent-mcp@p.iam.gserviceaccount.com",
+            "email": True,
+        }
+    ]  # 1回だけ作り、使い回す。メールを含める（kuroko-api が身元の検査に使う）
+
+
+def test_an_expiring_token_is_minted_again(monkeypatch):
+    import datetime
+
+    from app import tools
+
+    _patch_google_auth(monkeypatch)
+    soon = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=30)
+    monkeypatch.setattr(_FakeCreds, "expiry", soon, raising=False)
+    p = tools.id_token_header_provider("sa@p", "https://api.example")
+    orig = _FakeCreds.refresh
+
+    def refresh(self, request):
+        orig(self, request)
+        self.expiry = soon  # 期限が近いまま
+
+    monkeypatch.setattr(_FakeCreds, "refresh", refresh)
+    p(None)
+    p(None)
+    assert len(_FakeCreds.minted) == 2  # 期限の手前（5分以内）なら、作り直す
+
+
+def test_a_failure_to_mint_never_falls_back_to_another_identity(monkeypatch):
+    import google.auth
+
+    from app.tools import id_token_header_provider
+
+    def boom(scopes=None):
+        raise RuntimeError("no credentials")
+
+    monkeypatch.setattr(google.auth, "default", boom)
+    p = id_token_header_provider("sa@p", "https://api.example")
+    with pytest.raises(RuntimeError):
+        p(None)  # ヘッダーなし（別の身元）で呼ぶことはしない
+
+
+def test_toolset_uses_the_provider_only_when_the_invoker_sa_is_configured(monkeypatch):
+    from app import tools
+
+    monkeypatch.setenv("KUROKO_MCP_URL", "https://api.example/mcp")
+    monkeypatch.delenv("KUROKO_MCP_INVOKER_SA", raising=False)
+    monkeypatch.delenv("KUROKO_MCP_BEARER", raising=False)
+    (plain,) = tools.build_tools()
+    assert plain.header_provider is None
+    monkeypatch.setenv("KUROKO_MCP_INVOKER_SA", "sa-agent-mcp@p.iam.gserviceaccount.com")
+    (with_provider,) = tools.build_tools()
+    assert callable(with_provider.header_provider)
+    monkeypatch.delenv("KUROKO_MCP_URL")
+    assert tools.build_tools() == []  # URL が無ければ、ツールなし
