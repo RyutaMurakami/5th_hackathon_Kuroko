@@ -65,6 +65,7 @@ class AgentRuntimeClient:
         http: httpx.AsyncClient | None = None,
         token: Callable[[], Awaitable[str]] = _default_token,
     ) -> None:
+        self.engine = engine
         self._base = f"https://{location}-aiplatform.googleapis.com/v1/{engine}"
         self._http = http or httpx.AsyncClient(timeout=timeout)
         self._token = token
@@ -116,4 +117,9 @@ class AgentRuntimeClient:
                         logger.warning("agent runtime: unparsable event line")
         except httpx.HTTPError as e:
             raise AgentRuntimeError(f"unreachable:{type(e).__name__}") from None
+        if not events:
+            # 200 で始まったのに、1件も届かずに閉じた。ADK は「セッションが無い」とき、
+            # ストリームを始めたあとで例外にするため、HTTP の状態では分からない（エンジンの
+            # 切り替え直後など）。何も答えていないので、新しいセッションで1回だけやり直してよい
+            raise SessionNotFound("empty_stream")
         return extract_text(events)

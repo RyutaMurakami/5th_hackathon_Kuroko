@@ -54,15 +54,18 @@ async def _reply_via_runtime(
     client: AgentRuntimeClient, store: SessionStore, user_key: str, text: str
 ) -> str:
     user_id = pseudonym(user_key)
-    session_id = await store.get(user_key)
+    # セッションはエンジンごとのもの。エンジンを切り替えたあとも古い ID を使い続けないよう、
+    # 保存のキーにエンジンを含める（別のエンジンのセッション ID は使えない）
+    key = f"{client.engine}|{user_key}"
+    session_id = await store.get(key)
     if session_id is None:
         session_id = await client.create_session(user_id)
-        await store.put(user_key, session_id)
+        await store.put(key, session_id)
     try:
         return await client.stream_query(user_id=user_id, session_id=session_id, message=text)
     except SessionNotFound:
         # セッションが消えた（削除・期限切れ）。作り直して1回だけやり直す（会話の文脈は失われる）
         logger.warning("agent session not found; creating a new one")
         session_id = await client.create_session(user_id)
-        await store.put(user_key, session_id)
+        await store.put(key, session_id)
         return await client.stream_query(user_id=user_id, session_id=session_id, message=text)
