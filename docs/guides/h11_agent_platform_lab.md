@@ -201,10 +201,24 @@ gcloud agent-registry --help
 ADK のエージェントを Agent Runtime に置く操作は、Console からはできない（2章）。AI が用意した `deploy_agent.py` を**自分で実行**する。中で何をしているかを読んでから実行すると学びになる。
 
 ```bash
-cd infra/agent_platform
-uv run python deploy_agent.py --agent kuroko    # kuroko-agent
-uv run python deploy_agent.py --agent extract   # extract-agent
+# kuroko-agent（kuroko_agent/ で実行する。スクリプトは ../infra/agent_platform/ にある）
+cd kuroko_agent
+uv run --with pathspec python ../infra/agent_platform/deploy_agent.py \
+  --agent kuroko --display-name kuroko-agent-gw --dry-run     # まず内容だけ確認
+uv run --with pathspec python ../infra/agent_platform/deploy_agent.py \
+  --agent kuroko --display-name kuroko-agent-gw               # 問題なければ（確認で y）
+
+# extract-agent（extract_agent/ で実行する）
+cd ../extract_agent
+uv run --with pathspec python ../infra/agent_platform/deploy_agent.py \
+  --agent extract --display-name extract-agent-gw --dry-run
+uv run --with pathspec python ../infra/agent_platform/deploy_agent.py \
+  --agent extract --display-name extract-agent-gw
 ```
+
+- 各エージェントのディレクトリの中で実行する（外だと「kuroko_agent/ の中で実行する」と止まる）
+- `--display-name …-gw` が必要（既存のエンジンは Agent identity ではないため。付けないと、既存を壊さないよう止まる）
+- `(backend)` などの別の仮想環境が有効でも動く（`VIRTUAL_ENV` の警告は無視してよい）
 
 `deploy_agent.py` の要点（AI が用意する。**読むべき箇所**）:
 
