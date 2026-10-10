@@ -26,6 +26,9 @@ import sys
 from typing import Any
 
 PROJECT = "kuroko-509311"
+INVOKER_SA = "sa-agent-mcp@kuroko-509311.iam.gserviceaccount.com"
+# kuroko-api が期待する aud（KUROKO_API_URL。Terraform の service_urls と同じ綴り）
+API_URL_FOR_AUD = "https://kuroko-api-1054683553459.us-central1.run.app"
 LOCATION = "us-central1"
 API_SERVICE = "kuroko-api"
 # extract-agent に付いてよい権限（Gemini・ログ・メトリクスだけ。外へ出られないことの確認）
@@ -46,8 +49,8 @@ ATTACKS: list[tuple[str, str]] = [
 
 
 # ---------------------------------------------------------------- 純粋な関数（テストする）
-def parse_claims(log_line: str) -> dict[str, str] | None:
-    """`mcp caller claims={...} allowed=...` の行から、クレームの辞書を取り出す。"""
+def parse_claims(log_line: str) -> tuple[dict[str, str], bool] | None:
+    """`mcp caller claims={...} allowed=...` の行から、（クレームの辞書, 通したか）を取り出す。"""
     m = re.search(r"mcp caller claims=(\{.*?\}) allowed=(True|False)", log_line)
     if not m:
         return None
@@ -55,7 +58,9 @@ def parse_claims(log_line: str) -> dict[str, str] | None:
         claims = ast.literal_eval(m.group(1))
     except (ValueError, SyntaxError):
         return None
-    return {str(k): str(v) for k, v in claims.items()} if isinstance(claims, dict) else None
+    if not isinstance(claims, dict):
+        return None
+    return {str(k): str(v) for k, v in claims.items()}, m.group(2) == "True"
 
 
 def identity_of(claims: dict[str, str]) -> str | None:
@@ -63,19 +68,23 @@ def identity_of(claims: dict[str, str]) -> str | None:
     return claims.get("email") or claims.get("sub")
 
 
-def judge_v1(claims_seen: list[dict[str, str]], effective_identity: str, api_url: str) -> dict[str, Any]:
-    """届いた身元が、エージェント自身の身元か（V1）。外れるなら、何が届いているかを返す。"""
-    if not claims_seen:
+def judge_v1(seen: list[tuple[dict[str, str], bool]], invoker_sa: str, api_url: str) -> dict[str, Any]:
+    """`/mcp` に届いた身元が、呼び出し用 SA（Agent identity が偽装したもの）で、通っているか（V1）。
+
+    方式: Agent identity は ID トークンを直接は使えない（Cloud Run に通らない）ので、`sa-agent-mcp` を
+    偽装して ID トークンを作る。`kuroko-api` は、そのメールだけを `/mcp` に通す。
+    """
+    if not seen:
         return {"ok": False, "reason": "no_call_seen", "principal": None}
-    own = {effective_identity, f"principal://{effective_identity}"}
-    for c in claims_seen:
-        who = identity_of(c)
-        if who and (who in own or effective_identity in who):
-            right_aud = c.get("aud") == api_url
-            return {"ok": right_aud, "reason": "ok" if right_aud else "wrong_audience",
-                    "principal": who, "claims": c}  # fmt: skip
-    return {"ok": False, "reason": "identity_differs", "principal": identity_of(claims_seen[-1]),
-            "claims": claims_seen[-1]}  # fmt: skip
+    claims, allowed = seen[-1]
+    who = identity_of(claims)
+    if who != invoker_sa:
+        return {"ok": False, "reason": "identity_differs", "principal": who, "claims": claims}
+    if claims.get("aud") != api_url:
+        return {"ok": False, "reason": "wrong_audience", "principal": who, "claims": claims}
+    if not allowed:
+        return {"ok": False, "reason": "rejected_by_api", "principal": who, "claims": claims}
+    return {"ok": True, "reason": "ok", "principal": who, "claims": claims}
 
 
 def judge_v2(kuroko_identity: str, extract_identity: str, extract_roles: set[str]) -> dict[str, Any]:
@@ -155,12 +164,12 @@ async def cmd_v1(a: argparse.Namespace) -> int:
     await asyncio.sleep(20)  # ログの反映待ち
     seen = [c for line in read_api_logs(a.minutes) if (c := parse_claims(line))]
     print(f"kuroko-api に届いた /mcp の呼び出し: {len(seen)} 件")
-    for c in seen[-3:]:
-        print(f"  claims={c}")
-    j = judge_v1(seen, ident, api_url())
+    for c, allowed in seen[-3:]:
+        print(f"  claims={c} allowed={allowed}")
+    j = judge_v1(seen, INVOKER_SA, API_URL_FOR_AUD)
     print("\n判定:", json.dumps(j, ensure_ascii=False, indent=2))
     if j["ok"]:
-        print(f"\n✅ V1 OK。AI に伝える: AGENT_KUROKO_PRINCIPAL に入れる値 = {j['principal']}")
+        print(f"\n✅ V1 OK。/mcp は、Agent identity が偽装した {j['principal']} だけを通している")
         return 0
     print("\n❌ V1 NG。上の claims を AI に伝える（Gateway の身元か、audience の違いかを切り分ける）")
     return 1
