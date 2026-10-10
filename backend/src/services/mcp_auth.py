@@ -10,11 +10,14 @@ Agent Identity の ID トークンにどのクレームが入るかは、デプ�
 """
 
 import json
+import logging
 from typing import Any
 
 from google.auth import jwt
 
 from src.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def agent_identity(authorization: str | None) -> str | None:
@@ -28,6 +31,21 @@ def agent_identity(authorization: str | None) -> str | None:
     if claims.get("aud") != get_settings().kuroko_api_url:
         return None
     return claims.get("email") or claims.get("sub")
+
+
+def describe_caller(authorization: str | None) -> dict[str, str]:
+    """呼び出し元のトークンの、身元に関するクレームだけ（V1: どのクレームに何が入るか確かめる）。
+
+    署名は検証済み（Cloud Run の IAM）なので、ここでは読むだけ。
+    トークン本体・その他のクレームは出さない。
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return {}
+    try:
+        claims = jwt.decode(authorization.removeprefix("Bearer "), verify=False)
+    except ValueError:
+        return {}
+    return {k: str(claims[k])[:200] for k in ("aud", "email", "sub", "iss") if k in claims}
 
 
 def is_allowed_agent(authorization: str | None) -> bool:
@@ -44,7 +62,11 @@ class AgentOnly:
     async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
         if scope["type"] == "http":
             headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
-            if not is_allowed_agent(headers.get("authorization")):
+            auth = headers.get("authorization")
+            allowed = is_allowed_agent(auth)
+            # 拒否したときも含めて、身元のクレームを記録する（V1。設定が空でも値が分かる）
+            logger.info("mcp caller claims=%s allowed=%s", describe_caller(auth), allowed)
+            if not allowed:
                 body = json.dumps({"detail": "forbidden"}).encode()
                 await send(
                     {

@@ -81,6 +81,19 @@ gcloud agent-registry --help
 | デプロイスクリプト | `infra/agent_platform/deploy_agent.py` | 手順5で**あなたが実行する**。`identity_type=AGENT_IDENTITY`、`agent_gateway_config`（入口・出口）、`min_instances=0` を指定 | C |
 | 検証スクリプト | `infra/agent_platform/verify_g2.py` | 手順7で AI が実行する（V1・V2・V4・V7・V8・V9） | D |
 
+**3-2 の状態（2026-10-10。AI が実行。全項目の準備が済んだ）**
+
+| 準備物 | 状態 |
+|---|---|
+| 不足している API の有効化 | 完了（`modelarmor`・`networkservices`・`agentregistry` を含め、すべて有効） |
+| MCP サーバー（`kuroko-api` の `/mcp`） | 完了・デプロイ済み。**`/mcp` は呼び出し元の身元をログに出す**（`mcp caller claims=…`。V1 用。トークン本体は出さない）。設定が空のあいだは全て 403 |
+| `toolspec.json` | 完了（`backend/mcp_toolspec.json`。3 ツール。ツールを足したら再生成） |
+| エージェント2つ | 完了（`kuroko_agent/`・`extract_agent/`。`extract-agent` は Gateway なしでデプロイ済み） |
+| デプロイスクリプト | 完了（`infra/agent_platform/deploy_agent.py`。実際の作成は Gateway ができてから通る。**SDK は `client.agent_engines`**） |
+| 検証スクリプト | 完了（`infra/agent_platform/verify_g2.py` の `v1`・`v2`・`v8`。V7 は Console の切り替えと合わせて行う） |
+
+検証スクリプトの使い方は、ファイル冒頭に書いてある（`backend/` で実行）。Gateway なしの現状のエンジンに `v8` を流した基準の結果: `kuroko-agent` は6件とも指示に従わず断った／`extract-agent` は6件とも空の結果。Gateway を付けたあとで、同じ文を流して比べる。
+
 ### 3-3. 🖱 あなた: 権限の確認
 
 あなたはプロジェクトの Owner なので、追加の権限は要らない（H9）。

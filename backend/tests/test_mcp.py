@@ -186,3 +186,22 @@ async def test_search_venues_returns_the_service_result_and_hides_failures(monke
         )
         out = await call(client, "search_venues", {"event_id": "e"})
         assert out == {"ok": False, "error": "external_api_station_not_found"}
+
+
+async def test_the_callers_identity_claims_are_logged_for_v1_but_never_the_token(
+    monkeypatch, caplog
+):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="src.services.mcp_auth")
+    async with running(
+        monkeypatch, principal=""
+    ) as client:  # 設定が空 = 拒否。それでも実際の値が分かる
+        headers = bearer("principal://agents.global.proj-1.system.id.goog/resources/x", claim="sub")
+        assert (
+            await client.post("/mcp/", json={}, headers={**HEADERS, **headers})
+        ).status_code == 403
+    line = next(r.getMessage() for r in caplog.records if "mcp caller" in r.getMessage())
+    assert "principal://agents.global.proj-1" in line and "allowed=False" in line
+    token = headers["Authorization"].removeprefix("Bearer ")
+    assert token not in caplog.text  # トークン本体は出さない
