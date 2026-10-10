@@ -85,8 +85,9 @@ def hint_for(event: Event, people: list[Participant], *, has_receipt: bool) -> d
             "bank",
             "参加者",
             "銀行（sunabar）で振込を承認する",
-            "参加者ごとに振込の承認が必要です。sunabar のサービスサイトで承認してください。"
-            "承認されると、入金の確認に進みます。",
+            "デモで実際に承認するのは、指定した1人（既定は加藤）の振込だけです。"
+            "その口座で sunabar のサービスサイトに入り、10分以内に承認してください。"
+            "ほかの人の振込は代行され、自動で入金の確認に進みます。",
         )
     if s is EventStatus.COMPLETED:
         return _hint(

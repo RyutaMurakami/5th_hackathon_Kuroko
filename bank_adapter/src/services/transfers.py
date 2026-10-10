@@ -79,9 +79,11 @@ class BankService:
         bank: BankClient,
         approval_ttl_seconds: int,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        is_simulated: Callable[[str], bool] = lambda _label: False,
     ) -> None:
         self._store = store
         self._bank = bank
+        self._is_simulated = is_simulated  # デモで代行する振込元か（SPEC 8.10）
         self._ttl = timedelta(seconds=approval_ttl_seconds)
         self._now = now
 
@@ -118,6 +120,7 @@ class BankService:
             "status": TransferStatus.CREATING.value,
             "apply_no": None,
             "created_at": self._now(),
+            "simulated": self._is_simulated(payer_label),
         }
         existing, created = self._store.create_transfer_if_absent(transfer_id, record)
         if not created:
@@ -183,6 +186,7 @@ class BankService:
             apply_no=record.get("apply_no"),
             created_at=record["created_at"],
             approval_expires_at=record["created_at"] + self._ttl if awaiting else None,
+            simulated=bool(record.get("simulated")),
         )
 
     def _holder_names(self, *, exclude: str) -> dict[str, str]:

@@ -382,6 +382,7 @@ sequenceDiagram
 - sunabar の制約（振込先も sunabar 内の口座に限る、1ユーザーあたり最大10口座、Webhook がない、トークンは30日で失効）は SPEC 8.8 のとおり。**Webhook がないため、状況の確認は呼び出し側のポーリング**で行う（8章）。
 - **sunabar の実機で確かめたこと（2026-10-06。[手順書](guides/h25_sunabar_setup.md) 4章）**: ①**OAuth の認可の流れは無い**。口座ごとのアクセストークンをポータルから取り、Secret Manager（`sunabar-tokens`。口座ラベル → トークンの JSON）に登録する。`POST /authorizations` は「その `user_id` の口座が使えるか」の確認になる（本番の銀行APIでは OAuth の交換）。②銀行コードは `0310`、口座番号は7桁、支店名は半角カナ。③**同じ `Idempotency-Key` でも別の受付番号が振られる**ので、`bank-adapter` が `idempotency_key` から決めた `transfer_id` で記録を先に作り（原子的）、銀行を呼ぶのは1回だけにする。④振込依頼の `applyComment` は銀行で読み捨てられるので、`payment_id` は明細に載らない。**完了の判定は、入金明細の「金額＋摘要（振込依頼人名）＋日付」**（明細に振込元の口座番号は出ない）。依頼の追跡は `transferRequestKey`（`transfer_id` を使う）。⑤状況照会は承認前に 0件で返るので、承認期限（10分）を過ぎても手続済にならなければ `expired`。
 - **明細の応答（2026-10-09）**: `GET /statements` は、摘要（名義を含む）を返さず、**摘要の名義から解決した相手の仮名 `counterparty_user_id`**（一意に決まらなければ null）だけを返す。名義・口座番号はこの API の外に出さない。`kuroko-api`（`sa-api`）は幹事口座の入金だけを、この `counterparty_user_id` と金額と日付で照合する（`confirm_incoming_payments`）。
+- **デモでの振込の代行（2026-10-11。SPEC 8.10）**: 環境変数 `DEMO_LIVE_PAYER_LABELS`（口座ラベル。Terraform の `demo_live_payer_labels`、既定 `acct08`）に入れた振込元だけを sunabar に通し、**それ以外の人の振込は銀行を呼ばずに「承認済み」として記録する**（`clients/demo_bank.py`。記録は `bank` の `simulated_transfers`。受付番号は `SIM` で始まり、応答に `simulated: true`）。明細は実機ぶんと代行ぶんを合わせて返すので、`payment-api`・`kuroko-api` の確認のコードは変わらない。空にすると全員が実機。
 - 疎通が取れない場合の代替は 13章 V10。
 
 ### 4.5 kuroko-dashboard

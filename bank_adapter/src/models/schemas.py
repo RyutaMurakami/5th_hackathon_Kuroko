@@ -39,6 +39,8 @@ class TransferResponse(BaseModel):
     apply_no: str | None = None
     created_at: datetime
     approval_expires_at: datetime | None = None
+    # デモで代行した振込（銀行を呼んでいない。本人の承認は要らない。SPEC 8.10）
+    simulated: bool = False
 
 
 class StatementEntry(BaseModel):

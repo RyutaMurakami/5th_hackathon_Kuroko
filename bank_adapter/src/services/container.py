@@ -6,6 +6,7 @@
 from functools import lru_cache
 
 from src.clients.bank import BankClient
+from src.clients.demo_bank import DemoBank
 from src.clients.stub_bank import StubBank
 from src.clients.sunabar import SunabarBank, secret_manager_tokens
 from src.config import get_settings
@@ -29,4 +30,13 @@ def get_service() -> BankService:
         )
     else:
         bank = StubBank(auto_approve=s.environment == "local")
-    return BankService(store=store, bank=bank, approval_ttl_seconds=s.approval_ttl_seconds)
+    live = frozenset(x.strip() for x in s.demo_live_payer_labels.split(",") if x.strip())
+    if not live:
+        return BankService(store=store, bank=bank, approval_ttl_seconds=s.approval_ttl_seconds)
+    demo = DemoBank(real=bank, store=store, live_payer_labels=live)
+    return BankService(
+        store=store,
+        bank=demo,
+        approval_ttl_seconds=s.approval_ttl_seconds,
+        is_simulated=demo.is_simulated,
+    )

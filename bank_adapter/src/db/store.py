@@ -3,6 +3,7 @@
 - accounts/{user_id}: 仮名 user_id → 口座ラベル（口座番号は持たない。実機のトークンから引く）
 - transfers/{transfer_id}: 振込依頼の記録。transfer_id は冪等キーから決めるので、
   同じキーなら同じ記録に当たる
+- simulated_transfers/{apply_no}: デモで代行した振込（口座ラベル・金額・日付だけ。SPEC 8.10）
 """
 
 from copy import deepcopy
@@ -28,11 +29,17 @@ class Store(Protocol):
 
     def update_transfer(self, transfer_id: str, fields: dict[str, Any]) -> dict[str, Any]: ...
 
+    def save_simulated(self, apply_no: str, record: dict[str, Any]) -> None:
+        """代行した振込を記録する（同じ受付番号なら上書き＝1件のまま）。"""
+
+    def list_simulated(self) -> dict[str, dict[str, Any]]: ...
+
 
 class MemoryStore:
     def __init__(self) -> None:
         self.labels: dict[str, str] = {}
         self.transfers: dict[str, dict[str, Any]] = {}
+        self.simulated: dict[str, dict[str, Any]] = {}
 
     def get_label(self, user_id: str) -> str | None:
         return self.labels.get(user_id)
@@ -59,6 +66,12 @@ class MemoryStore:
     def update_transfer(self, transfer_id, fields):
         self.transfers[transfer_id].update(fields)
         return deepcopy(self.transfers[transfer_id])
+
+    def save_simulated(self, apply_no, record):
+        self.simulated[apply_no] = deepcopy(record)
+
+    def list_simulated(self):
+        return deepcopy(self.simulated)
 
 
 class FirestoreStore:
@@ -101,3 +114,9 @@ class FirestoreStore:
         ref = self._db.collection("transfers").document(transfer_id)
         ref.update(fields)
         return ref.get().to_dict()
+
+    def save_simulated(self, apply_no, record):
+        self._db.collection("simulated_transfers").document(apply_no).set(record)
+
+    def list_simulated(self):
+        return {d.id: d.to_dict() for d in self._db.collection("simulated_transfers").stream()}

@@ -46,6 +46,19 @@ def test_start_notifies_the_payer_that_bank_approval_is_needed(env, client):
     assert env.notifier.sent == [("requested", "p1", "")]
 
 
+def test_a_simulated_transfer_skips_the_approval_notice_but_still_needs_the_statement(env, client):
+    """デモで代行した振込（SPEC 8.10）: 「銀行で承認して」は送らない。完了の条件は実機と同じ。"""
+    env.bank.simulated_payers = {"member"}
+    svc = started(env, client)
+    assert env.notifier.sent == []
+    assert env.store.get_payment("p1")["simulated"] is True
+    env.bank.statuses["tr-1"] = "processed"
+    assert svc.poll_one("p1") == "unverified"  # 明細で確認できるまで、完了にしない
+    outgoing(env)
+    assert svc.poll_one("p1") == "completed"
+    assert env.notifier.sent == [("completed", "p1", "")]
+
+
 def test_waiting_when_the_bank_has_not_approved_yet(env, client):
     svc = started(env, client)
     assert svc.poll_one("p1") == "waiting" and status_of(env) == "awaiting_bank_approval"

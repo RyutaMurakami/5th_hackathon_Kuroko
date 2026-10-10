@@ -67,3 +67,9 @@ variable "time_zone" {
   description = "Cloud Scheduler のタイムゾーン"
   default     = "Asia/Tokyo"
 }
+
+variable "demo_live_payer_labels" {
+  description = "デモで、実際に銀行（sunabar）で承認する振込元の口座ラベル（カンマ区切り）。それ以外の人の振込は bank-adapter が代行する（SPEC 8.10）。空にすると全員が実機になる"
+  type        = string
+  default     = "acct08" # 加藤（guides/h25_sunabar_setup.md 1章）
+}

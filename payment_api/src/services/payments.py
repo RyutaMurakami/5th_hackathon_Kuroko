@@ -160,9 +160,11 @@ class PaymentService:
                 "transfer_id": transfer.transfer_id,
                 "approval_deadline": transfer.approval_expires_at,
                 "retry_count": attempt,
+                "simulated": transfer.simulated,
             },
         )
-        self._notify(lambda: self._notifier.transfer_requested(updated, reissued=attempt > 0))
+        if not transfer.simulated:  # 代行ぶんは、本人が銀行で承認することが無い（SPEC 8.10）
+            self._notify(lambda: self._notifier.transfer_requested(updated, reissued=attempt > 0))
         return "issued"
 
     # ------------------------------------------------------------------ 確認（ポーリング）
