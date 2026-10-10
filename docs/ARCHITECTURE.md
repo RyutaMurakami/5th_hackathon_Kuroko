@@ -357,6 +357,7 @@ sequenceDiagram
   - `POST /tasks/internal/payments/poll` — 承認待ちのポーリングと、期限切れの作り直し（8章）。**`sa-payment-api` と `sa-scheduler` だけ**
   - `/mcp` — 支払いエージェント用の MCP エンドポイント。**Agent Gateway 経由の `agent-payment` だけ**（V1）
 - **1回の支払いを状態遷移で管理する**（`制約の確認 → Closed Payment / Checkout Mandate → 振込依頼 → 承認待ち → 入金の確認 → 完了`。SPEC 4.2 の呼び出し順）。各ツールは、順番が違う呼び出しを拒否し、`制約の確認` で Policy Gate 6.3 の全項目を再検査する。これにより、**エージェントが手順を飛ばしても、順番を変えても、範囲外の振込依頼はできない**（D10）。
+- **請求（Checkout）の検証（2026-10-09。TASKS B13）**: `kuroko-api` が KMS の `claim-signing` で署名した ES256 の JWT（`sub`・`payee`・`event_id`・`payment_reference`・`amount_yen`・`split_hash`・`exp`）を、`payment-api` が **KMS の公開鍵（`publicKeyViewer`。署名はできない）で検証**する。さらに、請求の中身が依頼と一致し、`checkout_hash` が JWT の SHA-256 であり、**Firestore の承認済みの按分表**（`events/{id}/approvals`・`splits`。`kuroko-api` が書き、`payment-api` は読むだけ）と、承認・金額表・請求のハッシュ、本人の負担額、支払先（幹事）が一致することを確かめる。設定が無いときは全て拒否（fail closed）。
 - **AP2 SDK の使い方（2026-10-06 に確認）**: `ap2`（GitHub から入れる）の `MandateClient` で、委任状（`OpenPaymentMandate`。`AmountRange`・`AllowedPayees`・`cnf`・`exp`）の発行、支払いエージェントによる `PaymentMandate`（Closed）への絞り込み（`present`。`nonce`・`aud`）、チェーンの検証（`verify`）を行う。署名は ES256（P-256）。**`verify` が検査するのは署名・チェーン・nonce・`aud`・期限で、金額の上限と支払先は検査しない**（別関数の `ap2.sdk.constraints.check_payment_constraints` が検査する）ので、Policy Gate 6.3 は両方を呼び、イベントID（署名つきの `risk_data`）・nonce・銀行の認可などは `payment-api` のコードが検査する（D10）。署名は `Signer` の差し替え式で、本番は KMS の鍵（署名の瞬間だけ KMS の AsymmetricSign を呼ぶ JWK を SDK に差し込む。SDK は改造しない）。参加者の鍵は1つで、人ごとの区別は署名の `kid`（`user:<user_id>`）と委任状の中身。`PaymentMandate.payment_instrument` には仮名 `user_id`（`type=bank_transfer`）を入れ、口座番号は入れない。KMS の実機での署名は、鍵の作成後に確認する（TASKS B9・B12）。
 - **口座番号とアクセストークンは扱わない。**`bank-adapter` には仮名の `user_id`・金額・冪等キーだけを渡し、口座の解決とトークンの利用は `bank-adapter` の中で完結させる（SPEC 6.3・10章）。
 - **「完了」にできるのは、入金を明細で確認できたときだけ**。銀行APIの結果コードだけでは完了にしない（SPEC 6.3・8.6）。
@@ -380,6 +381,7 @@ sequenceDiagram
 - 振込依頼は**冪等キー**を必ず付ける。同じキーでの再送は1回だけ実行される。
 - sunabar の制約（振込先も sunabar 内の口座に限る、1ユーザーあたり最大10口座、Webhook がない、トークンは30日で失効）は SPEC 8.8 のとおり。**Webhook がないため、状況の確認は呼び出し側のポーリング**で行う（8章）。
 - **sunabar の実機で確かめたこと（2026-10-06。[手順書](guides/h25_sunabar_setup.md) 4章）**: ①**OAuth の認可の流れは無い**。口座ごとのアクセストークンをポータルから取り、Secret Manager（`sunabar-tokens`。口座ラベル → トークンの JSON）に登録する。`POST /authorizations` は「その `user_id` の口座が使えるか」の確認になる（本番の銀行APIでは OAuth の交換）。②銀行コードは `0310`、口座番号は7桁、支店名は半角カナ。③**同じ `Idempotency-Key` でも別の受付番号が振られる**ので、`bank-adapter` が `idempotency_key` から決めた `transfer_id` で記録を先に作り（原子的）、銀行を呼ぶのは1回だけにする。④振込依頼の `applyComment` は銀行で読み捨てられるので、`payment_id` は明細に載らない。**完了の判定は、入金明細の「金額＋摘要（振込依頼人名）＋日付」**（明細に振込元の口座番号は出ない）。依頼の追跡は `transferRequestKey`（`transfer_id` を使う）。⑤状況照会は承認前に 0件で返るので、承認期限（10分）を過ぎても手続済にならなければ `expired`。
+- **明細の応答（2026-10-09）**: `GET /statements` は、摘要（名義を含む）を返さず、**摘要の名義から解決した相手の仮名 `counterparty_user_id`**（一意に決まらなければ null）だけを返す。名義・口座番号はこの API の外に出さない。`kuroko-api`（`sa-api`）は幹事口座の入金だけを、この `counterparty_user_id` と金額と日付で照合する（`confirm_incoming_payments`）。
 - 疎通が取れない場合の代替は 13章 V10。
 
 ### 4.5 kuroko-dashboard

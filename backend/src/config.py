@@ -26,10 +26,21 @@ class Settings(BaseSettings):
     # --- Cloud Tasks（kuroko-gateway → kuroko-api。ARCHITECTURE 6章）---
     kuroko_api_url: str = ""
     tasks_queue_default: str = "kuroko-default"
+    # 委任状の署名・取り消し（kuroko-gateway → payment-api）のキュー
+    tasks_queue_mandates: str = "kuroko-mandates"
     # タスクの OIDC 主体（投入した側の SA）
     tasks_service_account: str = ""
     # /tasks/slack/* が受け付ける呼び出し元（sa-gateway）
     gateway_service_account: str = ""
+
+    # --- 請求・入金の確認（TASKS B13）---
+    payment_api_url: str = ""
+    bank_adapter_url: str = ""
+    # /tasks/internal/* が受け付ける呼び出し元（kuroko-api 自身。sa-api）
+    api_service_account: str = ""
+    # 請求（Checkout）の署名鍵（Cloud KMS `claim-signing` の鍵バージョン。ES256）
+    kms_claim_key_version: str = ""
+    checkout_ttl_seconds: int = 3 * 24 * 3600
 
     # --- 統括エージェント（Agent Runtime。TASKS B22）---
     # 空のあいだは仮のエージェント（下）で返す。値は「projects/<番号>/locations/<リージョン>/

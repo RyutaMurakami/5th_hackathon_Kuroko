@@ -48,3 +48,7 @@ class BankClient(Protocol):
 
     def has_account(self, *, label: str) -> bool:
         """このラベルの口座を使えるか（トークンがあり、口座が引けるか）。"""
+
+    def holder_name(self, *, label: str) -> str:
+        """口座の名義（カナ）。明細の摘要（「振込 ＋ 相手の名義」）と突き合わせるためだけに使い、
+        この外には出さない。"""

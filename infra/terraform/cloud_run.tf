@@ -50,7 +50,11 @@ locals {
         UPLOAD_BUCKET               = google_storage_bucket.uploads.name
         CLAIMS_BUCKET               = google_storage_bucket.claims.name
         KMS_CLAIM_SIGNING_KEY       = google_kms_crypto_key.claim_signing.id
-        KUROKO_AGENT_ENGINE         = var.kuroko_agent_engine
+        # 請求（Checkout）の署名（ES256）に使う鍵バージョン（TASKS B13）
+        KMS_CLAIM_KEY_VERSION = "${google_kms_crypto_key.claim_signing.id}/cryptoKeyVersions/1"
+        # /tasks/internal/*（請求の作成・入金の確認）を受け付ける呼び出し元（自分自身）
+        API_SERVICE_ACCOUNT = local.sa["sa-api"]
+        KUROKO_AGENT_ENGINE = var.kuroko_agent_engine
       })
       invokers = ["sa-gateway", "sa-api", "sa-dashboard", "sa-scheduler", "sa-demo-runner"]
     }
@@ -71,6 +75,8 @@ locals {
         KMS_MANDATE_KEY_RING        = google_kms_key_ring.mandates.id
         KMS_PAYMENT_AGENT_KEY       = google_kms_crypto_key.payment_agent_signing.id
         # ES256 の署名・公開鍵の取得に使う鍵バージョン（payment_api の既定は本番側 = KMS・Firestore・http）
+        # 請求の署名を検証する公開鍵（kuroko-api の claim-signing。署名はできない）
+        KMS_CLAIM_KEY_VERSION         = "${google_kms_crypto_key.claim_signing.id}/cryptoKeyVersions/1"
         KMS_PARTICIPANT_KEY_VERSION   = "${google_kms_crypto_key.participant_signing.id}/cryptoKeyVersions/1"
         KMS_PAYMENT_AGENT_KEY_VERSION = "${google_kms_crypto_key.payment_agent_signing.id}/cryptoKeyVersions/1"
         SIGNER_MODE                   = "kms"

@@ -27,6 +27,13 @@ resource "google_kms_key_ring_iam_member" "claims_signer" {
   member      = "serviceAccount:${local.sa["sa-api"]}"
 }
 
+# payment-api は、請求の署名を検証するため、公開鍵の取得だけができる（署名はできない。TASKS B13）
+resource "google_kms_crypto_key_iam_member" "claim_public_key_for_payment_api" {
+  crypto_key_id = google_kms_crypto_key.claim_signing.id
+  role          = "roles/cloudkms.publicKeyViewer"
+  member        = "serviceAccount:${local.sa["sa-payment-api"]}"
+}
+
 resource "google_kms_key_ring" "mandates" {
   name     = "kuroko-mandates"
   location = var.region

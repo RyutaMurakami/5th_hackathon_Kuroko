@@ -51,3 +51,8 @@ def require_gateway(authorization: str | None = Header(default=None)) -> Caller:
 def require_api(authorization: str | None = Header(default=None)) -> Caller:
     """支払いの開始・参照は sa-api だけ。"""
     return _caller(authorization, {"api"})
+
+
+def require_scheduler(authorization: str | None = Header(default=None)) -> Caller:
+    """承認待ちのポーリングは sa-scheduler だけ（Cloud Scheduler が1分ごとに呼ぶ）。"""
+    return _caller(authorization, {"scheduler"})

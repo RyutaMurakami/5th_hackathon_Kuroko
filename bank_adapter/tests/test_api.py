@@ -110,6 +110,31 @@ def test_statements_scope_by_caller(client, bank):
     ]
 
 
+def test_statement_entries_resolve_the_counterparty_without_exposing_names(client, bank):
+    created = client.post("/transfers", json=body(), headers=PAY).json()  # approver → organizer
+    bank.approve(created["apply_no"])
+    today = date.today().isoformat()
+    q = f"date_from={today}&date_to={today}"
+    incoming = client.get(f"/statements?user_id=organizer&{q}", headers=API)
+    entry = incoming.json()["entries"][0]
+    assert entry["counterparty_user_id"] == "approver"  # 摘要の名義から、仮名IDに解決
+    assert "remarks" not in entry and "スタブ" not in incoming.text  # 名義は出さない
+    outgoing = client.get(f"/statements?user_id=approver&{q}", headers=PAY).json()["entries"][0]
+    assert outgoing["counterparty_user_id"] == "organizer"
+
+
+def test_counterparty_is_none_when_the_name_matches_nobody_or_several(store):
+    from src.services.transfers import _normalize_name, _resolve_counterparty
+
+    names = {"a": _normalize_name("ｽﾅﾊﾞ ﾏｻﾕｷ"), "b": _normalize_name("ｽﾅﾊﾞ ﾄｼｵ")}
+    assert (
+        _resolve_counterparty("振込 スナバ\u3000マサユキ", names) == "a"
+    )  # 全角・半角の違いを吸収
+    assert _resolve_counterparty("振込 スナバ\u3000ハナコ", names) is None  # 知らない名義
+    assert _resolve_counterparty("振込 スナバ\u3000マサユキ", names | {"c": names["a"]}) is None
+    assert _resolve_counterparty("手数料", names) is None
+
+
 def test_statement_range_is_validated(client):
     res = client.get(
         "/statements?user_id=organizer&date_from=2026-10-06&date_to=2026-01-01", headers=API

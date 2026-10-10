@@ -4,7 +4,7 @@
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Protocol
 
 import httpx
@@ -23,6 +23,14 @@ class TransferInfo:
     approval_expires_at: datetime | None
 
 
+@dataclass(frozen=True)
+class OutgoingEntry:
+    item_key: str
+    date: date
+    amount_yen: int
+    counterparty_user_id: str | None  # 振込先。名義から bank-adapter が仮名IDに解決したもの
+
+
 class BankAdapter(Protocol):
     def is_authorized(self, user_id: str) -> bool:
         """この参加者の銀行の利用の認可が有効か。"""
@@ -30,6 +38,12 @@ class BankAdapter(Protocol):
     def create_transfer(
         self, *, payer_user_id: str, payee_user_id: str, amount_yen: int, idempotency_key: str
     ) -> TransferInfo: ...
+
+    def get_transfer(self, transfer_id: str) -> TransferInfo:
+        """振込依頼の状況（awaiting_approval / processed / expired / failed）。"""
+
+    def outgoing(self, user_id: str, date_from: date, date_to: date) -> list[OutgoingEntry]:
+        """本人の口座の出金明細（入金の確認の元。SPEC 8.6）。"""
 
 
 class HttpBankAdapter:
@@ -79,3 +93,44 @@ class HttpBankAdapter:
             status=data["status"],
             approval_expires_at=datetime.fromisoformat(expires) if expires else None,
         )
+
+    def get_transfer(self, transfer_id: str) -> TransferInfo:
+        try:
+            res = self._http.get(f"{self._base}/transfers/{transfer_id}", headers=self._headers())
+        except httpx.HTTPError as e:
+            raise BankAdapterError("bank_adapter_unreachable") from e
+        if res.status_code != 200:
+            raise BankAdapterError(f"bank_adapter_{res.status_code}")
+        data = res.json()
+        expires = data.get("approval_expires_at")
+        return TransferInfo(
+            transfer_id=data["transfer_id"],
+            status=data["status"],
+            approval_expires_at=datetime.fromisoformat(expires) if expires else None,
+        )
+
+    def outgoing(self, user_id: str, date_from: date, date_to: date) -> list[OutgoingEntry]:
+        try:
+            res = self._http.get(
+                f"{self._base}/statements",
+                params={
+                    "user_id": user_id,
+                    "date_from": date_from.isoformat(),
+                    "date_to": date_to.isoformat(),
+                },
+                headers=self._headers(),
+            )
+        except httpx.HTTPError as e:
+            raise BankAdapterError("bank_adapter_unreachable") from e
+        if res.status_code != 200:
+            raise BankAdapterError(f"bank_adapter_{res.status_code}")
+        return [
+            OutgoingEntry(
+                item_key=e["item_key"],
+                date=date.fromisoformat(e["date"]),
+                amount_yen=int(e["amount_yen"]),
+                counterparty_user_id=e.get("counterparty_user_id"),
+            )
+            for e in res.json()["entries"]
+            if e["direction"] == "out"
+        ]

@@ -28,3 +28,10 @@ def require_gateway(authorization: str | None = Header(default=None)) -> None:
     expected = get_settings().gateway_service_account
     if not expected or caller_email(authorization) != expected:
         raise HTTPException(status_code=403, detail="forbidden")
+
+
+def require_self(authorization: str | None = Header(default=None)) -> None:
+    """`/tasks/internal/*` は kuroko-api 自身（sa-api。Cloud Tasks が投入）だけを受け付ける。"""
+    expected = get_settings().api_service_account
+    if not expected or caller_email(authorization) != expected:
+        raise HTTPException(status_code=403, detail="forbidden")

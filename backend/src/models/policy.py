@@ -41,6 +41,8 @@ class PolicySnapshot(BaseModel):
     shortfall_to: Literal["approver"] = "approver"
     approver_selection: list[str] = Field(min_length=1)
     hard_limit_per_person_yen: int = Field(gt=0)
+    # 委任状の有効期限（開催日から数えた日数。payment.payer_mandate.expires_after_event_days）
+    mandate_valid_days_after_event: int = Field(default=7, gt=0, le=30)
 
     @model_validator(mode="after")
     def _check(self) -> "PolicySnapshot":

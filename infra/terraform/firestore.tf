@@ -70,3 +70,19 @@ resource "google_firebaserules_release" "firestore_bank" {
 
   depends_on = [google_firestore_database.bank]
 }
+
+# App Home の表示で、Slack ユーザーから参加者を探す（events/*/participants を横断する検索。TASKS B16）。
+# コレクショングループのクエリには、単一フィールドのインデックス（コレクショングループ）が要る
+resource "google_firestore_field" "participants_slack_user" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "participants"
+  field      = "slack_user_id"
+
+  index_config {
+    indexes {
+      order       = "ASCENDING"
+      query_scope = "COLLECTION_GROUP"
+    }
+  }
+}

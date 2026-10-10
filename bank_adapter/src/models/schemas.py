@@ -46,8 +46,9 @@ class StatementEntry(BaseModel):
     date: date
     direction: Literal["in", "out"]
     amount_yen: int
-    # 明細の摘要（「振込 」＋ 相手の名義）。振込元の口座番号は明細に出ない
-    remarks: str
+    # 摘要（「振込 」＋ 相手の名義）の名義から解決した、相手の仮名 user_id。一意に決まらなければ
+    # None（推測しない）。**摘要・名義・口座番号は、この API の外に出さない**（SPEC 10章）
+    counterparty_user_id: str | None = None
 
 
 class StatementResponse(BaseModel):

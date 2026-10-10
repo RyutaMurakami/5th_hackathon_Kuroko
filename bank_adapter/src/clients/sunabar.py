@@ -117,6 +117,9 @@ class SunabarBank:
             return False
         return True
 
+    def holder_name(self, *, label: str) -> str:
+        return str(self._account(label).get("accountNameKana", ""))
+
     def create_transfer(
         self,
         *,

@@ -38,9 +38,21 @@ class ApprovalStatus(StrEnum):
     APPROVED = "approved"
 
 
+class BudgetEscalation(BaseModel):
+    """予算超過の確認フローの記録（SPEC 9.1。幹事の確認 → 承認者の最終確認）。"""
+
+    organizer_confirmed_at: datetime | None = None
+    escalated_to: str | None = None  # 最終確認を求めた承認者の user_id
+    escalated_at: datetime | None = None
+    final_confirmed_at: datetime | None = None
+
+
 class Approval(BaseModel):
     event_id: str
-    approver_user_id: str
+    approver_user_id: str  # `determine_approver` が決めた承認者
     split_hash: str
     status: ApprovalStatus = ApprovalStatus.PENDING
     approved_at: datetime | None = None
+    # 実際に承認した人の Slack ユーザー（**署名検証済みの Slack インタラクションから**取った値）。
+    # 自己申告のメッセージの内容では入れない（Policy Gate 6.2）
+    approved_by_slack_user_id: str | None = None

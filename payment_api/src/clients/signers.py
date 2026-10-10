@@ -86,3 +86,17 @@ class KmsSigner:
 
     def public_key(self) -> JWK:
         return JWK.from_pyca(self._public)
+
+
+def kms_public_key(version_name: str, kms_client: Any | None = None) -> ec.EllipticCurvePublicKey:
+    """KMS の鍵バージョンの公開鍵（署名の検証だけに使う）。"""
+    if kms_client is None:
+        from google.cloud import kms
+
+        kms_client = kms.KeyManagementServiceClient()
+    key = serialization.load_pem_public_key(
+        kms_client.get_public_key(request={"name": version_name}).pem.encode()
+    )
+    if not isinstance(key, ec.EllipticCurvePublicKey):
+        raise ValueError("KMS key must be an EC key")
+    return key

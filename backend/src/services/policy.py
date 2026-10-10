@@ -46,6 +46,9 @@ def snapshot_from_rules(
             "shortfall_to": rules["split"]["shortfall_to"],
             "approver_selection": rules["approval"]["approver_selection"],
             "hard_limit_per_person_yen": event["budget"]["hard_limit_per_person_yen"],
+            "mandate_valid_days_after_event": rules["payment"]["payer_mandate"][
+                "expires_after_event_days"
+            ],
         }
     )
 
