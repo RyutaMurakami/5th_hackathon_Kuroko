@@ -131,7 +131,7 @@ def packaged_files(root: Path) -> list[str]:
 
 def build_config(
     *, display_name: str, files: list[str], env: dict[str, str], gateways: dict[str, Any],
-    min_instances: int = 0,
+    min_instances: int = 0, root_certificates: list[str] | None = None,
 ) -> dict[str, Any]:  # fmt: skip
     return {
         "display_name": display_name,
@@ -140,7 +140,12 @@ def build_config(
         "identity_type": "AGENT_IDENTITY",  # Agent Gateway には必須（`service_account` とは併用しない）
         "agent_gateway_config": gateways,
         "min_instances": min_instances,  # 開発中は常時課金しない（V5）
-        "image_spec": {},
+        # 出口 Gateway の TLS 検査のルート CA を、イメージのビルドで信頼ストアに入れる（Dockerfile が受ける）
+        "image_spec": (
+            {"build_args": {"AGENT_GATEWAY_ROOT_CERTIFICATES": "\n".join(root_certificates)}}
+            if root_certificates
+            else {}
+        ),
         "agent_framework": "google-adk",
     }
 
@@ -176,6 +181,28 @@ def check_gateway(name: str, expected_path: str, project: str, location: str) ->
     text = res.stdout.upper().replace("-", "_")
     if expected_path not in text:
         raise DeployError(f"Gateway「{name}」の種類が違う（{expected_path} のはず）。入口と出口を取り違えていないか")
+
+
+def extract_root_certificates(describe_json: str) -> list[str]:
+    """出口 Gateway の `agentGatewayCard.rootCertificates`（TLS 検査のルート CA）。"""
+    try:
+        card = json.loads(describe_json).get("agentGatewayCard") or {}
+    except ValueError:
+        return []
+    return [c for c in card.get("rootCertificates", []) if "BEGIN CERTIFICATE" in c]
+
+
+def fetch_root_certificates(name: str, project: str, location: str) -> list[str]:
+    out = _run_gcloud(["gcloud", "network-services", "agent-gateways", "describe", name,
+                       f"--location={location}", f"--project={project}", "--format=json"])  # fmt: skip
+    return extract_root_certificates(out)
+
+
+def _run_gcloud(cmd: list[str]) -> str:
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        raise DeployError(f"gcloud が失敗した: {res.stderr.strip()[:300]}")
+    return res.stdout
 
 
 def grant_base_roles(project: str, principal: str) -> None:
@@ -248,15 +275,20 @@ def main(argv: list[str] | None = None) -> int:
     if "./Dockerfile" not in files:
         raise DeployError("Dockerfile がアップロードの対象から外れている（.gitignore を確認）")
     gateways = gateway_config(args.project, args.location, args.ingress, args.egress)
+    certs = [] if args.skip_gateway_check else fetch_root_certificates(args.egress, args.project, args.location)
+    if not args.skip_gateway_check and not certs:
+        raise DeployError("出口 Gateway からルート CA を取得できなかった（agentGatewayCard.rootCertificates が空）")
     config = build_config(
-        display_name=display_name, files=files, env=env, gateways=gateways, min_instances=args.min_instances
-    )
+        display_name=display_name, files=files, env=env, gateways=gateways,
+        min_instances=args.min_instances, root_certificates=certs,
+    )  # fmt: skip
 
     print(f"\n【{action}】{display_name}  （{args.project} / {args.location}）")
     print(f"  入口（Client-to-Agent）: {ingress_path}")
     print(f"  出口（Agent-to-Anywhere）: {egress_path}")
     print("  identity: AGENT_IDENTITY（最小の権限だけ付ける:", ", ".join(r.split("/")[-1] for r in BASE_ROLES) + "）")
     print(f"  min_instances: {args.min_instances}  / アップロードするファイル: {len(files)} 件")
+    print(f"  出口 Gateway のルート CA: {len(certs)} 件（ビルド引数で Dockerfile に渡す）")
     print("  環境変数:", ", ".join(f"{k}={'(値は表示しない)' if 'KEY' in k or 'TOKEN' in k else v}" for k, v in sorted(env.items())))
     if same:
         print(f"  既存: {same[0]['name']}")

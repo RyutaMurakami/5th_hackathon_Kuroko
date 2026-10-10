@@ -24,6 +24,18 @@ COPY ./app ./app
 
 RUN uv sync --frozen
 
+# Agent Gateway（出口）の TLS 検査のルート CA を、システムの信頼ストアに入れる（公式の手順）。
+# デプロイスクリプトが、出口 Gateway の agentGatewayCard.rootCertificates をビルド引数で渡す。
+# 引数が無い（Gateway なしの）ビルドでは何もしない。
+ARG AGENT_GATEWAY_ROOT_CERTIFICATES
+RUN if [ -n "$AGENT_GATEWAY_ROOT_CERTIFICATES" ]; then \
+      printf "%b" "$AGENT_GATEWAY_ROOT_CERTIFICATES" | awk 'BEGIN {c=0} /BEGIN CERTIFICATE/ {c++} c > 0 { print > ("/usr/local/share/ca-certificates/agw-" c ".crt") }'; \
+      update-ca-certificates; \
+    fi
+ENV GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=${AGENT_GATEWAY_ROOT_CERTIFICATES:+/etc/ssl/certs/ca-certificates.crt}
+ENV REQUESTS_CA_BUNDLE=${AGENT_GATEWAY_ROOT_CERTIFICATES:+/etc/ssl/certs/ca-certificates.crt}
+ENV SSL_CERT_FILE=${AGENT_GATEWAY_ROOT_CERTIFICATES:+/etc/ssl/certs/ca-certificates.crt}
+
 ARG AGENT_VERSION=0.0.0
 ENV AGENT_VERSION=${AGENT_VERSION}
 

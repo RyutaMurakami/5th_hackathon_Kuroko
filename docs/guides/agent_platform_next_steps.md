@@ -172,10 +172,10 @@ AI に返すもの: なし（名前が決まっている）。
 
 詳細な入力値: [h11 手順書 4-3・4-4](h11_agent_platform_lab.md)
 
-- [ ] **3-1. 入口 `kuroko-agw-c2a`**（Client-to-Agent。Model Armor は要求 `kuroko-ma-request`・応答 `kuroko-ma-response`）
-- [ ] **3-2. 出口 `kuroko-agw-a2a`**（Agent-to-Anywhere。**Audit-only**。同じテンプレート）
+- [x] **3-1. 入口 `kuroko-agw-c2a`**（Client-to-Agent。Model Armor は要求 `kuroko-ma-request`・応答 `kuroko-ma-response`）
+- [x] **3-2. 出口 `kuroko-agw-a2a`**（Agent-to-Anywhere。**Audit-only**。同じテンプレート）
   - 画面でレジストリを選べず作れなかったら、フェーズ 4 のあとに作る
-- [ ] **3-3. 2つとも Active になるまで待つ**（数分）
+- [x] **3-3. 2つとも Active になるまで待つ**（数分）
 
 **確認すること**:
 - [ ] ⌨ `gcloud network-services agent-gateways list --location=us-central1 --project=kuroko-509311` に 2 件
@@ -224,6 +224,7 @@ AI に返すもの: なし（名前が決まっている）。
 - **両方のエージェントを入口 Gateway につなぐ**（入口の Model Armor が `streamQuery` の入力を検査する）
 - 作る前に、**Gateway が存在し、入口と出口を取り違えていないか**を `gcloud` で確かめる（無ければここで止まる）
 - **既存のエンジン（identity なし）は更新できない**（Agent identity は作成時にしか決められない）。**別の表示名（`-gw`）で新しく作る**。旧エンジンは動いたまま（Slack の返答は止まらない）
+- **出口 Gateway の TLS 検査のルート CA** を、ビルド引数で Dockerfile に渡し、信頼ストアに入れる（公式の手順。両エージェントの Dockerfile に、引数が無いときは何もしないブロックを足した）
 - Agent identity に、**最小の4つだけ**を付ける（Gemini・ログ・メトリクス）。`kuroko-api` への `run.invoker` や Registry の `iap.egressor` は付けない（V1 のあと、AI が Terraform で付ける）
 - `.env` はアップロードしない。`GOOGLE_CLOUD_PROJECT`（予約済みの変数）は外す。本文を記録に残さない設定を入れる
 
@@ -338,7 +339,7 @@ AI に返すもの: なし（名前が決まっている）。
 - [ ] フェーズ 0: 事前確認（0-1〜0-4）
 - [x] フェーズ 1: `extract-agent` のデプロイと確認（1-1〜1-4）→ 🤖 エンジンの設定（**2026-10-10 完了**。本番の経路で確認済み）
 - [x] フェーズ 2: Model Armor ×2（2026-10-10 完了。INSPECT_ONLY・多言語オンを確認）
-- [ ] フェーズ 3: Gateway ×2
+- [x] フェーズ 3: Gateway ×2（2026-10-10 完了。`gcloud` で、入口 `CLIENT_TO_AGENT`・出口 `AGENT_TO_ANYWHERE` を確認。出口のルート CA の取得も確認）
 - [x] フェーズ 4: Registry に `kuroko-api-mcp`（2026-10-10 完了）
 - [x] 🤖 `deploy_agent.py` の用意（2026-10-10。`--dry-run` まで確認）／ [ ] 🤖 `verify_g2.py`（V1・V2・V7・V8。Gateway ができてから）
 - [ ] フェーズ 5: Gateway 付きデプロイ（5-1〜5-5）→ 🤖 IAM・V1・`agent_kuroko_principal`

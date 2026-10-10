@@ -5,6 +5,7 @@
 """
 
 import importlib.util
+import json
 import subprocess
 from pathlib import Path
 
@@ -133,3 +134,28 @@ def test_running_from_the_wrong_directory_is_refused(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(d.DeployError):
         d.main(["--agent", "kuroko", "--dry-run", "--skip-gateway-check"])
+
+
+# ---------------- 出口 Gateway のルート CA ----------------
+CERT = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+
+
+def test_root_certificates_are_taken_from_the_egress_gateways_card():
+    js = json.dumps({"agentGatewayCard": {"rootCertificates": [CERT, "not a cert"]}})
+    assert d.extract_root_certificates(js) == [CERT]
+    assert d.extract_root_certificates("{}") == [] and d.extract_root_certificates("bad") == []
+
+
+def test_the_certificates_reach_the_image_build_only_when_present():
+    cfg = d.build_config(display_name="x", files=[], env={}, gateways={}, root_certificates=[CERT, CERT])
+    assert cfg["image_spec"] == {"build_args": {"AGENT_GATEWAY_ROOT_CERTIFICATES": CERT + "\n" + CERT}}
+    assert d.build_config(display_name="x", files=[], env={}, gateways={})["image_spec"] == {}
+
+
+def test_both_dockerfiles_install_the_gateway_ca_only_when_the_build_arg_is_given():
+    for name in ("kuroko_agent", "extract_agent"):
+        text = (HERE.parents[1] / name / "Dockerfile").read_text()
+        assert "ARG AGENT_GATEWAY_ROOT_CERTIFICATES" in text
+        assert 'if [ -n "$AGENT_GATEWAY_ROOT_CERTIFICATES" ]' in text  # 引数が無いビルドでは何もしない
+        assert "update-ca-certificates" in text and "SSL_CERT_FILE" in text and "REQUESTS_CA_BUNDLE" in text
+        assert text.index("update-ca-certificates") > text.index("uv sync")
