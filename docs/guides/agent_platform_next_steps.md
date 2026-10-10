@@ -342,7 +342,7 @@ AI に返すもの: なし（名前が決まっている）。
 - [x] フェーズ 3: Gateway ×2（2026-10-10 完了。`gcloud` で、入口 `CLIENT_TO_AGENT`・出口 `AGENT_TO_ANYWHERE` を確認。出口のルート CA の取得も確認）
 - [x] フェーズ 4: Registry に `kuroko-api-mcp`（2026-10-10 完了）
 - [x] 🤖 `deploy_agent.py` の用意（2026-10-10。`--dry-run` まで確認）／ [ ] 🤖 `verify_g2.py`（V1・V2・V7・V8。Gateway ができてから）
-- [x] フェーズ 5: Gateway 付きデプロイ（5-1〜5-5）→ 🤖 IAM・V1・`agent_kuroko_principal`（**2026-10-11 完了**。kuroko-agent-gw: V1 OK、extract-agent-gw: V2 OK。両エンジンへ切り替え済み。旧エンジンは未削除）
+- [x] フェーズ 5: Gateway 付きデプロイ（5-1〜5-5）→ 🤖 IAM・V1・`agent_kuroko_principal`（**2026-10-11 完了**。kuroko-agent-gw: V1 OK、extract-agent-gw: V2 OK。両エンジンへ切り替え済み。旧エンジンは 2026-10-11 に削除済み）
 - [ ] フェーズ 6: 確かめる・P9 の判断（V1・V2・V8 は完了。**残り: 出口を Enforce にする V7、P9 の判断（INSPECT_ONLY → ブロック）**）
 - [ ] フェーズ 7: Memory Bank・RAG（AI の手順書待ち）
 - [ ] フェーズ 8: `config/slack_users`
