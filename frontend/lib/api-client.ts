@@ -38,6 +38,14 @@ const MESSAGES: Record<string, string> = {
   manual_not_allowed: "手入力は、読み取りに失敗したときだけできます。",
   invalid_reservation: "予約内容の入力を確認してください。",
   invalid_venue: "店の指定を確認してください。",
+  no_extraction: "読み取り結果がありません。アップロードするか、手入力で確定してください。",
+  no_transfer_to_approve: "承認できる振込がありません（すでに承認済みです）。",
+  card_already_answered: "このカードは、すでに回答済みです。",
+  action_rejected: "この操作は受け付けられませんでした。",
+  retro_not_awaiting_organizer: "振り返りの集計が済んでから、確認できます。",
+  memory_already_saved: "この振り返りは、すでに保存済みです。",
+  memory_unavailable: "いま記憶に保存できませんでした。少し待って、もう一度お試しください。",
+  memory_not_configured: "記憶の保存先が設定されていません。",
   not_configured: "サーバーの設定が済んでいません。",
   upstream_auth_failed: "サーバー間の認証に失敗しました。",
 };
@@ -45,7 +53,7 @@ const MESSAGES: Record<string, string> = {
 export function errorText(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.status === 403) return "この操作を行う権限がありません。";
-    if (e.status >= 500) return "うまく処理できませんでした。少し待って、もう一度お試しください。";
+    if (e.status >= 500) return MESSAGES[e.code] ?? "うまく処理できませんでした。少し待って、もう一度お試しください。";
     return MESSAGES[e.code] ?? "操作を完了できませんでした。入力を確認してください。";
   }
   return "通信できませんでした。接続を確認してください。";
@@ -116,3 +124,12 @@ export const pressPersonaCard = (eventId: string, cardId: string, index: number)
 /** 体験用の「銀行で承認する」（本物の銀行の振込には効かない） */
 export const approveBank = (eventId: string, userId: string) =>
   call("POST", `events/${eventId}/bank-approvals`, { user_id: userId });
+
+/** 振り返りの回答を、待たずに締め切る（その時点の回答で集計する） */
+export const closeRetro = (eventId: string) => call("POST", `events/${eventId}/close-retro`);
+
+/** 振り返りの確認。送るのは選択だけ（事実の文面は、サーバーが作り直す） */
+export const confirmRetro = (
+  eventId: string,
+  body: { reuse_intent: "yes" | "no" | "unanswered"; include: string[]; decision: "save" | "skip" },
+) => call<{ event_id: string; status: string }>("POST", `events/${eventId}/confirm-retro`, body);

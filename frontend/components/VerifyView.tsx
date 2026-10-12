@@ -112,7 +112,7 @@ export function VerifyView() {
         <div>
           <h1 className={event.pageTitle}>動作の検証</h1>
           <p className={event.pageMeta}>
-            実際の API につないで、依頼から領収書の確定まで通して確かめる画面です
+            実際の API につないで、依頼から振り返りまで通して確かめる画面です
             {role && `（${role === "guest" ? "ゲスト：体験用のイベント" : "幹事"}）`}
           </p>
         </div>
@@ -203,6 +203,7 @@ export function VerifyView() {
                       }, "銀行で承認しました。1〜2分で、入金の確認に進みます。")
                   : undefined
               }
+              bankAmountYen={detail?.payments.find((pay) => pay.payer_user_id === p.user_id)?.amount_yen ?? null}
             />
           ))}
       </div>
