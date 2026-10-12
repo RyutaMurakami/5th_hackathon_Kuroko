@@ -34,15 +34,10 @@
 }
 
 .logo {
-  display: grid;
-  place-items: center;
-  width: calc(var(--spacing-32) + var(--spacing-4));
-  height: calc(var(--spacing-32) + var(--spacing-4));
+  width: calc(var(--spacing-32) + var(--spacing-8));
+  height: calc(var(--spacing-32) + var(--spacing-8));
   border-radius: var(--radius-smallelements);
-  background: var(--color-sun-signal);
-  color: var(--color-ink-navy);
-  font-size: var(--text-body-lg);
-  font-weight: var(--font-weight-bold);
+  object-fit: cover;
 }
 
 .nav {
