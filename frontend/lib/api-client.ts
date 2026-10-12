@@ -27,6 +27,7 @@ const MESSAGES: Record<string, string> = {
   guest_disabled: "いま体験用の利用を止めています。",
   event_not_found: "このイベントは見られません。",
   invalid_text: "発言は1〜2000文字で入力してください。",
+  reply_pending: "KUROKO が返答を作っているところです。少し待ってください。",
   guest_event_limit: "体験用のイベントは2件までです。",
   guest_message_limit: "体験用の発言の上限（30通）に達しました。",
   invalid_state: "いまの段階では、この操作はできません。",
@@ -87,9 +88,13 @@ export const listEvents = (mode?: ApiUiMode) =>
   call<ApiEventSummary[]>("GET", mode ? `events?mode=${mode}` : "events");
 export const getEvent = (id: string) => call<ApiEventDetail>("GET", `events/${id}`);
 
-/** `eventId` が無ければ、最初の発言として planning のイベントが作られる */
+/** `eventId` が無ければ、最初の発言として planning のイベントが作られる。
+ *  返答は待たない（`reply.status` は `pending`）。できあがりは、イベントを読み直して拾う */
 export const sendMessage = (text: string, eventId?: string, mode: ApiUiMode = "experience") =>
   call<{ event_id: string; reply: ApiMessage }>("POST", "messages", { event_id: eventId ?? null, text, mode });
+
+/** この画面（体験用／実演用）で自分が作ったイベントと通知を削除し、シナリオを最初から始める */
+export const resetScenario = (mode: ApiUiMode) => call<{ deleted: number }>("POST", "reset", { mode });
 
 /** 店の候補を出す（順位はサーバーのコードが決める。数秒〜30秒ほどかかる） */
 export const findVenues = (eventId: string) =>

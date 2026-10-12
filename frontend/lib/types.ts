@@ -172,6 +172,8 @@ export type ChatMessage = {
   role: "organizer" | "kuroko" | "system";
   text: string;
   createdAt: string;
+  /** KUROKO の返答を作っているあいだは `pending`（本文は空。画面は「考え中」を出す） */
+  status?: "pending" | "done" | "failed" | "blocked";
   proposal?: EventPlanProposal;
 };
 

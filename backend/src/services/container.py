@@ -214,6 +214,8 @@ def get_dashboard():
         personas=get_slack_actions(),
         retro=get_retro(),
         venues=get_venue_search(),
+        # 返答は Cloud Tasks で作る（Hosting の60秒制限。SPEC 7.5）。ローカルでは、その場で待つ
+        enqueue_chat=_enqueue_self if project and s.kuroko_api_url else None,
         upload_ttl_seconds=s.upload_url_ttl_seconds,
         ocr=GeminiReceiptModel(project=project) if project else None,
         reservation_reader=GeminiReservationModel(project=project) if project else None,

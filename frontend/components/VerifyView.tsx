@@ -13,6 +13,7 @@ import {
   getMe,
   listEvents,
   pressPersonaCard,
+  resetScenario,
   sendMessage,
 } from "@/lib/api-client";
 import type { ApiEventDetail, ApiEventSummary, ApiMe, ApiPersona, ApiUiMode } from "@/lib/api-types";
@@ -27,6 +28,7 @@ import event from "./event.module.css";
 import styles from "./verify.module.css";
 
 const POLL_MS = 5000;
+const POLL_PENDING_MS = 2000; // 返答を待っているあいだは、短い間隔で読み直す
 
 // 計画を確定するまでは、参加者がまだ決まっていない。列は最初から開いておく（名簿は kuroko-api が持つ）
 const PLACEHOLDER_PERSONAS: ApiPersona[] = [
@@ -55,12 +57,15 @@ const COPY: Record<ApiUiMode, { title: string; meta: string; banner: string }> =
 };
 
 function toChat(detail: ApiEventDetail): ChatMessage[] {
-  return detail.messages.map((m) => ({
-    messageId: m.message_id,
-    role: m.role,
-    text: m.text,
-    createdAt: m.created_at,
-  }));
+  // 返答を作っているあいだのメッセージ（本文は空）は、一覧に出さない。「考え中」で見せる
+  return detail.messages
+    .filter((m) => m.status !== "pending")
+    .map((m) => ({
+      messageId: m.message_id,
+      role: m.role,
+      text: m.text,
+      createdAt: m.created_at,
+    }));
 }
 
 export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
@@ -69,11 +74,14 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
   const [events, setEvents] = useState<ApiEventSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<ApiEventDetail | null>(null);
-  const [thinking, setThinking] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const live = mode === "live";
   const copy = COPY[mode];
+  // 返答は、別に作られる（Hosting の60秒制限を避けるため。SPEC 7.5）。できるまで「考え中」を出す
+  const replyPending = detail?.messages.some((m) => m.status === "pending") ?? false;
+  const thinking = sending || replyPending;
 
   const run = useCallback(async (fn: () => Promise<unknown>, done?: string) => {
     setError(null);
@@ -107,9 +115,12 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
   // 参加者・承認者の操作や、銀行の承認で状態が進むので、一定の間隔で読み直す
   useEffect(() => {
     if (!user || !selected) return;
-    const t = setInterval(() => void refresh(selected).catch(() => undefined), POLL_MS);
+    const t = setInterval(
+      () => void refresh(selected).catch(() => undefined),
+      replyPending ? POLL_PENDING_MS : POLL_MS,
+    );
     return () => clearInterval(t);
-  }, [user, selected, refresh]);
+  }, [user, selected, refresh, replyPending]);
 
   const blocked = live && me !== null && !me.live_allowed; // 実演用は、登録した開発者のアカウントだけ
   const personas: ApiPersona[] = detail?.personas?.length ? detail.personas : PLACEHOLDER_PERSONAS;
@@ -119,13 +130,27 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
   const suggestions = Array.isArray(chats) ? chats.filter((c): c is string => typeof c === "string") : [];
 
   const send = async (text: string) => {
-    setThinking(true);
+    setSending(true);
     await run(async () => {
       const out = await sendMessage(text, selected ?? undefined, mode);
       setSelected(out.event_id);
       await refresh(out.event_id);
     });
-    setThinking(false);
+    setSending(false);
+  };
+
+  /** この画面で作ったイベントをすべて消し、シナリオを最初から始める（SPEC 7.7） */
+  const clear = async () => {
+    if (!window.confirm("この画面で作ったイベントと通知をすべて削除して、最初からやり直します。よろしいですか？")) {
+      return;
+    }
+    const ok = await run(async () => {
+      await resetScenario(mode);
+      setSelected(null);
+      setDetail(null);
+      await refresh(null);
+    });
+    if (ok) setNotice("クリアしました。最初から始められます。");
   };
 
   return (
@@ -155,6 +180,9 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
           }}
         >
           新しく依頼する
+        </Button>
+        <Button variant="secondary" onClick={() => void clear()} disabled={thinking}>
+          最初からやり直す
         </Button>
         {events.map((e) => (
           <button

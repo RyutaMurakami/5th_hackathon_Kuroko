@@ -48,6 +48,9 @@ class EventStore(Protocol):
 
     def list_notifications(self, uid: str) -> list[Notification]: ...
 
+    def delete_notifications(self, uid: str, event_ids: set[str]) -> None:
+        """この利用者の通知のうち、`event_ids` のイベントのものを削除する。"""
+
     def save_upload(self, upload: Upload) -> None: ...
 
     def get_upload(self, event_id: str, upload_id: str) -> Upload | None: ...
@@ -209,6 +212,13 @@ class MemoryEventStore:
     def list_notifications(self, uid):
         rows = [n for n in self.notifications.values() if n.uid == uid]
         return [n.model_copy() for n in sorted(rows, key=lambda n: n.created_at, reverse=True)]
+
+    def delete_notifications(self, uid, event_ids):
+        self.notifications = {
+            k: n
+            for k, n in self.notifications.items()
+            if not (n.uid == uid and n.event_id in event_ids)
+        }
 
     def save_upload(self, upload):
         self.uploads.setdefault(upload.event_id, {})[upload.upload_id] = upload.model_copy()
@@ -372,6 +382,12 @@ class FirestoreEventStore:
         docs = self._db.collection("notifications").where("uid", "==", uid).stream()
         rows = [Notification.model_validate(d.to_dict()) for d in docs]
         return sorted(rows, key=lambda n: n.created_at, reverse=True)
+
+    def delete_notifications(self, uid, event_ids):
+        docs = self._db.collection("notifications").where("uid", "==", uid).stream()
+        for d in docs:
+            if (d.to_dict() or {}).get("event_id") in event_ids:
+                d.reference.delete()
 
     def save_upload(self, upload):
         self._event(upload.event_id).collection("uploads").document(upload.upload_id).set(
