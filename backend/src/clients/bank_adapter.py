@@ -27,6 +27,9 @@ class BankAdapter(Protocol):
         self, *, user_id: str, date_from: date, date_to: date
     ) -> list[IncomingEntry]: ...
 
+    async def demo_approve(self, transfer_id: str) -> bool:
+        """体験用の「承認待ち」の振込を承認済みにする（本物の銀行の振込には効かない。SPEC 7.7）。"""
+
 
 async def _id_token(audience: str) -> str:
     import google.auth.transport.requests
@@ -68,3 +71,17 @@ class HttpBankAdapter:
             for e in res.json()["entries"]
             if e["direction"] == "in"
         ]
+
+    async def demo_approve(self, transfer_id: str) -> bool:
+        try:
+            res = await self._http.post(
+                f"{self._base}/transfers/{transfer_id}/demo-approval",
+                headers={"Authorization": f"Bearer {await self._token(self._base)}"},
+            )
+        except httpx.HTTPError as e:
+            raise BankAdapterError(f"unreachable:{type(e).__name__}") from None
+        if res.status_code in (404, 409):
+            return False  # 体験用の振込ではない・もう承認待ちではない
+        if res.status_code != 200:
+            raise BankAdapterError(f"bank_adapter_{res.status_code}")
+        return True

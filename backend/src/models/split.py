@@ -56,3 +56,7 @@ class Approval(BaseModel):
     # 実際に承認した人の Slack ユーザー（**署名検証済みの Slack インタラクションから**取った値）。
     # 自己申告のメッセージの内容では入れない（Policy Gate 6.2）
     approved_by_slack_user_id: str | None = None
+    # 承認の経路。slack: 署名検証済みの Slack 操作。web_demo: 体験用（sandbox）のイベントで、
+    # イベントを作った本人が、Web のカードから承認者として押した（SPEC 7.7）
+    approved_via: str = "slack"
+    approved_by_web_uid: str | None = None

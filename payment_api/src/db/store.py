@@ -16,7 +16,11 @@ class Store(Protocol):
     def update_mandate(self, mandate_id: str, fields: dict[str, Any]) -> dict[str, Any]: ...
 
     def demo_proxy_allowed(self, event_id: str, user_id: str) -> bool:
-        """`sandbox` のイベントの、Slack のアカウントを持たない参加者か（SPEC 7.6）。"""
+        """`sandbox` のイベントの参加者で、Slack のアカウントを持たないか（SPEC 7.6）、
+        Web のチャット画面に列がある登場人物か（SPEC 7.7）。"""
+
+    def web_bank_approval(self, event_id: str) -> bool:
+        """登場人物の振込を、Web のカードで承認する体験用のイベントか（SPEC 7.7）。"""
 
     def claim_nonce(self, key: str) -> bool:
         """未使用なら使用済みにして True（原子的）。使用済みなら False。"""
@@ -52,6 +56,10 @@ class MemoryStore:
         self.nonces: set[str] = set()
         self.settlements: dict[str, str] = {}
         self.demo_proxy: set[tuple[str, str]] = set()  # 代行できる (event_id, user_id)
+        self.web_bank_events: set[str] = set()  # 銀行の承認を Web のカードで行うイベント
+
+    def web_bank_approval(self, event_id):
+        return event_id in self.web_bank_events
 
     def demo_proxy_allowed(self, event_id, user_id):
         return (event_id, user_id) in self.demo_proxy
@@ -134,7 +142,12 @@ class FirestoreStore:
         if (event.get().to_dict() or {}).get("sandbox") is not True:
             return False
         person = event.collection("participants").document(user_id).get()
-        return person.exists and not (person.to_dict() or {}).get("slack_user_id")
+        data = person.to_dict() or {}
+        return person.exists and (not data.get("slack_user_id") or data.get("demo_persona") is True)
+
+    def web_bank_approval(self, event_id):
+        data = self._db.collection("events").document(event_id).get().to_dict() or {}
+        return data.get("sandbox") is True and data.get("bank_approval") == "web"
 
     def claim_nonce(self, key):
         from google.api_core.exceptions import AlreadyExists

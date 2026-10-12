@@ -62,8 +62,9 @@ export function StepForms({
       )}
       {detail.waiting_for && detail.waiting_for.where !== "web" && (
         <Caption>
-          いまは {detail.waiting_for.where === "slack" ? "Slack" : "銀行"} での対応待ちです（
-          {detail.waiting_for.what}）。この画面からは操作できません。
+          {detail.sandbox
+            ? `いまは、参加者・承認者の対応待ちです（${detail.waiting_for.what}）。右の2人の列のカード、または Slack で対応します。`
+            : `いまは ${detail.waiting_for.where === "slack" ? "Slack" : "銀行"} での対応待ちです（${detail.waiting_for.what}）。この画面からは操作できません。`}
         </Caption>
       )}
     </>

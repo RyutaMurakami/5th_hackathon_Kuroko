@@ -54,6 +54,9 @@ NAMES = {
     "inoue": "井上（送別）",
 }
 
+# Web のチャット画面に列がある登場人物（SPEC 7.7）
+PERSONAS = {"kurao", "hanako"}
+
 
 def demo_participants() -> list[Participant]:
     """歓送迎会の出席者10名（review 04 4章。配役は SPEC 7.6）。"""
@@ -69,7 +72,12 @@ def demo_participants() -> list[Participant]:
         person("matsumoto", "一般", "2026-09-01", "E202", role=ParticipantRole.GUEST_OF_HONOR),
         person("inoue", "一般", "2018-04-01", "E099", role=ParticipantRole.GUEST_OF_HONOR),
     ]
-    return [p.model_copy(update={"display_name": NAMES[p.user_id]}) for p in people]
+    return [
+        p.model_copy(
+            update={"display_name": NAMES[p.user_id], "demo_persona": p.user_id in PERSONAS}
+        )
+        for p in people
+    ]
 
 
 def demo_event(total=60_300) -> Event:

@@ -33,6 +33,7 @@ def client(bank, store, clock):
         approval_ttl_seconds=600,
         now=clock,
         is_simulated=demo.is_simulated,
+        demo=demo,
     )
     app = create_app()
     app.dependency_overrides[get_service] = lambda: service
@@ -150,3 +151,69 @@ def test_simulation_is_off_unless_configured(monkeypatch):
     assert isinstance(on._bank, DemoBank)
     assert not on._bank.is_simulated("acct08") and on._bank.is_simulated("acct02")
     container.get_service.cache_clear()
+
+
+# ---------------- 体験用の「承認待ち」の代行（SPEC 7.7） ----------------
+def held(client, key="k-held"):
+    body = {
+        "payer_user_id": "approver",  # 実機に通すはずの人
+        "payee_user_id": "organizer",
+        "amount_yen": 4800,
+        "idempotency_key": key,
+        "demo_hold": True,
+    }
+    return client.post("/transfers", json=body, headers=PAY).json()
+
+
+def test_a_held_transfer_never_reaches_the_bank_and_waits_for_the_web_approval(
+    client, bank, clock
+):
+    from datetime import timedelta
+
+    t = held(client)
+    assert bank.create_calls == 0 and t["simulated"] is True and t["apply_no"].startswith("SIM")
+    today = date.today().isoformat()
+    q = f"user_id=organizer&date_from={today}&date_to={today}"
+    get = lambda: client.get(f"/transfers/{t['transfer_id']}", headers=PAY).json()  # noqa: E731
+
+    # 押すまで、手続済にならず、幹事の明細にも載らない
+    assert get()["status"] == "awaiting_approval"
+    assert client.get(f"/statements?{q}", headers=API).json()["entries"] == []
+    clock.t += timedelta(minutes=30)
+    assert get()["status"] == "awaiting_approval"  # 期限で失効させない
+    held(client)  # 再送しても、1件のまま
+    assert get()["status"] == "awaiting_approval"
+
+    res = client.post(f"/transfers/{t['transfer_id']}/demo-approval", headers=API)
+    assert res.status_code == 200 and res.json()["status"] == "processed"
+    entries = client.get(f"/statements?{q}", headers=API).json()["entries"]
+    assert [(e["counterparty_user_id"], e["amount_yen"]) for e in entries] == [("approver", 4800)]
+    again = client.post(f"/transfers/{t['transfer_id']}/demo-approval", headers=API)
+    assert again.status_code == 409  # 2回は承認できない
+
+
+def test_the_web_approval_cannot_touch_real_or_automatic_transfers(client, bank):
+    live = transfer(client, "approver", 7200, "k-live").json()  # 本物の銀行の振込
+    auto = transfer(client, "member", 5000, "k-sim").json()  # 自動の代行
+    for t in (live, auto):
+        res = client.post(f"/transfers/{t['transfer_id']}/demo-approval", headers=API)
+        assert res.status_code == 409
+    get_live = client.get(f"/transfers/{live['transfer_id']}", headers=PAY).json()
+    assert get_live["status"] == "awaiting_approval"  # 本物の振込は、銀行で承認するまで動かない
+    assert client.post("/transfers/nope/demo-approval", headers=API).status_code == 404
+
+
+def test_only_kuroko_api_can_use_the_web_approval(client):
+    t = held(client)
+    for headers in (PAY, {}):
+        res = client.post(f"/transfers/{t['transfer_id']}/demo-approval", headers=headers)
+        assert res.status_code == 403
+
+
+def test_demo_hold_is_ignored_when_the_demo_bank_is_not_configured(bank, store, clock):
+    service = BankService(store=store, bank=bank, approval_ttl_seconds=600, now=clock)
+    out = service.create_transfer(
+        payer_user_id="approver", payee_user_id="organizer", amount_yen=100,
+        idempotency_key="k", demo_hold=True,
+    )  # fmt: skip
+    assert bank.create_calls == 1 and out.simulated is False  # 設定が無ければ、実機に通す

@@ -1,7 +1,9 @@
 """Web ダッシュボードの API（`/api/dashboard/*`。SPEC 4.3・7.5・7.6、ARCHITECTURE 4.5。TASKS B14）。
 
 呼び出し元は kuroko-dashboard（Cloud Run の ID トークン）で、利用者は Firebase の ID トークン
-（`X-Firebase-Token`）で確かめる。**委任・承認・取り消し・振込の操作はここに無い**（Slack だけ）。
+（`X-Firebase-Token`）で確かめる。**委任・承認・取り消し・振込の操作は、原則ここに無い**
+（Slack だけ）。
+例外は、体験用（sandbox）のイベントの、登場人物のカード（SPEC 7.7）。
 """
 
 from typing import Annotated, Any, Literal
@@ -52,6 +54,14 @@ class ConfirmIn(BaseModel):
     kind: UploadKind
     values: dict[str, Any]
     source: Literal["extracted", "manual"]
+
+
+class CardActionIn(BaseModel):
+    index: int = Field(ge=0, le=10)  # カードの何番目のボタンか（値はサーバー側のカードから取る）
+
+
+class BankApprovalIn(BaseModel):
+    user_id: str = Field(min_length=1, max_length=64)
 
 
 class VenueIn(BaseModel):
@@ -140,6 +150,26 @@ def mark_held(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
 def select_venue(event_id: str, body: VenueIn, actor: Who, s: Svc) -> dict[str, Any]:
     try:
         return s.select_venue(actor, event_id, body.place_id, body.name)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
+@router.post("/events/{event_id}/persona-cards/{card_id}/actions")
+async def press_persona_card(
+    event_id: str, card_id: str, body: CardActionIn, actor: Who, s: Svc
+) -> dict[str, Any]:
+    """登場人物として、カードのボタンを押す（体験用のイベントを作った本人だけ。SPEC 7.7）。"""
+    try:
+        return await s.press_persona_card(actor, event_id, card_id, body.index)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
+@router.post("/events/{event_id}/bank-approvals")
+async def approve_bank(event_id: str, body: BankApprovalIn, actor: Who, s: Svc) -> dict[str, Any]:
+    """体験用の「銀行で承認する」（本物の銀行の振込には効かない。SPEC 7.7）。"""
+    try:
+        return await s.approve_bank_transfer(actor, event_id, body.user_id)
     except DashboardError as e:
         raise _raise(e) from None
 

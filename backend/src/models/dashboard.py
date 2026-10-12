@@ -105,3 +105,16 @@ MAX_UPLOADS = {UploadKind.RESERVATION: 2, UploadKind.RECEIPT: 3}  # 1イベン�
 GUEST_MAX_EVENTS = 2  # 1ゲストあたり
 GUEST_MAX_MESSAGES_PER_EVENT = 30
 SANDBOX_DAYS = 7  # ゲストのイベントは、作成から7日で削除する
+
+
+class PersonaCard(BaseModel):
+    """登場人物に届いたカード（Slack の DM と同じ中身。Web のチャット画面に出す。SPEC 7.7）。"""
+
+    card_id: str
+    event_id: str
+    user_id: str  # 宛先の参加者
+    kind: Literal["consent", "approval", "budget"]
+    text: str
+    blocks: list[dict]  # Slack に送ったものと同じ Block Kit（ボタンの値も、ここから取る）
+    resolved_text: str | None = None  # 回答済みなら、その結果の文面
+    created_at: datetime

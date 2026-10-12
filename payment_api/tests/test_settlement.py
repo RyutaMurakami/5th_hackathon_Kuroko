@@ -219,3 +219,20 @@ def test_notification_texts_are_fixed_templates_without_secrets():
     assert "幹事に報告" in failed_text("歓送迎会", 7200)
     for text in (t, completed_text("x", 1), failed_text("x", 1)):
         assert not any(w in text for w in ("口座番号", "トークン", "accountId"))
+
+
+def test_a_web_demo_event_asks_the_bank_to_hold_the_transfer_for_the_web_approval(client, env):
+    """体験用のイベント（SPEC 7.7）: 銀行での承認は Web のカード。Slack の承認依頼は送らない。"""
+    client.post("/mandates", json=sign_body(), headers=GATEWAY)
+    env.store.web_bank_events.add("ev1")
+    res = client.post("/payments", json=pay_body(), headers=API).json()
+    assert res["status"] == "awaiting_bank_approval"
+    assert env.bank.transfers[-1]["demo_hold"] is True
+    assert client.post("/tasks/internal/payments/poll", headers=SCHEDULER).status_code == 200
+    assert env.store.get_payment(res["payment_id"])["status"] == "awaiting_bank_approval"  # 待つ
+
+
+def test_other_events_do_not_ask_for_a_hold(client, env):
+    client.post("/mandates", json=sign_body(), headers=GATEWAY)
+    client.post("/payments", json=pay_body(), headers=API)
+    assert env.bank.transfers[-1]["demo_hold"] is False

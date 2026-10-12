@@ -39,4 +39,5 @@ def get_service() -> BankService:
         bank=demo,
         approval_ttl_seconds=s.approval_ttl_seconds,
         is_simulated=demo.is_simulated,
+        demo=demo,
     )

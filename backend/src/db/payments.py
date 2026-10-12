@@ -9,6 +9,9 @@ class PaymentReader(Protocol):
     def list_payments(self, event_id: str) -> list[dict]:
         """イベントの支払い（payment-api が書いたもの）。読み取りだけ。"""
 
+    def open_transfer_id(self, event_id: str, payer_user_id: str) -> str | None:
+        """銀行での承認を待っている振込依頼の ID（無ければ None）。画面には出さない。"""
+
 
 class MemoryPaymentReader:
     def __init__(self, completed: set[tuple[str, str]] | None = None) -> None:
@@ -18,9 +21,21 @@ class MemoryPaymentReader:
     def has_completed_payment(self, event_id: str, payer_user_id: str) -> bool:
         return (event_id, payer_user_id) in self.completed
 
-    def list_payments(self, event_id):
+    def _of(self, event_id):
         return [p for p in self.payments if p.get("event_id", event_id) == event_id]
 
+    def list_payments(self, event_id):
+        # 振込依頼の ID は、一覧に出さない（実装の FirestorePaymentReader と同じ）
+        return [{k: v for k, v in p.items() if k != "transfer_id"} for p in self._of(event_id)]
+
+    def open_transfer_id(self, event_id, payer_user_id):
+        for p in self._of(event_id):
+            if p.get("payer_user_id") == payer_user_id and p.get("status") == AWAITING:
+                return p.get("transfer_id")
+        return None
+
+
+AWAITING = "awaiting_bank_approval"
 
 _PAYMENT_FIELDS = (
     "payment_id", "payer_user_id", "payee_user_id", "amount_yen", "status",
@@ -43,6 +58,14 @@ class FirestorePaymentReader:
             .limit(1)
         )
         return any(True for _ in q.stream())
+
+    def open_transfer_id(self, event_id: str, payer_user_id: str) -> str | None:
+        docs = self._db.collection("payments").where("event_id", "==", event_id).stream()
+        for d in docs:
+            r = d.to_dict() or {}
+            if r.get("payer_user_id") == payer_user_id and r.get("status") == AWAITING:
+                return r.get("transfer_id")
+        return None
 
     def list_payments(self, event_id: str) -> list[dict]:
         docs = self._db.collection("payments").where("event_id", "==", event_id).stream()

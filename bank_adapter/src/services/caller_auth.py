@@ -50,3 +50,8 @@ def require_payment(authorization: str | None = Header(default=None)) -> Caller:
 def require_api_or_payment(authorization: str | None = Header(default=None)) -> Caller:
     """明細（sa-api: 幹事の入金。sa-payment-api: 本人の出金）と削除。"""
     return _caller(authorization, {"api", "payment"})
+
+
+def require_api(authorization: str | None = Header(default=None)) -> Caller:
+    """体験用の「銀行で承認する」は sa-api だけ（Web のカードの操作を受けた kuroko-api）。"""
+    return _caller(authorization, {"api"})

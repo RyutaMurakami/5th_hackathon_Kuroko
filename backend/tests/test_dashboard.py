@@ -377,7 +377,13 @@ async def test_event_detail_shows_who_we_wait_for_without_exposing_actions():
 def test_there_is_no_dashboard_route_for_mandates_approvals_revocation_or_transfers():
     paths = [r.path for r in router.router.routes]
     banned = ("mandate", "approve", "approval", "revoke", "transfer", "payment", "consent", "sign")
-    assert not [p for p in paths if any(b in p for b in banned)]
+    # 例外は、体験用（sandbox）のイベントの登場人物のカードだけ（SPEC 7.7）。体験用でない
+    # イベント・他人のイベントでは使えないことは、tests/test_web_personas.py が確かめる
+    sandbox_only = {
+        "/api/dashboard/events/{event_id}/persona-cards/{card_id}/actions",
+        "/api/dashboard/events/{event_id}/bank-approvals",
+    }
+    assert not [p for p in paths if any(b in p for b in banned) and p not in sandbox_only]
     assert not [r for r in app.routes if "dashboard" in getattr(r, "path", "") and "demo" in r.path]
 
 

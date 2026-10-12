@@ -206,6 +206,11 @@ class BillingService:
         used: set[str] = set()
         run = CollectionRun()
         for user_id, amount in sorted(expected.items()):
+            # 体験用のイベントは、全員が同じ幹事口座の明細を見る。別のイベントの、同じ人・同じ金額の
+            # 入金を取り違えないよう、このイベントの支払いが完了した人だけを照合する（SPEC 7.7）
+            if event.sandbox and not self._payments.has_completed_payment(event_id, user_id):
+                run.missing.append(user_id)
+                continue
             match = next(
                 (
                     e

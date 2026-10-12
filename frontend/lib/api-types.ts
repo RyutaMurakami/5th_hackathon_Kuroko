@@ -78,6 +78,31 @@ export type ApiEventDetail = {
   } | null;
   payments: ApiPayment[];
   decision_log: ApiDecision[];
+  /** 登場人物の振込を、どこで承認するか（web: 体験用のボタン。bank: 本物の銀行） */
+  bank_approval: "web" | "bank";
+  /** 登場人物ごとの、KUROKO から届いたカード（体験用のイベントだけ。SPEC 7.7） */
+  personas: ApiPersona[];
+};
+
+/** KUROKO から登場人物に届いたカード（Slack の DM と同じ中身）。ボタンの値は、サーバーが持つ */
+export type ApiPersonaCard = {
+  card_id: string;
+  kind: "consent" | "approval" | "budget" | "bank";
+  text: string;
+  /** 本文（Slack の mrkdwn。`*太字*`・改行・`• 箇条書き`） */
+  sections: string[];
+  buttons: { index: number; label: string; style: string }[];
+  resolved_text: string | null;
+  created_at: string;
+  /** 体験用の「銀行で承認する」のカード */
+  bank?: boolean;
+};
+
+export type ApiPersona = {
+  user_id: string;
+  display_name: string;
+  job_title: string;
+  cards: ApiPersonaCard[];
 };
 
 export type ApiPayment = {

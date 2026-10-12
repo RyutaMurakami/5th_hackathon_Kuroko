@@ -74,6 +74,9 @@ class Participant(BaseModel):
     preferences: Preferences = Preferences()
     # Slack 上の本人（承認者の本人確認に使う。署名検証済みの Slack 操作の ID と突き合わせる）
     slack_user_id: str | None = None
+    # デモの登場人物（Web のチャット画面に列がある人。SPEC 7.7）。体験用のイベントでは、
+    # イベントを作った本人が、この人として Web のカードのボタンを押せる
+    demo_persona: bool = False
     # 幹事の口座に、この人の負担額の入金を確認した時刻（`confirm_incoming_payments`。SPEC 8.6）。
     # 支払いエージェント側の完了の確認（payment-api）とは独立に記録する
     collection_confirmed_at: dt.datetime | None = None
@@ -91,6 +94,9 @@ class Event(BaseModel):
         None  # sandbox のとき、作成したゲストの UID（他のゲストには見えない）
     )
     expires_at: dt.datetime | None = None  # sandbox の削除の期限（作成から7日）
+    # 登場人物の振込を、どこで承認するか（SPEC 7.7）。bank: 本物の銀行（sunabar）。
+    # web: 体験用（Web のカードの「銀行で承認する（体験用）」）。payment-api がこの値を読む
+    bank_approval: str = "bank"
     # 幹事が確認して確定した計画（日時・人数・エリア・予算・主役など）と、選んだ店・予約の内容
     plan: dict = {}
     venue: dict | None = None

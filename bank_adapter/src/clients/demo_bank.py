@@ -75,11 +75,39 @@ class DemoBank:
         )
         return apply_no
 
+    def create_held(
+        self, *, payer_label: str, payee_label: str, amount_yen: int, request_key: str
+    ) -> str:
+        """体験用（SPEC 7.7）: 「承認待ち」の代行の振込。`approve` されるまで、明細に載らない。"""
+        apply_no = f"{SIM_PREFIX}{request_key}"
+        if apply_no not in self._store.list_simulated():  # 再送で、承認済みを未承認に戻さない
+            self._store.save_simulated(
+                apply_no,
+                {
+                    "payer_label": payer_label,
+                    "payee_label": payee_label,
+                    "amount_yen": amount_yen,
+                    "date": self._today().isoformat(),
+                    "approved": False,
+                },
+            )
+        return apply_no
+
+    def approve(self, apply_no: str) -> bool:
+        """体験用の「銀行で承認する」。承認待ちの代行の振込だけ（本物の振込には効かない）。"""
+        rec = self._store.list_simulated().get(apply_no)
+        if rec is None or rec.get("approved", True):
+            return False
+        self._store.save_simulated(
+            apply_no, rec | {"approved": True, "date": self._today().isoformat()}
+        )
+        return True
+
     def is_processed(self, *, payer_label: str, apply_no: str) -> bool:
         if not apply_no.startswith(SIM_PREFIX):
             return self._real.is_processed(payer_label=payer_label, apply_no=apply_no)
         rec = self._store.list_simulated().get(apply_no)
-        return bool(rec and rec["payer_label"] == payer_label)
+        return bool(rec and rec["payer_label"] == payer_label and rec.get("approved", True))
 
     def transactions(
         self, *, label: str, date_from: date, date_to: date
@@ -92,8 +120,8 @@ class DemoBank:
             )
         for apply_no, rec in sorted(self._store.list_simulated().items()):
             day = date.fromisoformat(rec["date"])
-            if not date_from <= day <= date_to:
-                continue
+            if not date_from <= day <= date_to or not rec.get("approved", True):
+                continue  # 承認待ち（体験用）の振込は、まだ成立していない
             # 摘要は実機と同じ形（「振込 ＋ 相手の名義」）
             if rec["payer_label"] == label:
                 other, direction = rec["payee_label"], "out"
