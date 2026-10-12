@@ -97,6 +97,11 @@ class Event(BaseModel):
     # 登場人物の振込を、どこで承認するか（SPEC 7.7）。bank: 本物の銀行（sunabar）。
     # web: 体験用（Web のカードの「銀行で承認する（体験用）」）。payment-api がこの値を読む
     bank_approval: str = "bank"
+    # どの画面で作ったか（SPEC 7.7）。experience: 審査員の体験用（Web だけで進める）。
+    # live: 開発者の実演用（Slack と本物の銀行で操作する。実演用に登録したアカウントだけ）
+    ui_mode: str = "experience"
+    # 店の候補（`search_venues` と同じ検索の結果。幹事が Web で選ぶ。口コミ本文は含まない）
+    venue_candidates: list[dict] = []
     # 幹事が確認して確定した計画（日時・人数・エリア・予算・主役など）と、選んだ店・予約の内容
     plan: dict = {}
     venue: dict | None = None

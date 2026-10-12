@@ -539,7 +539,11 @@ async def test_the_reservation_and_receipt_examples_are_valid_values():
 async def test_me_returns_only_the_role(client, http):
     h = {"Authorization": _token(DASH_SA), "X-Firebase-Token": "t"}
     res = await client.get("/api/dashboard/me", headers=h)
-    assert res.json() == {"role": "guest"}
+    body = res.json()
+    assert body["role"] == "guest" and body["live_allowed"] is False
+    # イベントを作る前から、次にすることと、入力の候補を出せる（体験用・実演用）
+    assert set(body["start_hints"]) == {"experience", "live"}
+    assert body["start_hints"]["experience"]["example"]["chats"]
 
 
 async def test_event_detail_returns_the_stored_split_as_is_and_the_approval_state():

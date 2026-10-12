@@ -213,6 +213,7 @@ def get_dashboard():
         payments=_payment_reader(),
         personas=get_slack_actions(),
         retro=get_retro(),
+        venues=get_venue_search(),
         upload_ttl_seconds=s.upload_url_ttl_seconds,
         ocr=GeminiReceiptModel(project=project) if project else None,
         reservation_reader=GeminiReservationModel(project=project) if project else None,

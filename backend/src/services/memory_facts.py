@@ -13,8 +13,8 @@ from src.models.feedback import MemoryFact, Retrospective
 from src.services.venue_ranking import MemoryRecord
 from src.services.vocab import CONCERNS, LIKED
 
-TEAM_LABEL = "営業1課"  # サンプル商事（架空）のチーム
-TEAM_SCOPE = "team:sample-co:sales1"
+TEAM_LABEL = "第一開発チーム"  # サンプル商事（架空）のチーム
+TEAM_SCOPE = "team:sample-co:dev1"
 EVENT_LABELS = {"welcome_farewell": "歓送迎会"}
 
 LIKED_LABELS = {
@@ -76,7 +76,7 @@ def evaluation_fact(
     return text
 
 
-_HEAD = r"^営業1課の\S+?（(?P<ym>\d{4}/\d{2})）"
+_HEAD = r"^第一開発チームの\S+?（(?P<ym>\d{4}/\d{2})）"
 _RECORD = re.compile(
     _HEAD + r"で『(?P<name>[^『』]{1,60})』を(?P<n>\d{1,3})名で利用。"
     r"1人あたり(?P<pp>[\d,]{1,9})円(?:（コース[\d,]{1,9}円）)?で予算(?P<b>内|超過)。$"

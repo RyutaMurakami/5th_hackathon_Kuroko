@@ -37,6 +37,8 @@ def _raise(e: DashboardError) -> HTTPException:
 class MessageIn(BaseModel):
     event_id: str | None = None  # 最初の発言は無し（イベントが作られる）
     text: str = Field(max_length=2000)
+    # イベントを作るときだけ使う。live（実演用）は、登録したアカウントだけ（SPEC 7.7）
+    mode: Literal["experience", "live"] = "experience"
 
 
 class PlanIn(BaseModel):
@@ -77,14 +79,16 @@ class VenueIn(BaseModel):
 
 
 @router.get("/me")
-def me(actor: Who) -> dict[str, str]:
+def me(actor: Who, s: Svc) -> dict[str, Any]:
     """利用者の役割（幹事／ゲスト）。画面の出し分けに使う（権限の強制は各操作の側）。"""
-    return {"role": actor.role.value}
+    return s.me(actor)
 
 
 @router.get("/events")
-def list_events(actor: Who, s: Svc) -> list[dict[str, Any]]:
-    return s.list_events(actor)
+def list_events(
+    actor: Who, s: Svc, mode: Literal["experience", "live"] | None = None
+) -> list[dict[str, Any]]:
+    return s.list_events(actor, mode)
 
 
 @router.get("/events/{event_id}")
@@ -98,7 +102,7 @@ def get_event(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
 @router.post("/messages")
 async def send_message(body: MessageIn, actor: Who, s: Svc) -> dict[str, Any]:
     try:
-        return await s.send_message(actor, body.event_id, body.text)
+        return await s.send_message(actor, body.event_id, body.text, body.mode)
     except DashboardError as e:
         raise _raise(e) from None
 
@@ -149,6 +153,15 @@ async def confirm_budget_overrun(event_id: str, actor: Who, s: Svc) -> dict[str,
 def mark_held(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
     try:
         return s.mark_event_held(actor, event_id)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
+@router.post("/events/{event_id}/venue-candidates")
+async def find_venues(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
+    """店の候補を出す（順位はコードが決める。幹事が画面で選ぶ）。"""
+    try:
+        return await s.find_venues(actor, event_id)
     except DashboardError as e:
         raise _raise(e) from None
 

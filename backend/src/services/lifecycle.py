@@ -76,7 +76,8 @@ class Lifecycle:
             )
         # 体験用のイベントでは、登場人物の振込を Web のカードで承認する。実演用に登録した
         # アカウントのイベントだけ、本物の銀行（sunabar）で承認する（SPEC 7.7）
-        live = owner_email.lower() in self._store.live_bank_emails()
+        # 開発者の実演用の画面で作ったイベント（`ui_mode = live`）で、登録したアカウントのときだけ
+        live = event.ui_mode == "live" and owner_email.lower() in self._store.live_bank_emails()
         return event.model_copy(
             update={
                 "bank_approval": "web" if event.sandbox and not live else "bank",

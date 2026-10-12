@@ -14,6 +14,7 @@ import pytest
 
 from src.clients.memory_bank import DisabledMemory, InMemoryMemoryStore
 from src.db.events import MemoryEventStore
+from src.models.dashboard import Actor, Role
 from src.models.event import EventStatus, Preferences
 from src.models.feedback import MemoryFact, RetroStatus
 from src.models.slack import Action, SlackInteraction
@@ -118,7 +119,11 @@ def test_the_document_states_the_same_values_as_the_reference_rules():
 async def test_values_read_from_the_document_are_validated_and_keep_their_articles():
     model = PolicyModel(as_model_output())
     reading = await PolicyReader(model=model).read()
-    assert reading.from_document and model.documents == [DOCUMENT]
+    assert reading.from_document
+    # モデルに渡すのは、検索で見つけた条だけ（全文は渡さない）
+    (passed,) = model.documents
+    assert "## 第4条（負担区分と負担係数）" in passed and "## 第9条（承認）" in passed
+    assert "第12条" not in passed and "第11条" not in passed and len(passed) < len(DOCUMENT)
     snap = reading.snapshot
     assert snap.source == "document" and snap.citations["member_classes"] == "第4条"
     # 値は、正解データ（yaml）と同じ。按分は、この写しだけで計算される
@@ -324,11 +329,121 @@ async def test_the_web_bank_page_and_slack_end_in_the_same_approval():
 
 
 async def test_no_bank_button_is_sent_when_the_real_bank_approves():
-    w = World(slack_users={"kurao": "U_K", "hanako": "U_H"}, live_emails={"judge@example.com"})
-    eid, out = await to_payment(w)
-    assert out == {"sent": []}  # 本物の銀行のときは、payment-api が DM を送る
+    w = World(slack_users={"kurao": "U_K", "hanako": "U_H"})
+    eid = await w.start()
+    card = await w.to_approval(eid)
+    await w.svc.press_persona_card(JUDGE, eid, card["card_id"], 0)
+    # 本物の銀行で承認するイベント（実演用）。DM は payment-api が送る
+    w.store.save_event(w.store.get_event(eid).model_copy(update={"bank_approval": "bank"}))
+    w.payments.payments = [awaiting(eid, "kurao", 2100, "tr-k")]
+    out = await w.actions.send_bank_requests(eid, {"kurao": "awaiting_bank_approval"})
+    assert out == {"sent": []}
     await press(w, Action.BANK, {"k": "bank", "e": eid, "u": "kurao", "s": "U_K"}, "U_K")
     assert w.bank.approved == []  # 本物の振込には、このボタンは効かない
+
+
+# ---------------------------------------------------------------- 画面は2つ（体験用・実演用）
+OWNER = Actor(uid="g-owner", email="owner@example.com", role=Role.GUEST)
+
+
+async def test_only_registered_accounts_can_start_a_live_event_from_the_developer_screen():
+    w = World(live_emails={"owner@example.com"})
+    with pytest.raises(DashboardError) as e:  # 審査員は、実演用（本物の銀行）のイベントを作れない
+        await w.svc.send_message(JUDGE, None, "歓送迎会をしたい", "live")
+    assert e.value.code == "live_not_allowed" and w.store.events == {}
+    live = await w.start(OWNER, mode="live")
+    assert w.store.get_event(live).bank_approval == "bank"
+    # 同じアカウントでも、審査員の画面から作れば、体験用（Web だけで進む。銀行は呼ばない）
+    trial = await w.start(OWNER, mode="experience")
+    assert w.store.get_event(trial).bank_approval == "web"
+    assert [e["event_id"] for e in w.svc.list_events(OWNER, "live")] == [live]
+    assert [e["event_id"] for e in w.svc.list_events(OWNER, "experience")] == [trial]
+    assert w.svc.me(OWNER)["live_allowed"] and not w.svc.me(JUDGE)["live_allowed"]
+
+
+async def test_a_live_event_is_operated_on_slack_and_not_from_the_web_cards():
+    w = World(slack_users={"kurao": "U_K", "hanako": "U_H"}, live_emails={"owner@example.com"})
+    eid = await w.start(OWNER, mode="live")
+    card = w.cards(eid, "kurao", actor=OWNER)[0]  # 届いたカードは、画面で見られる
+    with pytest.raises(DashboardError):  # 押すのは、本人が Slack で
+        await w.svc.press_persona_card(OWNER, eid, card["card_id"], 0)
+    hint = w.svc.get_event(OWNER, eid)["hint"]
+    assert hint["where"] == "slack" and "Slack の DM" in hint["do"]
+    trial = await w.start(OWNER, mode="experience")
+    assert w.svc.get_event(OWNER, trial)["hint"]["where"] == "web"  # 体験用は、Web の列で
+
+
+async def test_hints_always_offer_a_next_step_and_chat_suggestions_ask_about_the_rules():
+    w = World()
+    start = w.svc.me(JUDGE)["start_hints"]["experience"]
+    assert start["step"] == 1 and "第一開発チーム" in start["example"]["chat"]
+    eid = await w.start()
+    for status in EventStatus:
+        w.store.save_event(w.store.get_event(eid).model_copy(update={"status": status}))
+        h = w.svc.get_event(JUDGE, eid)["hint"]
+        assert h["title"] and h["do"] and h["where"] in ("web", "system")  # Slack・銀行に行かせない
+    w.store.save_event(w.store.get_event(eid).model_copy(update={"status": EventStatus.VENUE}))
+    chats = w.svc.get_event(JUDGE, eid)["hint"]["example"]["chats"]
+    assert chats[0] == "お店を探して" and any("規程" in c for c in chats)
+
+
+# ---------------------------------------------------------------- 店の候補を、画面で選ぶ
+class Finder:
+    def __init__(self, result=None, error=None):
+        self.result, self.error, self.calls = result, error, []
+
+    async def run(self, event_id):
+        self.calls.append(event_id)
+        if self.error:
+            raise self.error
+        return self.result
+
+
+def proposals():
+    from src.models.venue import ReasonFacts, StageResult, VenueCandidate
+    from src.services.venue_search import VenueSearchResult
+
+    def c(pid, name, note=None):
+        return VenueCandidate(
+            place_id=pid, name=name, address="東京都渋谷区", nearest_station="渋谷",
+            max_travel_minutes=40, avg_travel_minutes=28, price_min_yen=3000, price_max_yen=5000,
+            features=["個室"], rating=4.2, memory_note=note, stage_result=StageResult(
+                hard_passed=True, band=8), reason_facts=ReasonFacts(
+                max_travel_minutes=40, avg_travel_minutes=28, passed_checks=["人数"],
+                reflected={}, unmet_preferences={}),
+            selection_reason="最も遠い方でも40分です。",
+        )  # fmt: skip
+
+    note = "前回（2026/06）このチームで利用。満足度4.3。"
+    return VenueSearchResult(True, proposals=[c("p1", "居酒屋 A", note), c("p2", "居酒屋 B")])
+
+
+async def test_the_organizer_gets_candidates_in_the_chat_and_picks_one_of_them():
+    w = World()
+    w.svc._venues = Finder(proposals())
+    eid = await w.start()
+    with pytest.raises(DashboardError):  # 出欠が出そろう前は、探さない
+        await w.svc.find_venues(JUDGE, eid)
+    for user in ("kurao", "hanako"):
+        await w.svc.press_persona_card(JUDGE, eid, w.cards(eid, user)[0]["card_id"], 0)
+    out = await w.svc.find_venues(JUDGE, eid)
+    assert [c["name"] for c in out["venue_candidates"]] == ["居酒屋 A", "居酒屋 B"]
+    shown = w.svc.get_event(JUDGE, eid)["venue_candidates"]
+    assert shown[0]["memory_note"].startswith("前回") and "review" not in json.dumps(shown)
+    with pytest.raises(DashboardError):  # 他人のイベントでは、探せない
+        await w.svc.find_venues(OTHER, eid)
+    # 選ぶときの店名は、保存した候補から取る（画面から送られた名前は使わない）
+    w.svc.select_venue(JUDGE, eid, "p1", "支払先を変更する店")
+    assert w.store.get_event(eid).venue["name"] == "居酒屋 A"
+
+
+async def test_a_failed_search_tells_the_organizer_without_leaking_details():
+    w = World()
+    w.svc._venues = Finder(error=RuntimeError("API key=secret"))
+    eid = await to_venue(w)
+    with pytest.raises(DashboardError) as e:
+        await w.svc.find_venues(JUDGE, eid)
+    assert e.value.code == "venue_search_failed" and "secret" not in str(e.value)
 
 
 # ---------------------------------------------------------------- 振り返りと記憶
@@ -404,7 +519,7 @@ async def test_ratings_from_the_web_cards_close_the_survey_without_showing_who_s
     assert "kurao" not in json.dumps(r) and "hanako" not in json.dumps(r)  # 個人の回答は出さない
     assert [f["kind"] for f in r["memory_facts"]] == ["venue_record", "venue_evaluation"]
     assert r["memory_facts"][0]["text"] == (
-        "営業1課の歓送迎会（2026/10）で『炭火酒場 くろこ 渋谷店』を10名で利用。"
+        "第一開発チームの歓送迎会（2026/10）で『炭火酒場 くろこ 渋谷店』を10名で利用。"
         "1人あたり4,950円（コース4,500円）で予算内。"
     )
     assert w.store.list_notifications("g1")[0].kind.value == "retro_ready"
@@ -424,10 +539,11 @@ async def test_the_organizer_saves_only_the_chosen_template_facts_in_their_own_s
     out = await w.svc.confirm_retro(JUDGE, eid, "yes", ["venue_record", "venue_evaluation"], "save")
     assert out["status"] == "saved" and w.store.get_event(eid).status is EventStatus.CLOSED
     scopes = {scope for scope, _ in w.memory.rows}
-    assert scopes == {"team:sample-co:sales1:guest:g1"}  # ほかのゲストの記憶と混ざらない
+    assert scopes == {"team:sample-co:dev1:guest:g1"}  # ほかのゲストの記憶と混ざらない
     facts = [f.fact for _, f in w.memory.rows]
     assert facts[1] == (
-        "営業1課の歓送迎会（2026/10）の『炭火酒場 くろこ 渋谷店』の満足度は平均4.5（2名回答）。"
+        "第一開発チームの歓送迎会（2026/10）の『炭火酒場 くろこ 渋谷店』の"
+        "満足度は平均4.5（2名回答）。"
         "幹事は次回も使いたい。"
     )
     assert all(mf.is_template_fact(f) for f in facts)
@@ -542,9 +658,9 @@ def test_facts_round_trip_into_ranking_records_and_foreign_text_is_ignored():
 
 
 def test_guests_write_to_their_own_scope_and_also_read_the_seed():
-    assert mf.scope_for(True, "g1") == "team:sample-co:sales1:guest:g1"
-    assert mf.read_scopes(True, "g1") == ["team:sample-co:sales1:guest:g1", "team:sample-co:sales1"]
-    assert mf.scope_for(False, None) == mf.read_scopes(False, None)[0] == "team:sample-co:sales1"
+    assert mf.scope_for(True, "g1") == "team:sample-co:dev1:guest:g1"
+    assert mf.read_scopes(True, "g1") == ["team:sample-co:dev1:guest:g1", "team:sample-co:dev1"]
+    assert mf.scope_for(False, None) == mf.read_scopes(False, None)[0] == "team:sample-co:dev1"
 
 
 async def test_a_remembered_venue_is_preferred_within_the_same_band_and_says_why():
@@ -567,11 +683,12 @@ async def test_a_remembered_venue_is_preferred_within_the_same_band_and_says_why
     )
     assert [c.name for c in plain.proposals] == ["A店", "炭火酒場 くろこ"]
     assert all(c.memory_note is None for c in plain.proposals)
-    await memory.create("team:sample-co:sales1", mf.evaluation_fact(
+    await memory.create("team:sample-co:dev1", mf.evaluation_fact(
         event_type="welcome_farewell", year=2026, month=6, venue_name="炭火酒場 くろこ",
         avg_rating=4.3, response_count=8, reuse_intent="yes"))  # fmt: skip
     await memory.create(
-        "team:other-co:x", "営業1課の歓送迎会（2026/06）の『A店』の満足度は平均5.0（9名回答）。"
+        "team:other-co:x",
+        "第一開発チームの歓送迎会（2026/06）の『A店』の満足度は平均5.0（9名回答）。",
     )
     ranked = await VenueSearch(store=store, stations=stations, maps=maps, memory_store=memory).run(
         event.event_id
@@ -588,3 +705,35 @@ async def test_a_remembered_venue_is_preferred_within_the_same_band_and_says_why
         event.event_id
     )
     assert [c.name for c in still.proposals] == ["A店", "炭火酒場 くろこ"]  # 記憶が無くても、探せる
+
+
+# ---------------------------------------------------------------- 規程の検索（ツール）
+def test_policy_search_returns_only_the_matching_articles():
+    from src.services.policy_search import DocumentRetriever
+
+    r = DocumentRetriever()
+    assert [a.number for a in r.retrieve("予算の上限は？")][0] == "第7条"
+    assert [a.number for a in r.retrieve("承認するのは誰？")][0] == "第9条"
+    assert [a.number for a in r.retrieve("主役は払う？")][0] == "第3条"
+    assert [a.number for a in r.retrieve("第11条を教えて")] == ["第11条"]
+    assert r.retrieve("") == [] and len(r.retrieve("会社の補助はいくら", top_k=99)) <= 3
+    assert all("## 第" not in a.text for a in r.articles())  # 条の本文に、次の条が混ざらない
+
+
+def test_the_agent_tool_cites_articles_and_leaves_a_trace_without_the_question(monkeypatch):
+    from src.routers import mcp as tools
+    from src.services.lifecycle import Lifecycle
+
+    store = MemoryEventStore()
+    store.save_event(demo_event())
+    monkeypatch.setattr(tools, "get_event_store", lambda: store)
+    monkeypatch.setattr(tools, "get_lifecycle", lambda: Lifecycle(store=store, now=lambda: NOW))
+    out = tools.retrieve_policy("ev-demo", "加藤さんの負担係数はいくつ？")
+    assert out["ok"] and out["document"] == "懇親会費用規程"
+    assert out["excerpts"][0]["article"] == "第4条" and "負担係数" in out["excerpts"][0]["text"]
+    assert len(out["excerpts"]) <= 2  # 全文は返さない
+    (log,) = store.list_decisions("ev-demo")
+    assert log.action_type == "規程" and "第4条" in log.summary
+    assert "加藤" not in log.summary  # 質問の文（個人の名前が混ざりうる）は、経緯に残さない
+    assert tools.retrieve_policy("nope", "予算") == {"ok": False, "error": "event_not_found"}
+    assert tools.retrieve_policy("ev-demo", "   ")["error"] == "empty_question"

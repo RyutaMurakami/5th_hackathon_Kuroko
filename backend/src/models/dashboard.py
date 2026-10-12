@@ -103,6 +103,7 @@ ALLOWED_CONTENT_TYPES = ("image/jpeg", "image/png", "application/pdf")
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 1ファイル 5MB まで
 MAX_UPLOADS = {UploadKind.RESERVATION: 2, UploadKind.RECEIPT: 3}  # 1イベントあたり
 GUEST_MAX_EVENTS = 2  # 1ゲストあたり
+LIVE_MAX_EVENTS = 50  # 実演用に登録したアカウント（開発者）は、リハーサルを繰り返せる
 GUEST_MAX_MESSAGES_PER_EVENT = 30
 SANDBOX_DAYS = 7  # ゲストのイベントは、作成から7日で削除する
 

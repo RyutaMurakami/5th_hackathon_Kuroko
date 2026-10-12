@@ -47,7 +47,7 @@ def main() -> None:
     event = demo_event(args.total).model_copy(
         update={
             "event_id": args.event_id,
-            "title": "営業1課 歓送迎会（デモ）",
+            "title": "第一開発チーム 歓送迎会（デモ）",
             "datetime": held,
             "organizer_web_uid": args.web_uid,
             "policy_snapshot": load_snapshot(),

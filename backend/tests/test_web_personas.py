@@ -70,9 +70,13 @@ class World:
         transfer_id = self.payments.open_transfer_id(event_id, user_id)
         return bool(transfer_id) and await self.bank.demo_approve(transfer_id)
 
-    async def start(self, actor=JUDGE):
-        """依頼 → 計画の確定 → 出欠の依頼（Cloud Tasks の代わりに、その場で送る）。"""
-        eid = (await self.svc.send_message(actor, None, "歓送迎会をしたい"))["event_id"]
+    async def start(self, actor=JUDGE, mode=None):
+        """依頼 → 計画の確定 → 出欠の依頼（Cloud Tasks の代わりに、その場で送る）。
+
+        実演用に登録したアカウントのテストでは、開発者の実演用の画面（`live`）から作る。
+        """
+        mode = mode or ("live" if self.store.live_emails else "experience")
+        eid = (await self.svc.send_message(actor, None, "歓送迎会をしたい", mode))["event_id"]
         await self.svc.confirm_event_plan(actor, eid, PLAN)
         await self.actions.send_consent_requests(eid)
         return eid

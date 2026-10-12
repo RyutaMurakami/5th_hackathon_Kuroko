@@ -20,6 +20,7 @@ from src.models.dashboard import (
     ALLOWED_CONTENT_TYPES,
     GUEST_MAX_EVENTS,
     GUEST_MAX_MESSAGES_PER_EVENT,
+    LIVE_MAX_EVENTS,
     MAX_UPLOAD_BYTES,
     MAX_UPLOADS,
     SANDBOX_DAYS,
@@ -39,7 +40,7 @@ from src.services.lifecycle import Lifecycle
 from src.services.policy_extract import PolicyReader
 from src.services.receipt_ocr import ReceiptModel, ocr_receipt
 from src.services.reservation_read import ReservationModel, ingest_reservation
-from src.services.scenario_hint import hint_for
+from src.services.scenario_hint import hint_for, start_hint
 from src.services.vocab import REQUEST_TAGS, only_vocab
 
 Chat = Callable[[str, str], Awaitable[str]]  # (会話の鍵, 発言) → 返答
@@ -80,6 +81,10 @@ class RetroOps(Protocol):
     ) -> Any: ...
 
 
+class VenueFinder(Protocol):
+    async def run(self, event_id: str) -> Any: ...
+
+
 class RsvpDispatcher(Protocol):
     async def start_rsvp(self, event_id: str) -> None: ...
 
@@ -106,10 +111,12 @@ class DashboardService:
         policy: PolicyReader | None = None,
         reservation_reader: ReservationModel | None = None,
         retro: RetroOps | None = None,
+        venues: VenueFinder | None = None,
         now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
     ) -> None:
         self._personas, self._policy, self._retro = personas, policy, retro
         self._reservation_reader = reservation_reader
+        self._venues = venues
         self._store, self._chat, self._signer = store, chat, signer
         self._dispatcher, self._ttl, self._now = dispatcher, upload_ttl_seconds, now
         self._ocr = ocr
@@ -129,7 +136,18 @@ class DashboardService:
         raise DashboardError("event_not_found", 404)
 
     # ------------------------------------------------------------ 一覧・詳細
-    def list_events(self, actor: Actor) -> list[dict[str, Any]]:
+    def me(self, actor: Actor) -> dict[str, Any]:
+        """利用者の役割と、実演用の画面を使えるか。はじめの進行ヒントも返す（イベントを作る前）。"""
+        return {
+            "role": actor.role.value,
+            "live_allowed": self._live_allowed(actor),
+            "start_hints": {m: start_hint(live=m == "live") for m in ("experience", "live")},
+        }
+
+    def _live_allowed(self, actor: Actor) -> bool:
+        return actor.email.lower() in self._store.live_bank_emails()
+
+    def list_events(self, actor: Actor, mode: str | None = None) -> list[dict[str, Any]]:
         events = (
             self._store.list_events_for_organizer(actor.uid)
             if actor.role is Role.ORGANIZER
@@ -137,8 +155,9 @@ class DashboardService:
         )
         return [
             {"event_id": e.event_id, "title": e.title, "datetime": e.datetime.isoformat(),
-             "status": e.status.value, "sandbox": e.sandbox}
+             "status": e.status.value, "sandbox": e.sandbox, "ui_mode": e.ui_mode}
             for e in events
+            if mode is None or e.ui_mode == mode
         ]  # fmt: skip
 
     def get_event(self, actor: Actor, event_id: str) -> dict[str, Any]:
@@ -149,6 +168,7 @@ class DashboardService:
         return {
             "event_id": e.event_id, "title": e.title, "datetime": e.datetime.isoformat(),
             "status": e.status.value, "sandbox": e.sandbox, "plan": e.plan, "venue": e.venue,
+            "ui_mode": e.ui_mode, "venue_candidates": e.venue_candidates,
             "total_amount_yen": e.total_amount_yen,
             # 実名は返さない（表示名は仮名のまま。再識別は別の経路）。承諾の状況だけ
             "participants": [
@@ -210,7 +230,8 @@ class DashboardService:
         from src.services.slack_actions import CardError
 
         event = self._own(actor, event_id)
-        if not event.sandbox or self._personas is None:
+        # 実演用のイベントは、本人が Slack と銀行で操作する（Web からは押せない。SPEC 7.7）
+        if not event.sandbox or event.ui_mode == "live" or self._personas is None:
             raise DashboardError("not_allowed", 403)
         try:
             await self._personas.press_card(event, card_id, index, actor.uid)
@@ -326,13 +347,16 @@ class DashboardService:
         }
 
     # ------------------------------------------------------------ チャット
-    async def send_message(self, actor: Actor, event_id: str | None, text: str) -> dict[str, Any]:
+    async def send_message(
+        self, actor: Actor, event_id: str | None, text: str, mode: str = "experience"
+    ) -> dict[str, Any]:
         text = text.strip()
         if not text or len(text) > 2000:
             raise DashboardError("invalid_text")
         now = self._now()
         if event_id is None:
-            event = self._create_event(actor, now)  # 最初の発言で planning のイベントを作る
+            # 最初の発言で planning のイベントを作る
+            event = self._create_event(actor, now, mode)
         else:
             event = self._own(actor, event_id)
         if actor.role is Role.GUEST:
@@ -359,12 +383,19 @@ class DashboardService:
         self._store.save_message(answer)
         return {"event_id": event.event_id, "reply": answer.model_dump(mode="json")}
 
-    def _create_event(self, actor: Actor, now: dt.datetime) -> Event:
+    def _create_event(self, actor: Actor, now: dt.datetime, mode: str = "experience") -> Event:
         guest = actor.role is Role.GUEST
-        if guest and len(self._store.list_events_for_guest(actor.uid)) >= GUEST_MAX_EVENTS:
+        live_ok = self._live_allowed(actor)
+        if mode not in ("experience", "live"):
+            raise DashboardError("invalid_mode")
+        if mode == "live" and not live_ok:
+            # 実演用の画面（本物の銀行に振込を依頼する）は、登録したアカウントだけ
+            raise DashboardError("live_not_allowed", 403)
+        limit = LIVE_MAX_EVENTS if live_ok else GUEST_MAX_EVENTS
+        if guest and len(self._store.list_events_for_guest(actor.uid)) >= limit:
             raise DashboardError("guest_event_limit", 429)
         event = Event(
-            event_id=_id("ev"), datetime=now, organizer_user_id=actor.uid,
+            event_id=_id("ev"), datetime=now, organizer_user_id=actor.uid, ui_mode=mode,
             organizer_web_uid=actor.uid, status=EventStatus.PLANNING, sandbox=guest,
             guest_owner_uid=actor.uid if guest else None,
             expires_at=now + dt.timedelta(days=SANDBOX_DAYS) if guest else None,
@@ -575,12 +606,49 @@ class DashboardService:
         ups = [u for u in self._store.list_uploads(event_id) if u.kind is UploadKind.RECEIPT]
         return any(u.extraction_status == "failed" for u in ups)
 
+    async def find_venues(self, actor: Actor, event_id: str) -> dict[str, Any]:
+        """店の候補を出す（エージェントの `search_venues` と同じ検索。順位はコードが決める）。
+
+        条件は保存済みのデータから取る。候補はイベントに保存し、幹事が画面で選ぶ。
+        """
+        event = self._own(actor, event_id)
+        if event.status is not EventStatus.VENUE or self._venues is None:
+            raise DashboardError("invalid_state", 409)
+        try:
+            result = await self._venues.run(event_id)
+        except Exception:  # 外部 API（駅・地図）の失敗。本文・キーは出さない
+            raise DashboardError("venue_search_failed", 502) from None
+        if not result.ok:
+            raise DashboardError(f"venue_search_{result.reason or 'failed'}", 409)
+        candidates = [
+            {
+                "place_id": c.place_id, "name": c.name, "address": c.address,
+                "nearest_station": c.nearest_station,
+                "max_travel_minutes": c.max_travel_minutes,
+                "avg_travel_minutes": c.avg_travel_minutes,
+                "price_min_yen": c.price_min_yen, "price_max_yen": c.price_max_yen,
+                "features": c.features, "rating": c.rating,
+                "selection_reason": c.selection_reason, "memory_note": c.memory_note,
+            }
+            for c in result.proposals
+        ]  # fmt: skip
+        self._store.save_event(event.model_copy(update={"venue_candidates": candidates}))
+        self._life.log(
+            event_id, "kuroko", "ツール",
+            f"店の候補を{len(candidates)}件出しました（帰りやすさ・希望・過去の実績から）",
+        )  # fmt: skip
+        return {"event_id": event_id, "venue_candidates": candidates}
+
     def select_venue(self, actor: Actor, event_id: str, place_id: str, name: str) -> dict[str, Any]:
         event = self._own(actor, event_id)
         if event.status not in (EventStatus.RSVP, EventStatus.VENUE):
             raise DashboardError("invalid_state", 409)
         if not place_id or len(place_id) > 200 or not name or len(name) > 100:
             raise DashboardError("invalid_venue")
+        # 候補から選んだときは、店の名前を、保存した候補から取る（画面の値は使わない）
+        known = next((c for c in event.venue_candidates if c.get("place_id") == place_id), None)
+        if known is not None:
+            name = str(known["name"])[:100]
         venue = {"place_id": place_id, "name": name, "selected": True}
         self._store.save_event(
             event.model_copy(update={"venue": venue, "status": EventStatus.VENUE})
