@@ -2,7 +2,7 @@
 
 | ファイル | 内容 |
 |---|---|
-| [export/KUROKO_GoogleCloud構成図_v2.0.svg](export/KUROKO_GoogleCloud構成図_v2.0.svg)（[PNG](export/KUROKO_GoogleCloud構成図_v2.0.png)） | **いまの構成図**（2026-10-12。提出・README 用）。[make_architecture.py](make_architecture.py) で書き出す（`python3 docs/diagrams/make_architecture.py <出力先>`）。構成が変わったら、スクリプトを直して書き出し直す |
+| [KUROKO_GoogleCloud構成図_v2.0.drawio](KUROKO_GoogleCloud構成図_v2.0.drawio) | **いまの構成図**（2026-10-12。提出・README・スライド用）。draw.io で開いて直す。書き出しは [export/…v2.0.svg](export/KUROKO_GoogleCloud構成図_v2.0.svg)・[PNG](export/KUROKO_GoogleCloud構成図_v2.0.png)。デモ動画のスライド用の図は [../demo/figures/](../demo/figures/) |
 | [KUROKO_GoogleCloud構成図_v1.0.drawio](KUROKO_GoogleCloud構成図_v1.0.drawio) | **古い図**（2026-09-28 時点の構築状況。支払いエージェント・RAG Engine など、作らないと決めたものを含む）。経緯として残す |
 
 構成と権限の正は [ARCHITECTURE.md](../ARCHITECTURE.md)。**下の「構築状況」の表は 2026-09-28 時点のもので、いまの状態は [HANDOVER.md](../HANDOVER.md) 4章を見る。**
