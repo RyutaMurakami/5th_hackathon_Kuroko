@@ -309,3 +309,57 @@ async def test_a_split_with_nobody_to_collect_from_is_not_reported_as_everyone_p
     store.save_event(store.get_event("ev-demo").model_copy(update={"status": EventStatus.PAYMENT}))
     run = await svc.confirm_incoming_payments("ev-demo")
     assert run.all_received and store.get_event("ev-demo").status is EventStatus.PAYMENT
+
+
+# ---------------- 入金の確認の自動化（Cloud Scheduler。SPEC 8.6） ----------------
+def in_payment(entries=(), paid=()):
+    from src.models.event import EventStatus
+
+    payments = MemoryPaymentReader()
+    payments.payments = [
+        {"event_id": "ev-demo", "payer_user_id": u, "status": "completed"} for u in paid
+    ]
+    svc, store, _, bank, _, _ = build(entries=list(entries), payments=payments)
+    store.save_event(store.get_event("ev-demo").model_copy(update={"status": EventStatus.PAYMENT}))
+    return svc, store, bank
+
+
+async def test_the_poll_completes_the_event_when_every_payment_has_arrived():
+    from src.models.event import EventStatus
+
+    entries = [entry(f"k{i}", u, a) for i, (u, a) in enumerate(EXPECTED.items())]
+    svc, store, _ = in_payment(entries, paid=EXPECTED)
+    assert await svc.poll_collections() == {"checked": 1, "completed": 1}
+    assert store.get_event("ev-demo").status is EventStatus.COMPLETED
+    assert await svc.poll_collections() == {"checked": 0, "completed": 0}  # 完了後は対象外
+
+
+async def test_the_poll_does_not_call_the_bank_while_nobody_has_newly_paid():
+    svc, store, bank = in_payment(paid=())
+    assert await svc.poll_collections() == {"checked": 0, "completed": 0}
+    assert bank.asked == []  # 待つ理由が無いあいだは、銀行を呼ばない
+
+
+async def test_a_completed_payment_alone_does_not_mark_the_collection_as_received():
+    from src.models.event import EventStatus
+
+    svc, store, bank = in_payment(entries=[], paid=["ito"])  # 支払いは完了だが、明細に入金が無い
+    assert await svc.poll_collections() == {"checked": 1, "completed": 0}
+    assert len(bank.asked) == 1
+    assert store.get_event("ev-demo").status is EventStatus.PAYMENT
+    assert not any(p.collection_confirmed_at for p in store.list_participants("ev-demo"))
+
+
+async def test_the_poll_checks_again_only_for_people_not_yet_confirmed():
+    svc, store, bank = in_payment([entry("k1", "ito", EXPECTED["ito"])], paid=["ito"])
+    await svc.poll_collections()
+    await svc.poll_collections()  # ito は確認済み。新しく完了した人がいないので、照会しない
+    assert len(bank.asked) == 1
+
+
+async def test_the_poll_skips_events_too_old_for_the_statement_window():
+    svc, store, bank = in_payment(paid=["ito"])
+    old = store.get_event("ev-demo").model_copy(update={"datetime": datetime(2026, 9, 1, 19, 0)})
+    store.save_event(old)
+    assert await svc.poll_collections() == {"checked": 0, "completed": 0}
+    assert bank.asked == []

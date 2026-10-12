@@ -155,6 +155,38 @@ class BillingService:
             return e.code
 
     # ---- 入金の確認 ----
+    async def poll_collections(self) -> dict[str, int]:
+        """1分ごと（Cloud Scheduler）: 入金の確認が要るイベントだけを確認する（SPEC 8.6）。
+
+        対象は、`payment` のイベントのうち、支払いが完了したのに、幹事口座の入金をまだ確認できて
+        いない人がいるもの。支払いの完了は**確認を始めるきっかけ**で、回収済みにするかは明細で決める。
+        """
+        checked = completed = 0
+        oldest = self._today() - timedelta(days=MAX_STATEMENT_DAYS)
+        for event in self._store.list_events_by_status(EventStatus.PAYMENT.value):
+            if _jst_date(event.datetime) < oldest:
+                continue  # 明細を照会できる期間を過ぎた（人が確認する）
+            confirmed = {
+                p.user_id
+                for p in self._store.list_participants(event.event_id)
+                if p.collection_confirmed_at is not None
+            }
+            paid = {
+                p["payer_user_id"]
+                for p in self._payments.list_payments(event.event_id)
+                if p.get("status") == "completed"
+            }
+            if not paid - confirmed:
+                continue
+            try:
+                run = await self.confirm_incoming_payments(event.event_id)
+            except Exception:  # 1件の失敗で、ほかのイベントの確認を止めない
+                logger.exception("collection poll failed: event=%s", event.event_id)
+                continue
+            checked += 1
+            completed += run.all_received
+        return {"checked": checked, "completed": completed}
+
     async def confirm_incoming_payments(self, event_id: str) -> CollectionRun:
         event = self._store.get_event(event_id)
         split = self._store.get_split(event_id)

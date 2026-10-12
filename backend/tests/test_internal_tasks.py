@@ -32,6 +32,9 @@ class FakeBilling:
             return CheckoutRun(ok=False, failures=[Gate.APPROVAL_MISSING])
         return CheckoutRun(ok=True, outcomes={"ito": "awaiting_bank_approval"})
 
+    async def poll_collections(self):
+        return {"checked": 1, "completed": 1}
+
     async def confirm_incoming_payments(self, event_id):
         if event_id == "nope":
             raise UnknownEvent
@@ -145,5 +148,19 @@ async def test_the_sandbox_cleanup_job_accepts_only_the_scheduler_and_matches_te
         res = await client.post(path, headers={"Authorization": _token(who)})
         assert res.status_code == 403
     # Terraform の Scheduler が呼ぶパスと一致している（食い違うと、削除が動かない）
+    tf = (Path(__file__).resolve().parents[2] / "infra/terraform/tasks.tf").read_text()
+    assert f'path        = "{path}"' in tf
+
+
+async def test_the_collection_poll_accepts_only_the_scheduler_and_matches_terraform(client):
+    from pathlib import Path
+
+    path = "/tasks/scheduled/collections"
+    ok = await client.post(path, headers={"Authorization": _token(SCHEDULER_SA)})
+    assert ok.status_code == 200 and ok.json() == {"checked": 1, "completed": 1}
+    for who in (API_SA, GATEWAY_SA, "attacker@example.com"):
+        res = await client.post(path, headers={"Authorization": _token(who)})
+        assert res.status_code == 403
+    assert (await client.post(path)).status_code == 403
     tf = (Path(__file__).resolve().parents[2] / "infra/terraform/tasks.tf").read_text()
     assert f'path        = "{path}"' in tf

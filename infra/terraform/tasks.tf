@@ -66,6 +66,12 @@ locals {
       service     = "kuroko-api"
       path        = "/tasks/scheduled/sandbox-cleanup"
     }
+    "collection-poll" = {
+      description = "幹事口座の入金の確認（支払いが完了したイベントだけ。SPEC 8.6）"
+      schedule    = "* * * * *"
+      service     = "kuroko-api"
+      path        = "/tasks/scheduled/collections"
+    }
     "payment-poll" = {
       description = "銀行での承認待ちの支払いのポーリング（sunabar に Webhook がないため）"
       schedule    = "* * * * *"

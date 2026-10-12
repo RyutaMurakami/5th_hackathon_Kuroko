@@ -326,7 +326,7 @@ sequenceDiagram
 - Gateway が入口でブロックした場合は、エージェントの提案を使わず、決まった文面で幹事に伝える（8章）。
 - **規程の参照（RAG Engine。D18）**: `clients/rag_engine.py` が `retrieveContexts` を呼ぶ。企画時に1回だけ `extract_policy_values` を実行し、Gemini が抽出した値を `services/policy.py` が**型と範囲で検証**してから Event の `policy_snapshot` に保存する。以後の按分は、この写しだけを使う（SPEC 9.7）。エージェントからは、条文の抜粋を返す `retrieve_policy` だけを MCP ツールとして見せる（4.7節）。**検索結果は外部入力**として扱う（SPEC 10章）。
 - **振り返りと記憶（Memory Bank。D20）**: 完了の翌日に `collect_feedback` が振り返り（**満足度の1タップ＋任意のコメント**）をDMで依頼し、`record_feedback` が回答を受ける（コメントは `extract-agent` の `feedback` 用途で語彙に落とし、**原文は保存しない**）。**実績（店・人数・1人あたり・予算内か・最も遠い人の所要時間）は、参加者に聞かず、イベントのデータから自動で記録する**（SPEC 9.8）。締切後に `summarize_retrospective`（LLMなし）が実績・集計・事実の下書き（`venue_record` / `venue_evaluation`）を作り、幹事が Web で確認したら、`save_memory` が Policy Gate 6.4 を通して **`clients/memory_bank.py` から Memory Bank に直接書き込む**（会話からの自動生成は使わない）。書き込みの冪等は `Retrospective.memory_refs` で担保する。読み取りは、統括エージェントにアタッチした `load_memory` が、**セッションの `user_id`（`kuroko-api` が Event の `memory_scope` から設定したチームのスコープID）に固定して**類似検索する（4.2節の kuroko-agent）。Memory Bank に書き込めるのは `sa-api` だけ（7章）。
-- **幹事口座の入金の確認**: `confirm_incoming_payments`（SPEC 4.1）が `bank-adapter` に幹事口座の入金明細を照会し、回収状況を更新する。支払いエージェント側の確認（4.3節）とは独立に行う。
+- **幹事口座の入金の確認**: `confirm_incoming_payments`（SPEC 4.1）が `bank-adapter` に幹事口座の入金明細を照会し、回収状況を更新する。支払いエージェント側の確認（4.3節）とは独立に行う。**きっかけは Cloud Scheduler**（`collection-poll`。1分ごとに `POST /tasks/scheduled/collections`。SPEC 8.6）で、支払いが完了したのに入金が未確認の人がいる `payment` のイベントだけを確認する。
 - Slackへの送信（DM、`chat.update`、App Homeの更新）、Slackのファイル（領収書・予約画面）のダウンロードとCloud Storageへの保存もここで行う。
 - 請求の署名鍵（Merchant役。SPEC 4.1 `create_checkout`）は、このサービスだけが使える KMS キーで持つ。
 
