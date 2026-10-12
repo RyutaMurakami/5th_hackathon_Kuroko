@@ -161,6 +161,24 @@ async def confirm_extraction(event_id: str, body: ConfirmIn, actor: Who, s: Svc)
         raise _raise(e) from None
 
 
+@router.post("/events/{event_id}/request-approval")
+async def request_approval(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
+    """幹事が按分の内訳を確かめて、承認者に承認を依頼する（SPEC 7.5）。"""
+    try:
+        return await s.request_approval(actor, event_id)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
+@router.post("/events/{event_id}/approve-transfers")
+async def approve_transfers(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
+    """承認者の承認のあと、幹事が参加者への振込の依頼を送ることを承認する（SPEC 7.5）。"""
+    try:
+        return await s.approve_transfers(actor, event_id)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
 @router.post("/events/{event_id}/confirm-budget-overrun")
 async def confirm_budget_overrun(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
     try:

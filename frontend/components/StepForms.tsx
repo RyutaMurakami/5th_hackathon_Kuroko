@@ -13,6 +13,8 @@ import {
   confirmRetro,
   findVenues,
   markHeld,
+  requestApproval,
+  approveTransfers,
   selectVenue,
 } from "@/lib/api-client";
 import type { ApiEventDetail, ApiPlanExample, ApiRetro, ApiSplit, ApiVenueCandidate } from "@/lib/api-types";
@@ -87,6 +89,47 @@ function Field({
   );
 }
 
+/** 状態つきのカード（発言の位置に出す。時系列を崩さない）の種類 */
+export type AnchorKind = "venues" | "split" | "transfer" | "retro";
+
+/** 状態が揃っていて、発言の位置に出せるカードの種類 */
+export function anchorsAvailable(detail: ApiEventDetail): AnchorKind[] {
+  const out: AnchorKind[] = [];
+  if (detail.venue_candidates.length > 0) out.push("venues");
+  if (detail.split) out.push("split");
+  if (detail.split && ["approval", "payment", "completed", "retro", "closed"].includes(detail.status)) {
+    // 承認者が承認したあと（「承認しました」の発言に付く）
+    if (detail.split.approval.status === "approved") out.push("transfer");
+  }
+  if (detail.retro) out.push("retro");
+  return out;
+}
+
+/** 発言の位置に出すカード */
+export function AnchoredCard({
+  kind,
+  detail,
+  onDone,
+  run,
+}: {
+  kind: AnchorKind;
+  detail: ApiEventDetail;
+  onDone: () => Promise<void>;
+  run: Run;
+}) {
+  const base = { id: detail.event_id, onDone, run };
+  if (kind === "venues") return <VenueStep {...base} detail={detail} />;
+  if (kind === "split" && detail.split) return <SplitCard {...base} split={detail.split} detail={detail} />;
+  if (kind === "transfer") return <TransferCard {...base} detail={detail} />;
+  if (kind === "retro" && detail.retro) return <RetroCard {...base} retro={detail.retro} />;
+  return null;
+}
+
+/**
+ * チャットの流れの最後に出す、**いま入力が要る**カード。状態つきのカード（店の候補・按分の内訳・
+ * 振込の依頼・振り返り）は、それぞれの発言の位置に出す（`AnchoredCard`）ので、`anchored` に
+ * 入っている種類は、ここでは出さない。
+ */
 export function StepForms({
   detail,
   onDone,
@@ -96,6 +139,8 @@ export function StepForms({
   computing,
   onSplitStarted,
   onRestart,
+  showPlan,
+  anchored,
 }: {
   detail: ApiEventDetail;
   onDone: () => Promise<void>;
@@ -104,23 +149,29 @@ export function StepForms({
   onSendSample: (kind: ImageKind) => void;
   /** 画像を送って、読み取りを待っているあいだ */
   imageBusy: boolean;
-  /** 按分の計算の途中経過を見せているあいだ */
+  /** 領収書の金額を確定して、按分の結果を待っているあいだ */
   computing: boolean;
   /** 領収書の金額を確定した（按分の計算が始まる） */
   onSplitStarted: () => void;
   /** デモの終わりの「最初からやり直す」 */
   onRestart: () => void;
+  /** 計画のカードを出してよいか（KUROKO の返答のあと） */
+  showPlan: boolean;
+  /** 発言の位置に出している種類 */
+  anchored: ReadonlySet<AnchorKind>;
 }) {
   const id = detail.event_id;
   const ex = (detail.hint.example ?? {}) as Record<string, Record<string, unknown>>;
   const s = detail.status;
   const chosen = chosenPlaceId(detail);
   const base = { id, onDone, run };
-  const splitting = computing || s === "split";
+  const waitingSplit = (computing || s === "split") && !detail.split;
+  const lonely = (kind: AnchorKind) => anchorsAvailable(detail).includes(kind) && !anchored.has(kind);
   return (
     <>
-      {s === "planning" && <PlanForm {...base} example={ex.plan as ApiPlanExample | undefined} />}
-      {s === "venue" && <VenueStep {...base} detail={detail} />}
+      {s === "planning" && showPlan && <PlanForm {...base} example={ex.plan as ApiPlanExample | undefined} />}
+      {s === "venue" && detail.venue_candidates.length === 0 && <VenueStep {...base} detail={detail} />}
+      {lonely("venues") && <VenueStep {...base} detail={detail} />}
       {s === "venue" && chosen && (
         <ReservationStep
           {...base}
@@ -142,14 +193,13 @@ export function StepForms({
           onSplitStarted={onSplitStarted}
         />
       )}
-      {splitting && <ComputingSplit />}
-      {!splitting && detail.split && ["approval", "payment", "completed"].includes(s) && (
-        <SplitCard split={detail.split} detail={detail} />
-      )}
+      {waitingSplit && <ComputingSplit />}
+      {lonely("split") && detail.split && <SplitCard {...base} split={detail.split} detail={detail} />}
+      {lonely("transfer") && <TransferCard {...base} detail={detail} />}
       {s === "completed" && !detail.retro && (
         <KurokoWorking>全員の入金を確認しました。参加者に、振り返りのお願いを送っています…</KurokoWorking>
       )}
-      {detail.retro && <RetroCard {...base} retro={detail.retro} />}
+      {lonely("retro") && detail.retro && <RetroCard {...base} retro={detail.retro} />}
       {s === "closed" && <Finale detail={detail} onRestart={onRestart} />}
     </>
   );
@@ -291,6 +341,8 @@ function VenueStep({ id, detail, onDone, run }: FormProps & { detail: ApiEventDe
     );
   }
   const picked = candidates.some((c) => c.place_id === chosen);
+  // 予約の確定のあと（店の選択の段階を過ぎたあと）は、選び直せない
+  const locked = detail.status !== "venue";
   return (
     <KurokoRow card>
       <div className={styles.cardHead}>
@@ -307,7 +359,7 @@ function VenueStep({ id, detail, onDone, run }: FormProps & { detail: ApiEventDe
               venue={c}
               chosen={c.place_id === chosen}
               busy={picking === c.place_id}
-              disabled={picking !== null}
+              disabled={picking !== null || locked}
               onPick={() => void pick(c.place_id, c.name)}
             />
           ),
@@ -316,7 +368,7 @@ function VenueStep({ id, detail, onDone, run }: FormProps & { detail: ApiEventDe
       <Caption>
         アレルゲンは、お店に確認してください。予約は、幹事がお店で行います（KUROKO は予約しません）。
       </Caption>
-      {picked && !showAll ? (
+      {locked ? null : picked && !showAll ? (
         <button type="button" className={styles.link} onClick={() => setShowAll(true)}>
           ほかの候補を見る・選び直す
         </button>
@@ -643,16 +695,18 @@ function ReceiptStep({
       {reading ? (
         <>
           <span>
-            領収書から、次のように読み取りました。金額が合っていれば、確定してください。
+            領収書から、金額を読み取りました。合っていれば、確定してください。
             {reading.warnings.length > 0 && ` 注意：${reading.warnings.join("、")}`}
           </span>
           <dl className={styles.facts}>
-            <dt>お店</dt>
-            <dd>{reading.venue_name ?? "（読み取れませんでした）"}</dd>
-            <dt>日付</dt>
-            <dd>{reading.date ?? "（読み取れませんでした）"}</dd>
-            <dt>明細</dt>
-            <dd>{reading.line_items?.length ?? 0}件</dd>
+            <dt>合計金額</dt>
+            <dd>{reading.total_amount_yen?.toLocaleString()}円</dd>
+            {(reading.line_items?.length ?? 0) > 0 && (
+              <>
+                <dt>明細</dt>
+                <dd>{reading.line_items?.length}件</dd>
+              </>
+            )}
           </dl>
         </>
       ) : (
@@ -725,8 +779,18 @@ const PAYMENT_LABEL: Record<string, string> = {
 };
 
 /** 按分の内訳（保存された値をそのまま出す。画面で再計算しない）と、根拠の規程（SPEC 7.3.1・9.7） */
-function SplitCard({ split, detail }: { split: ApiSplit; detail: ApiEventDetail }) {
-  const name = (id: string) => detail.participants.find((p) => p.user_id === id)?.display_name ?? id;
+function SplitCard({
+  id,
+  split,
+  detail,
+  onDone,
+  run,
+}: FormProps & { split: ApiSplit; detail: ApiEventDetail }) {
+  const [busy, act] = useBusy();
+  const name = (uid: string) => detail.participants.find((p) => p.user_id === uid)?.display_name ?? uid;
+  // 内訳を確かめたあとに、幹事が承認者に承認を依頼する（SPEC 7.5）
+  const canRequest = detail.status === "split" && split.approval.status === "pending";
+  const requested = detail.status === "approval" && split.approval.status === "pending";
   const paid = (id: string) => PAYMENT_LABEL[detail.payments.find((p) => p.payer_user_id === id)?.status ?? ""];
   const cited = Object.entries(CITATION_LABEL)
     .filter(([k]) => split.policy?.citations[k])
@@ -736,8 +800,12 @@ function SplitCard({ split, detail }: { split: ApiSplit; detail: ApiEventDetail 
     <KurokoRow card>
       <div className={styles.cardHead}>
         <span className={styles.cardTitle}>按分の内訳</span>
-        <Pill tone={approved ? "lagoon" : "sun"}>
-          {approved ? "承認済み" : `承認待ち（${name(split.approval.approver_user_id)}）`}
+        <Pill tone={approved ? "lagoon" : canRequest ? "navy" : "sun"}>
+          {approved
+            ? "承認済み"
+            : canRequest
+              ? "あなたの確認待ち"
+              : `承認待ち（${name(split.approval.approver_user_id)}）`}
         </Pill>
       </div>
       <span>
@@ -756,6 +824,24 @@ function SplitCard({ split, detail }: { split: ApiSplit; detail: ApiEventDetail 
           </div>
         ))}
       </div>
+      {canRequest && (
+        <div className={styles.actions}>
+          <Button
+            disabled={busy}
+            onClick={() =>
+              void act(() =>
+                run(async () => {
+                  await requestApproval(id);
+                  await onDone();
+                }),
+              )
+            }
+          >
+            {busy ? "送信中…" : `${name(split.approval.approver_user_id)} さんに承認を依頼する`}
+          </Button>
+        </div>
+      )}
+      {requested && <Caption>承認を依頼しました。承認されるまで、お待ちください。</Caption>}
       <Caption>
         計算は、決まった手順のコードが行いました（AI は金額を計算しません）。
         {split.policy?.source === "document"
@@ -767,6 +853,49 @@ function SplitCard({ split, detail }: { split: ApiSplit; detail: ApiEventDetail 
 }
 
 // ------------------------------------------------------------------ 振り返り
+/** 承認者が按分を承認したあと、幹事が「参加者に振込の依頼を送る」ことを承認する（SPEC 7.5） */
+function TransferCard({ id, detail, onDone, run }: FormProps & { detail: ApiEventDetail }) {
+  const [busy, act] = useBusy();
+  const waiting = detail.status === "approval" && detail.split?.approval.status === "approved";
+  const [sent, setSent] = useState(false);
+  return (
+    <KurokoRow card>
+      <div className={styles.cardHead}>
+        <span className={styles.cardTitle}>振込の依頼を送る</span>
+        <Pill tone={waiting && !sent ? "sun" : "lagoon"}>
+          {waiting && !sent ? "あなたの確認待ち" : "送信済み"}
+        </Pill>
+      </div>
+      {waiting && !sent ? (
+        <>
+          <span>
+            承認者が按分を承認しました。参加者に、銀行で承認するお願いを送ってよければ、下のボタンを
+            押してください。お金が動くのは、各自が銀行で承認したときだけです。
+          </span>
+          <div className={styles.actions}>
+            <Button
+              disabled={busy}
+              onClick={() =>
+                void act(async () => {
+                  const ok = await run(async () => {
+                    await approveTransfers(id);
+                    await onDone();
+                  });
+                  if (ok) setSent(true);
+                })
+              }
+            >
+              {busy ? "送信中…" : "振込の依頼を送る"}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <span>参加者に、銀行で承認するお願いを送りました。各自が銀行で承認すると、振込が実行されます。</span>
+      )}
+    </KurokoRow>
+  );
+}
+
 const RETRO_PILL: Record<ApiRetro["status"], { label: string; tone: "navy" | "sun" | "lagoon" }> = {
   collecting: { label: "回答を集めています", tone: "navy" },
   awaiting_organizer: { label: "あなたの確認待ち", tone: "sun" },

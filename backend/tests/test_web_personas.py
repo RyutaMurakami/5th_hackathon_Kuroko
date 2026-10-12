@@ -60,8 +60,9 @@ class World:
         async def chat(key, text):
             return "了解"
 
+        self.dispatcher = Dispatcher()
         self.svc = DashboardService(
-            store=self.store, chat=chat, signer=Signer(), dispatcher=Dispatcher(),
+            store=self.store, chat=chat, signer=Signer(), dispatcher=self.dispatcher,
             lifecycle=life, payments=self.payments, personas=self.actions, now=lambda: NOW,
         )  # fmt: skip
 
@@ -100,6 +101,9 @@ class World:
         )
         out = await self.actions.request_split_approval(eid)
         assert out["ok"], out
+        # 内訳を見せたあとに、幹事が確かめて、承認者に承認を依頼する（SPEC 7.5）
+        assert not [c for c in self.cards(eid, "hanako") if c["kind"] == "approval"]
+        await self.svc.request_approval(JUDGE, eid)
         return next(c for c in self.cards(eid, "hanako") if c["kind"] == "approval")
 
 
@@ -220,8 +224,16 @@ async def test_the_approver_persona_approves_on_the_web_and_the_gate_accepts_onl
     approval = w.store.get_approval(eid)
     assert approval.status is ApprovalStatus.APPROVED and approval.approved_via == "web_demo"
     assert approval.approved_by_web_uid == "g1" and approval.approved_by_slack_user_id is None
-    assert w.store.get_event(eid).status is EventStatus.PAYMENT
-    assert w.queued[-1] == ("/tasks/internal/checkouts", {"event_id": eid})  # 請求の起点
+    # 承認のあと、請求は始まらない。幹事が「振込の依頼を送る」ことを承認してから（SPEC 7.5）
+    assert w.store.get_event(eid).status is EventStatus.APPROVAL
+    assert ("/tasks/internal/checkouts", {"event_id": eid}) not in w.queued
+    assert w.svc.get_event(JUDGE, eid)["waiting_for"]["what"] == "振込の依頼を送る承認"
+    with pytest.raises(DashboardError):  # 他人のイベントでは、承認できない
+        await w.svc.approve_transfers(OTHER, eid)
+    await w.svc.approve_transfers(JUDGE, eid)
+    assert w.dispatcher.checkouts == [(eid, w.store.get_split(eid).hash)]  # 請求の起点
+    told = [m for m in w.store.list_messages(eid) if m.card == "transfer"]
+    assert len(told) == 1 and "振込の依頼" in told[0].text  # 承認を、幹事に知らせる
 
     def gate(event, approval):
         people = w.store.list_participants(eid)

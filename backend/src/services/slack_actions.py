@@ -144,7 +144,7 @@ class SlackActions:
         if not 0 <= index < len(buttons):
             raise CardError("invalid_action")
         try:
-            action = Action(buttons[index].get("action_id", ""))
+            action = Action.parse(buttons[index].get("action_id", ""))
             value = json.loads(buttons[index].get("value") or "{}")
         except ValueError:
             raise CardError("invalid_action") from None
@@ -276,29 +276,28 @@ class SlackActions:
             approved_by_web_uid=i.web_uid if web else None,
         )
         self._store.save_approval(approved)
-        event.status = EventStatus.PAYMENT
-        self._store.save_event(event)
+        # 承認のあと、**幹事が「振込の依頼を送る」ことを承認してから**、請求を作る
+        # （`DashboardService.approve_transfers`。SPEC 7.5）。状態は、そのときまで `approval`
         if self._life:
             where = "Web・体験用" if web else "Slack"
-            done = f"承認者が按分を承認しました（{where}）"
-            self._life.log(event.event_id, "human", "署名", done)
-            self._life.notify(
-                event, NotificationKind.SLACK_WAITING, "参加者の銀行での承認を待っています"
+            self._life.log(
+                event.event_id, "human", "署名", f"承認者が按分を承認しました（{where}）"
             )
+            self._life.notify(
+                event, NotificationKind.CONFIRM_NEEDED,
+                "按分が承認されました。参加者への振込の依頼を送るか、確認してください",
+            )  # fmt: skip
+            approver_name = approver.display_name if approver else "承認者"
             self._life.say(
                 event_id,
-                "承認者が按分を承認しました。各自の支払いエージェントが、委任の範囲内で、"
-                "幹事の口座への振込を依頼します。本人が銀行で承認すると、振込が実行されます。",
+                f"承認者の {approver_name} さんが、按分を承認しました。"
+                "参加者に、振込の依頼（各自が銀行で承認するもの）を送ってよいか、"
+                "下のカードで確認してください。",
+                card="transfer",
             )
-        # 承認を起点に、Policy Gate 6.2 を通った請求だけが作られる（kuroko-api 自身のタスク）
-        await self._enqueue(
-            "/tasks/internal/checkouts",
-            {"event_id": event_id},
-            f"checkout-{event_id}-{split.hash[:16]}",
-        )
         await self._done(
             i, event_id, "approval", split.approver_user_id,
-            "按分を承認しました。請求を作成し、各自の支払いを開始します。",
+            "按分を承認しました。幹事が振込の依頼を送ることを確認すると、各自の支払いが始まります。",
         )  # fmt: skip
 
     async def _rate(self, i: SlackInteraction) -> None:
@@ -562,25 +561,60 @@ class SlackActions:
         )
         by_id = {p.user_id: p for p in people}
         approver = by_id[split.approver_user_id]
-        text, blocks = msg.split_approval_request(
-            event, split, by_id, approver_slack_user_id=approver.slack_user_id or ""
-        )
-        if not await self._deliver(event, approver, "approval", text, blocks):
-            return {"ok": False, "failures": ["approver_has_no_slack_user"]}
-        event.status = EventStatus.APPROVAL
-        self._store.save_event(event)
+        # 承認者への依頼は、**幹事が内訳を確かめてから**送る（`send_approval_request`）。
+        # 内訳を先に見せて、そのあとに依頼が届く順にする（SPEC 7.5）
         if self._life:
-            self._life.log(
-                event_id, "kuroko", "送信", "按分を計算し、承認者に承認を依頼しました（Slack）"
-            )
+            self._life.log(event_id, "kuroko", "記録", "按分を計算しました。幹事の確認を待ちます")
             self._life.notify(
-                event, NotificationKind.SLACK_WAITING, "承認者の按分の承認を Slack で待っています"
-            )
+                event, NotificationKind.CONFIRM_NEEDED,
+                "按分を計算しました。内訳を確かめて、承認者に承認を依頼してください",
+            )  # fmt: skip
             self._life.say(
                 event_id,
                 f"按分を計算しました（会計 {msg.yen(split.total_amount_yen)}・"
-                f"会社補助 {msg.yen(split.subsidy_yen)}）。規程で決まる承認者の "
-                f"{approver.display_name or '承認者'} さんに、内訳を添えて承認をお願いしました。",
+                f"会社補助 {msg.yen(split.subsidy_yen)}）。内訳は下のとおりです。"
+                f"確かめて、規程で決まる承認者の {approver.display_name or '承認者'} さんに"
+                "承認を依頼してください。",
+                card="split",
+            )
+        return {"ok": True, "failures": [], "approver": approver.user_id, "hash": split.hash}
+
+    async def send_approval_request(self, event_id: str) -> dict[str, Any]:
+        """幹事が内訳を確かめたあと、承認者に按分の承認を依頼する（SPEC 7.5）。
+
+        計算済みの金額表と承認の記録（`pending`）を使う。ここで金額は変わらない。
+        やり直しても、同じ承認者に二重に届けない（届いた未回答のカードは置き換わる）。
+        """
+        event = self._store.get_event(event_id)
+        split = self._store.get_split(event_id)
+        approval = self._store.get_approval(event_id)
+        if (
+            event is None or split is None or approval is None
+            or approval.status is not ApprovalStatus.PENDING
+            or event.status not in (EventStatus.SPLIT, EventStatus.APPROVAL)
+        ):  # fmt: skip
+            return {"ok": False, "failures": ["no_split_to_approve"]}
+        people = {p.user_id: p for p in self._store.list_participants(event_id)}
+        approver = people.get(split.approver_user_id)
+        if approver is None:
+            return {"ok": False, "failures": ["no_approver"]}
+        text, blocks = msg.split_approval_request(
+            event, split, people, approver_slack_user_id=approver.slack_user_id or ""
+        )
+        if not await self._deliver(event, approver, "approval", text, blocks):
+            return {"ok": False, "failures": ["approver_has_no_slack_user"]}
+        if event.status is not EventStatus.APPROVAL:
+            event.status = EventStatus.APPROVAL
+            self._store.save_event(event)
+        if self._life:
+            self._life.log(event_id, "kuroko", "送信", "承認者に按分の承認を依頼しました")
+            self._life.notify(
+                event, NotificationKind.SLACK_WAITING, "承認者の按分の承認を待っています"
+            )
+            self._life.say(
+                event_id,
+                f"{approver.display_name or '承認者'} さんに、按分の承認を依頼しました。"
+                "承認されたら、お知らせします。",
             )
         return {"ok": True, "failures": [], "approver": approver.user_id, "hash": split.hash}
 

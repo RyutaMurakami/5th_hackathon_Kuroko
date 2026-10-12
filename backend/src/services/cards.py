@@ -4,6 +4,7 @@
 Web の画面にも出す。Slack のアカウントがあれば、DM も送る。
 """
 
+import logging
 import uuid
 from datetime import datetime
 
@@ -11,6 +12,8 @@ from src.db.events import EventStore
 from src.models.dashboard import PersonaCard
 from src.models.event import Event, Participant
 from src.services.slack_port import SlackPort
+
+logger = logging.getLogger(__name__)
 
 REPLACED = "新しい依頼に置き換わりました。"
 
@@ -45,6 +48,11 @@ async def deliver_card(
         )  # fmt: skip
         delivered = True
     if person.slack_user_id:
-        await slack.post_dm(person.slack_user_id, text, blocks)
-        delivered = True
+        try:
+            await slack.post_dm(person.slack_user_id, text, blocks)
+            delivered = True
+        except Exception:
+            # Slack の失敗（ブロックの不備・権限・一時的な障害）で、ほかの人への配信や、イベントの
+            # 進行を止めない。タスクが失敗として再試行されると、同じカードが重複する。内容は出さない
+            logger.warning("could not DM the card: kind=%s event=%s", kind, event.event_id)
     return delivered

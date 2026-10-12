@@ -74,8 +74,9 @@ def start_hint(*, live: bool) -> dict[str, Any]:
 
 
 def hint_for(
-    event: Event, people: list[Participant], *, has_receipt: bool, retro_ready: bool = False
-) -> dict[str, Any]:
+    event: Event, people: list[Participant], *, has_receipt: bool, retro_ready: bool = False,
+    split_ready: bool = False, approved: bool = False,
+) -> dict[str, Any]:  # fmt: skip
     s = event.status
     # 体験用でないイベント（本番の幹事）も、参加者は Slack と銀行で操作する
     live = event.ui_mode == "live" or not event.sandbox
@@ -132,6 +133,24 @@ def hint_for(
             "KUROKO が読み取った金額を確かめて確定します（読み取りに失敗したときだけ、"
             "手入力できます）。確定すると、規程にもとづいて、決まった手順のコードが按分を計算します。",
             {"receipt": {"total_amount_yen": 49500}, "confirmed": has_receipt}, [ASK_POLICY],
+        )  # fmt: skip
+    if s is EventStatus.SPLIT and not split_ready:
+        return _hint(
+            5, "system", "KUROKO", "按分を計算する",
+            "KUROKO が、会社の規程と按分ルールを確認して、按分を計算しています。",
+        )  # fmt: skip
+    if s is EventStatus.SPLIT:
+        return _hint(
+            6, "web", "幹事", "按分の内訳を確かめて、承認者に承認を依頼する",
+            "チャットの中の按分の内訳（負担の係数・会社の補助・端数）を確かめて、「承認者に承認を"
+            "依頼する」を押します。押すと、承認者（赤くら 花子）に承認の依頼が届きます。",
+            None, [ASK_APPROVER],
+        )  # fmt: skip
+    if s is EventStatus.APPROVAL and approved:
+        return _hint(
+            7, "web", "幹事", "振込の依頼を送ることを承認する",
+            "承認者が按分を承認しました。チャットの中の「振込の依頼を送る」を押すと、参加者に、"
+            "銀行で承認するお願いが届きます（お金が動くのは、各自が銀行で承認したときです）。",
         )  # fmt: skip
     if s in (EventStatus.SPLIT, EventStatus.APPROVAL):
         return _hint(

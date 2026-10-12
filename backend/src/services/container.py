@@ -200,6 +200,15 @@ class _TasksDispatcher:
     async def start_split_approval(self, event_id: str) -> None:
         await self._enqueue("/tasks/internal/approval-requests", event_id, "approval")
 
+    async def start_checkouts(self, event_id: str, split_hash: str) -> None:
+        """幹事が振込の依頼を送ることを承認したあと、請求を作る（同じ金額表は1回だけ）。"""
+        from src.clients.cloud_tasks import enqueue_kuroko_api
+
+        await enqueue_kuroko_api(
+            "/tasks/internal/checkouts", {"event_id": event_id},
+            f"checkout-{event_id}-{split_hash[:16]}",
+        )  # fmt: skip
+
 
 def get_dashboard():
     """Web ダッシュボードの操作（SPEC 4.3）。"""

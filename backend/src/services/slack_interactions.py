@@ -47,7 +47,7 @@ def extract_interaction(payload: dict[str, Any]) -> SlackInteraction | None:
         return None
     first = actions[0]
     try:
-        action = Action(first.get("action_id", ""))
+        action = Action.parse(first.get("action_id", ""))
         value = json.loads(first.get("value") or "{}")
     except ValueError:
         return None

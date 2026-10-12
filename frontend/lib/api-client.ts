@@ -139,6 +139,12 @@ export const confirmBudgetOverrun = (eventId: string) =>
 
 export const markHeld = (eventId: string) => call("POST", `events/${eventId}/mark-held`);
 
+/** 按分の内訳を確かめて、承認者に承認を依頼する（幹事。SPEC 7.5） */
+export const requestApproval = (eventId: string) => call("POST", `events/${eventId}/request-approval`);
+
+/** 承認者の承認のあと、参加者に振込の依頼を送ることを承認する（幹事。SPEC 7.5） */
+export const approveTransfers = (eventId: string) => call("POST", `events/${eventId}/approve-transfers`);
+
 /** 登場人物として、カードのボタンを押す（体験用のイベントだけ。値はサーバーのカードから取る）。
  *  `inputs` は、出欠のカードの入力欄（最寄り駅・苦手な食べ物） */
 export const pressPersonaCard = (

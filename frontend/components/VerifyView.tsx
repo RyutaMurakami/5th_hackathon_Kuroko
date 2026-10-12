@@ -7,7 +7,7 @@
 // 幹事の入力（計画・店・予約・領収書・振り返り）は、チャットの流れの中の、KUROKO からのカードで完結する
 // （SPEC 7.5）。予約の画面・領収書は、チャットに画像を送って渡す。
 // **ページ全体は動かさず、各チャットの中だけをスクロールする**（globals.css の data-chat-page）。
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   approveBank,
@@ -35,12 +35,19 @@ import {
 import { Icon } from "./Icon";
 import { PersonaChat } from "./PersonaChat";
 import { ScenarioHint } from "./ScenarioHint";
-import { type ImageKind, StepForms, expectedImage } from "./StepForms";
+import {
+  type AnchorKind,
+  AnchoredCard,
+  type ImageKind,
+  StepForms,
+  anchorsAvailable,
+  expectedImage,
+} from "./StepForms";
 import { Button, Caption, ErrorBanner, InfoBanner, Pill } from "./ui";
 
 const POLL_MS = 5000;
 const POLL_BUSY_MS = 2000; // 返答・店の検索・按分を待っているあいだは、短い間隔で読み直す
-const SPLIT_SHOW_MS = 6500; // 按分の計算の途中経過を、最後の段まで見せる時間
+const SPLIT_WAIT_MAX_MS = 60_000; // 按分の結果を待つ上限（これを過ぎたら、待ち表示をやめる）
 const ACCEPT = ["image/jpeg", "image/png", "application/pdf"];
 const MAX_BYTES = 5 * 1024 * 1024; // 画面でも検査するが、正は API 側（SPEC 7.5）
 const SAMPLE: Record<ImageKind, { url: string; name: string; type: string }> = {
@@ -86,7 +93,7 @@ type SentImage = {
 };
 
 type Item =
-  | { type: "text"; key: string; at: string; mine: boolean; text: string }
+  | { type: "text"; key: string; at: string; mine: boolean; text: string; card: AnchorKind | null }
   | { type: "image"; key: string; at: string; kind: ImageKind; url: string | null; sending: boolean };
 
 /** 発言と、送った画像を、時刻の順に並べる */
@@ -97,7 +104,12 @@ function timeline(detail: ApiEventDetail | null, sent: SentImage[]): Item[] {
     // 返答を作っているあいだのメッセージ（本文は空）は、一覧に出さない。「考え中」で見せる
     ...detail.messages
       .filter((m) => m.status !== "pending" && m.role !== "system")
-      .map((m): Item => ({ type: "text", key: m.message_id, at: m.created_at, mine: m.role === "organizer", text: m.text })),
+      .map(
+        (m): Item => ({
+          type: "text", key: m.message_id, at: m.created_at, mine: m.role === "organizer", text: m.text,
+          card: m.card ?? null,
+        }),
+      ),
     ...detail.uploads
       .filter((u) => u.status === "registered")
       .map(
@@ -178,12 +190,16 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
     return () => clearInterval(t);
   }, [user, selected, refresh, waiting]);
 
-  // 按分の計算の途中経過（規程の確認 → ルールの適用 → 計算 → 承認の依頼）を、最後まで見せる
+  // 按分の結果が出るまで、計算の途中経過を見せる（結果が出たら、内訳に置き換わる）
   useEffect(() => {
     if (!computing) return;
-    const t = setTimeout(() => setComputing(false), SPLIT_SHOW_MS);
+    if (detail?.split) {
+      setComputing(false);
+      return;
+    }
+    const t = setTimeout(() => setComputing(false), SPLIT_WAIT_MAX_MS);
     return () => clearTimeout(t);
-  }, [computing]);
+  }, [computing, detail?.split]);
 
   const blocked = live && me !== null && !me.live_allowed; // 実演用は、登録した開発者のアカウントだけ
   const personas: ApiPersona[] = detail?.personas?.length ? detail.personas : PLACEHOLDER_PERSONAS;
@@ -192,6 +208,17 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
   const chats = hint?.example?.chats;
   const suggestions = Array.isArray(chats) ? chats.filter((c): c is string => typeof c === "string") : [];
   const items = timeline(detail, images);
+  // 状態つきのカード（店の候補・按分の内訳・振込の依頼・振り返り）は、同じ種類のうち、いちばん
+  // 新しい発言の位置に出す（あとの発言が、カードより上に並んで、時系列が崩れないように）
+  const available = detail ? anchorsAvailable(detail) : [];
+  const anchorAt = new Map<AnchorKind, string>();
+  for (const item of items) {
+    if (item.type === "text" && item.card && available.includes(item.card)) anchorAt.set(item.card, item.key);
+  }
+  const anchored = new Set(anchorAt.keys());
+  // 計画のカードは、KUROKO の返答を出したあとに出す（返答の前に、カードが出ないように）
+  const lastItem = items[items.length - 1];
+  const showPlan = !thinking && lastItem?.type === "text" && !lastItem.mine;
   const lastMine = [...items].reverse().find((i) => i.type === "text" && i.mine);
   const showOutgoing = !!outgoing && thinking && !(lastMine?.type === "text" && lastMine.text === outgoing);
   const imageKind = expectedImage(detail);
@@ -349,9 +376,17 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
                   <MineBubble>{item.text}</MineBubble>
                 </MineRow>
               ) : (
-                <KurokoRow key={item.key} at={item.at}>
-                  {item.text}
-                </KurokoRow>
+                <Fragment key={item.key}>
+                  <KurokoRow at={item.at}>{item.text}</KurokoRow>
+                  {detail && item.card && anchorAt.get(item.card) === item.key && (
+                    <AnchoredCard
+                      kind={item.card}
+                      detail={detail}
+                      onDone={() => refresh(detail.event_id)}
+                      run={run}
+                    />
+                  )}
+                </Fragment>
               ),
             )}
             {showOutgoing && (
@@ -378,6 +413,8 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
                 computing={computing}
                 onSplitStarted={() => setComputing(true)}
                 onRestart={() => void clear()}
+                showPlan={showPlan}
+                anchored={anchored}
               />
             )}
           </Thread>

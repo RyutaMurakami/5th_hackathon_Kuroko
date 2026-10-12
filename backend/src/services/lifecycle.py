@@ -38,7 +38,7 @@ class Lifecycle:
             ),  # type: ignore[arg-type]
         )
 
-    def say(self, event_id: str, text: str) -> None:
+    def say(self, event_id: str, text: str, card: str | None = None) -> None:
         """幹事の Web のチャットに、KUROKO の進み具合の発言を残す（SPEC 7.5）。
 
         状態から決まる**固定の文**で、LLM は使わない。個人ごとの回答・口座の情報は入れない。
@@ -49,6 +49,7 @@ class Lifecycle:
                 event_id=event_id,
                 role="kuroko",
                 text=text[:2000],
+                card=card,
                 created_at=self._now(),
             )
         )

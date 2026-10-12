@@ -18,6 +18,13 @@ class Action(StrEnum):
     RATE = "rate"  # 振り返りの満足度（1〜5。1タップ）
     BANK = "bank"  # 体験用の「銀行で承認する」（体験用の承認待ちの振込だけ。SPEC 7.7）
 
+    @classmethod
+    def parse(cls, action_id: str) -> "Action":
+        """ボタンの action_id から操作を決める。Slack は1通のメッセージの中で action_id の重複を
+        認めない（`invalid_blocks`）ので、同じ操作のボタンを並べるときは `rate:3` のように
+        `:` のあとに印を付ける。印は無視する。"""
+        return cls(action_id.split(":", 1)[0])
+
 
 class SlackInteraction(BaseModel):
     """署名検証済みのボタン操作1件。`user_id` は Slack が署名したペイロードから取った本人の ID。"""

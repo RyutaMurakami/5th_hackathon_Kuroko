@@ -53,6 +53,10 @@ class Dispatcher:
         self.started: list[str] = []
         self.approvals: list[str] = []
         self.budgets: list[str] = []
+        self.checkouts: list[tuple[str, str]] = []
+
+    async def start_checkouts(self, event_id, split_hash):
+        self.checkouts.append((event_id, split_hash))
 
     async def start_rsvp(self, event_id):
         self.started.append(event_id)
@@ -382,6 +386,10 @@ def test_there_is_no_dashboard_route_for_mandates_approvals_revocation_or_transf
     sandbox_only = {
         "/api/dashboard/events/{event_id}/persona-cards/{card_id}/actions",
         "/api/dashboard/events/{event_id}/bank-approvals",
+        # 幹事の確認（SPEC 7.5）。承認するのは承認者の本人。幹事は、内訳を確かめて承認を依頼し、
+        # 承認のあとに、振込の依頼を送ることを確認する（お金が動くのは、各自が銀行で承認したとき）
+        "/api/dashboard/events/{event_id}/request-approval",
+        "/api/dashboard/events/{event_id}/approve-transfers",
     }
     assert not [p for p in paths if any(b in p for b in banned) and p not in sandbox_only]
     assert not [r for r in app.routes if "dashboard" in getattr(r, "path", "") and "demo" in r.path]

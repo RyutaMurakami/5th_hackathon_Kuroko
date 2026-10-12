@@ -38,11 +38,14 @@ def maps_url(name: str, place_id: str = "") -> str:
     return url
 
 
-def _button(text: str, action: Action, value: dict[str, Any], style: str | None = None) -> dict:
+def _button(
+    text: str, action: Action, value: dict[str, Any], style: str | None = None, mark: str = ""
+) -> dict:
+    # 同じ操作のボタンを並べるときは、`mark` で action_id を分ける（Slack は重複を認めない）
     button: dict[str, Any] = {
         "type": "button",
         "text": {"type": "plain_text", "text": text},
-        "action_id": action.value,
+        "action_id": f"{action.value}:{mark}" if mark else action.value,
         "value": encode_value(value),
     }
     if style:
@@ -189,7 +192,9 @@ def feedback_request(
         {
             "type": "actions",
             "elements": [
-                _button(f"{n}", Action.RATE, base | {"r": n}, "primary" if n >= 4 else None)
+                _button(
+                    f"{n}", Action.RATE, base | {"r": n}, "primary" if n >= 4 else None, mark=str(n)
+                )
                 for n in range(1, 6)
             ],
         },
