@@ -2,9 +2,10 @@
 
 | ファイル | 内容 |
 |---|---|
-| [KUROKO_GoogleCloud構成図_v1.0.drawio](KUROKO_GoogleCloud構成図_v1.0.drawio) | Google Cloud のサービス構成図（インフラ / L1）と、**構築状況**（2026-09-28 時点）。draw.io（diagrams.net または VS Code の Draw.io Integration）で開く |
+| [export/KUROKO_GoogleCloud構成図_v2.0.svg](export/KUROKO_GoogleCloud構成図_v2.0.svg)（[PNG](export/KUROKO_GoogleCloud構成図_v2.0.png)） | **いまの構成図**（2026-10-12。提出・README 用）。[make_architecture.py](make_architecture.py) で書き出す（`python3 docs/diagrams/make_architecture.py <出力先>`）。構成が変わったら、スクリプトを直して書き出し直す |
+| [KUROKO_GoogleCloud構成図_v1.0.drawio](KUROKO_GoogleCloud構成図_v1.0.drawio) | **古い図**（2026-09-28 時点の構築状況。支払いエージェント・RAG Engine など、作らないと決めたものを含む）。経緯として残す |
 
-構成と権限の正は [ARCHITECTURE.md](../ARCHITECTURE.md)（2章・6章・7章・10章）。図は、その配置を「いま何ができているか」で色分けしたもの。構築が進んだら、図とこの表を一緒に更新する。
+構成と権限の正は [ARCHITECTURE.md](../ARCHITECTURE.md)。**下の「構築状況」の表は 2026-09-28 時点のもので、いまの状態は [HANDOVER.md](../HANDOVER.md) 4章を見る。**
 
 ## 構築状況（2026-09-28。B16a・F4・F14 のデプロイの後）
 

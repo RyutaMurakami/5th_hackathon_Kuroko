@@ -122,8 +122,8 @@ KUROKO は、面倒なお金まわりまで引き受けます。それでも安�
 | Model Armor の書き方。いまは**検知して記録するモード**（止めない）。「ブロックする」とは書いていない。止める設定に変えたら、本文を直す | 検知のみ | オーナー（human_task P9） |
 | GitHub リポジトリの公開設定（いまは **private**）。提出の要件を確かめる | 未対応 | オーナー（human_task S6 のリポジトリ連携とあわせて） |
 | デモ動画（3分）と URL | 未対応 | human_task S1 |
-| アーキテクチャ図の画像。元は [diagrams/export/](diagrams/export/)。**図は初期の構成（支払いエージェントなど、未実装のものを含む）**なので、上の文章と合わせる | 要更新 | TASKS O18 |
-| README が、テンプレートの文面のままになっている | 要更新 | TASKS O17 |
+| アーキテクチャ図の画像 | **作り直した**（2026-10-12）。[diagrams/export/KUROKO_GoogleCloud構成図_v2.0.png](diagrams/export/KUROKO_GoogleCloud構成図_v2.0.png) | TASKS O18 |
+| README | **書き直した**（2026-10-12。審査員向けの使い方・OSS のライセンス表記） | TASKS O17 |
 | 審査員が触れる URL と、使い方の説明 | 未対応 | human_task H28・H29 |
 | レビュー指摘の反映（課題の言い回し・コンセプトの伝え方） | **反映済み（2026-10-12）**。レビュアーに再確認してもらう | [review/2026-10-11_KUROKO_review_07_submission.md](review/2026-10-11_KUROKO_review_07_submission.md) |
 
