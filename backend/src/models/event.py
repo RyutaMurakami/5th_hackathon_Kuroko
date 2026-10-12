@@ -102,6 +102,10 @@ class Event(BaseModel):
     ui_mode: str = "experience"
     # 店の候補（`search_venues` と同じ検索の結果。幹事が Web で選ぶ。口コミ本文は含まない）
     venue_candidates: list[dict] = []
+    # 店の検索の進み具合（出欠が出そろうと、コードが自動で探す。SPEC 7.5）。
+    # "": まだ / searching: 探している / done: 候補あり / failed: 失敗（理由は下の欄）
+    venue_search: str = ""
+    venue_search_error: str = ""
     # 幹事が確認して確定した計画（日時・人数・エリア・予算・主役など）と、選んだ店・予約の内容
     plan: dict = {}
     venue: dict | None = None

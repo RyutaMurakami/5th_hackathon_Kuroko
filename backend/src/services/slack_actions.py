@@ -184,7 +184,7 @@ class SlackActions:
                 event.event_id, person.model_copy(update={"rsvp_status": RsvpStatus.DECLINING})
             )
             await self._done(i, event.event_id, "consent", person.user_id, "欠席で回答しました。")
-            return self._after_rsvp(event.event_id)
+            return await self._after_rsvp(event.event_id)
         cap = int(i.value["c"])
         mandate_id = f"{event.event_id}:{person.user_id}"
         if i.acting_for is not None:
@@ -212,11 +212,29 @@ class SlackActions:
             f"参加で回答し、支払いの委任に同意しました（上限 {msg.yen(cap)}・幹事のみ）。"
             "按分の承認のあと、銀行での承認をお願いします。取り消しは App Home からできます。",
         )  # fmt: skip
-        self._after_rsvp(event.event_id)
+        await self._after_rsvp(event.event_id)
 
-    def _after_rsvp(self, event_id: str) -> None:
-        if self._life:
-            self._life.after_rsvp(event_id)  # 出欠が出そろったら、店の選択へ進める
+    async def _after_rsvp(self, event_id: str) -> None:
+        """出欠が出そろったら、店の選択へ進め、店の検索を始める（SPEC 7.5）。
+
+        検索は時間がかかる（駅すぱあと・Google Maps で30秒ほど）ので、自分自身へのタスクで行う。
+        投入できなくても、出欠は成立している（幹事が、画面の「もう一度探す」から探せる）。
+        """
+        if not self._life or not self._life.after_rsvp(event_id):
+            return
+        try:
+            await self._enqueue(
+                "/tasks/internal/venue-searches", {"event_id": event_id}, f"venues-{event_id}"
+            )
+        except Exception:
+            logger.exception("could not start the venue search: event=%s", event_id)
+            event = self._store.get_event(event_id)
+            if event is not None:
+                self._store.save_event(
+                    event.model_copy(
+                        update={"venue_search": "failed", "venue_search_error": "failed"}
+                    )
+                )
 
     async def _revoke(self, i: SlackInteraction) -> None:
         # 取り消しの本体は、ゲートウェイが payment-api に直接投入済み。ここは表示を更新するだけ
@@ -266,6 +284,11 @@ class SlackActions:
             self._life.log(event.event_id, "human", "署名", done)
             self._life.notify(
                 event, NotificationKind.SLACK_WAITING, "参加者の銀行での承認を待っています"
+            )
+            self._life.say(
+                event_id,
+                "承認者が按分を承認しました。各自の支払いエージェントが、委任の範囲内で、"
+                "幹事の口座への振込を依頼します。本人が銀行で承認すると、振込が実行されます。",
             )
         # 承認を起点に、Policy Gate 6.2 を通った請求だけが作られる（kuroko-api 自身のタスク）
         await self._enqueue(
@@ -389,8 +412,8 @@ class SlackActions:
         if esc.final_confirmed_at is None:
             event.budget_escalation = esc.model_copy(update={"final_confirmed_at": self._now()})
             self._store.save_event(event)
-            if self._life:
-                self._life.after_budget_final(event.event_id)
+            if self._life and self._life.after_budget_final(event.event_id):
+                await self.send_event_notice(event.event_id)
         await self._done(
             i, event.event_id, "budget", approver.user_id, "予算超過での続行を承認しました。"
         )
@@ -444,7 +467,7 @@ class SlackActions:
                     "記録",
                     f"デモ用の代行: Slack を使わない {len(proxied)}名の出欠と委任を代行しました",
                 )
-            self._after_rsvp(event_id)
+            await self._after_rsvp(event_id)
         return {"sent": sent, "skipped": skipped, "proxied": proxied}
 
     async def _proxy_consent(
@@ -477,6 +500,43 @@ class SlackActions:
                 }
             ),
         )
+
+    async def send_event_notice(self, event_id: str) -> dict[str, Any]:
+        """予約が確定したら、参加者に開催の案内（日時・店・地図）を届ける（SPEC 7.5）。
+
+        宛先は、出席する人のうち、届けられる人（Slack を使える人と、デモの登場人物）。幹事は除く。
+        主役には、費用の話を書かない。やり直しても、同じ人に二重に届けない。
+        """
+        event = self._store.get_event(event_id)
+        if event is None or event.status is not EventStatus.BOOKED:
+            return {"sent": []}
+        already = {c.user_id for c in self._store.list_cards(event_id) if c.kind == "notice"}
+        sent = []
+        for p in self._store.list_participants(event_id):
+            if (
+                p.user_id == event.organizer_user_id
+                or p.rsvp_status is RsvpStatus.DECLINING
+                or p.user_id in already
+            ):
+                continue
+            text, blocks = msg.event_notice(
+                event, guest_of_honor=p.user_id in event.guests_of_honor
+            )
+            try:
+                if await self._deliver(event, p, "notice", text, blocks):
+                    sent.append(p.user_id)
+            except Exception:  # 1人に届かなくても、ほかの人への案内を止めない
+                logger.exception("could not deliver the event notice: event=%s", event_id)
+        if self._life and sent:
+            self._life.log(
+                event_id, "kuroko", "送信", f"{len(sent)}名に開催の案内（日時・店）を送りました"
+            )
+            self._life.say(
+                event_id,
+                f"参加者 {len(sent)}名に、開催の案内（日時・お店・地図）をお送りしました。"
+                "当日はお楽しみください。開催が終わったら、下の「開催が終わった」を押してください。",
+            )
+        return {"sent": sent}
 
     async def request_split_approval(self, event_id: str) -> dict[str, Any]:
         """Policy Gate 6.1 を通ったら按分を計算し、承認者に承認依頼を送る。"""
@@ -515,6 +575,12 @@ class SlackActions:
             )
             self._life.notify(
                 event, NotificationKind.SLACK_WAITING, "承認者の按分の承認を Slack で待っています"
+            )
+            self._life.say(
+                event_id,
+                f"按分を計算しました（会計 {msg.yen(split.total_amount_yen)}・"
+                f"会社補助 {msg.yen(split.subsidy_yen)}）。規程で決まる承認者の "
+                f"{approver.display_name or '承認者'} さんに、内訳を添えて承認をお願いしました。",
             )
         return {"ok": True, "failures": [], "approver": approver.user_id, "hash": split.hash}
 

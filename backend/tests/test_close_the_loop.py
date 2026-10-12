@@ -384,7 +384,7 @@ async def test_hints_always_offer_a_next_step_and_chat_suggestions_ask_about_the
         assert h["title"] and h["do"] and h["where"] in ("web", "system")  # Slack・銀行に行かせない
     w.store.save_event(w.store.get_event(eid).model_copy(update={"status": EventStatus.VENUE}))
     chats = w.svc.get_event(JUDGE, eid)["hint"]["example"]["chats"]
-    assert chats[0] == "お店を探して" and any("規程" in c for c in chats)
+    assert any("規程" in c for c in chats)
 
 
 # ---------------------------------------------------------------- 店の候補を、画面で選ぶ
@@ -470,11 +470,14 @@ class RetroWorld(World):
         return eid
 
 
-async def test_feedback_starts_right_after_completion_and_reaches_only_the_two_personas():
+async def test_feedback_starts_right_after_completion_and_goes_to_every_attendee():
     w = RetroWorld(slack_users={"kurao": "U_K"})
     eid = await w.completed()
     n = len(w.slack.dms)
-    assert await w.retro.collect_feedback(eid) == {"started": True, "invited": 2}
+    # 出席者の全員（幹事を除く9名）。Slack を使わない架空の7名のぶんは、デモ用の代行が答える
+    assert await w.retro.collect_feedback(eid) == {"started": True, "invited": 9}
+    assert w.store.get_retro(eid).response_count == 7
+    assert "デモ用の代行" in " ".join(d.summary for d in w.store.list_decisions(eid))
     assert w.store.get_event(eid).status is EventStatus.RETRO
     assert [d[0] for d in w.slack.dms[n:]] == ["U_K"]  # Slack のある人には DM も届く
     for user in ("kurao", "hanako"):  # Slack が無くても、Web の列には届く
@@ -514,8 +517,8 @@ async def test_ratings_from_the_web_cards_close_the_survey_without_showing_who_s
     await rate_on_web(w, eid, "hanako", 4)
     view = w.svc.get_event(JUDGE, eid)
     r = view["retro"]
-    assert (r["status"], r["response_count"], r["avg_rating"]) == ("awaiting_organizer", 2, 4.5)
-    assert r["liked_counts"] == {}  # 3件未満は、内訳を出さない
+    assert (r["status"], r["response_count"], r["avg_rating"]) == ("awaiting_organizer", 9, 4.33)
+    assert r["liked_counts"]["food"] == 4  # 3件以上なので、内訳（件数だけ）を出す
     assert "kurao" not in json.dumps(r) and "hanako" not in json.dumps(r)  # 個人の回答は出さない
     assert [f["kind"] for f in r["memory_facts"]] == ["venue_record", "venue_evaluation"]
     assert r["memory_facts"][0]["text"] == (
@@ -543,8 +546,9 @@ async def test_the_organizer_saves_only_the_chosen_template_facts_in_their_own_s
     facts = [f.fact for _, f in w.memory.rows]
     assert facts[1] == (
         "第一開発チームの歓送迎会（2026/10）の『炭火酒場 くろこ 渋谷店』の"
-        "満足度は平均4.5（2名回答）。"
+        "満足度は平均4.3（9名回答）。"
         "幹事は次回も使いたい。"
+        "良かった点は料理・行きやすさ・雰囲気・飲み物・価格・接客。気になった点は騒がしさ。"
     )
     assert all(mf.is_template_fact(f) for f in facts)
     r = w.store.get_retro(eid)

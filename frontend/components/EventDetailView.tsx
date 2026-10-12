@@ -3,7 +3,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { errorText } from "@/lib/api-client";
 import { useDemoHref, useDemoRole, useDemoStage } from "@/lib/demo";
 import { useEventDetail } from "@/lib/data";
 import { USE_API } from "@/lib/data-source";
@@ -13,7 +12,6 @@ import { CONSENT_STATE } from "@/lib/status";
 import type { EventDetail, EventStatus, Role } from "@/lib/types";
 import { ApiChatCard } from "./ApiChatCard";
 import { ScenarioHint } from "./ScenarioHint";
-import { StepForms } from "./StepForms";
 import { ConfirmationCard, type InputSource } from "./ConfirmationCard";
 import { ConsentList } from "./ConsentList";
 import { DecisionTimeline } from "./DecisionTimeline";
@@ -25,7 +23,7 @@ import { SplitTable } from "./SplitTable";
 import { Tabs, type TabItem } from "./Tabs";
 import { type ToastInput, useToast } from "./Toast";
 import { VenueChoiceCard } from "./VenueChoiceCard";
-import { Card, EmptyState, TextLink } from "./ui";
+import { Card, EmptyState, InfoBanner, TextLink } from "./ui";
 import detail from "./detail.module.css";
 import styles from "./event.module.css";
 
@@ -136,21 +134,6 @@ function EventDetailBody({
   const venueChosen = venueChosenAt === event.status;
   const [retroDecision, setRetroDecision] = useState<RetroDecision | null>(null);
 
-  /** 実 API の操作の実行。失敗は固定の文面でトーストに出す */
-  const runAction = useCallback(
-    async (fn: () => Promise<unknown>, done?: string) => {
-      try {
-        await fn();
-        if (done) toast({ tone: "lagoon", text: done, eventId: event.eventId });
-        return true;
-      } catch (e) {
-        toast({ tone: "coral", text: errorText(e), eventId: event.eventId });
-        return false;
-      }
-    },
-    [event.eventId, toast],
-  );
-
   const isGuest = role === "guest";
   const tabParam = params.get("tab");
   const tab: DetailTab = TABS.includes(tabParam as DetailTab) ? (tabParam as DetailTab) : defaultTab(event.status);
@@ -217,7 +200,10 @@ function EventDetailBody({
       {USE_API && api && (
         <>
           <ScenarioHint hint={api.hint} />
-          <StepForms detail={api} onDone={async () => reload()} run={runAction} />
+          {/* 幹事の入力は、チャットの画面（KUROKO との DM）で行う。ここは状況を見る画面（SPEC 7.5） */}
+          <InfoBanner action={<TextLink href={api.ui_mode === "live" ? "/demo" : "/verify"}>チャットを開く</TextLink>}>
+            計画の確定・お店の選択・予約の画面や領収書の送信・振り返りの確認は、KUROKO とのチャットの中で行います。
+          </InfoBanner>
         </>
       )}
 

@@ -55,6 +55,7 @@ export type ApiUpload = {
   status: "issued" | "registered" | "rejected";
   extraction_status: "pending" | "done" | "failed";
   content_type: string;
+  created_at: string;
   /** 読み取り結果（幹事が確認するまで使われない） */
   extraction?: {
     venue_name: string | null;
@@ -88,8 +89,10 @@ export type ApiEventDetail = {
   status: string;
   sandbox: boolean;
   ui_mode: ApiUiMode;
-  /** 店の候補（「店の候補を出す」で作る。順位はコードが決める） */
+  /** 店の候補（出欠が出そろうと、KUROKO が自分で探す。順位はコードが決める） */
   venue_candidates: ApiVenueCandidate[];
+  /** 店の検索の進み具合（searching のあいだ「探しています」を出す。failed なら、探し直せる） */
+  venue_search: { status: "" | "searching" | "done" | "failed"; error: string };
   plan: Record<string, unknown>;
   venue: Record<string, unknown> | null;
   total_amount_yen: number | null;
@@ -150,7 +153,8 @@ export type ApiRetro = {
 /** KUROKO から登場人物に届いたカード（Slack の DM と同じ中身）。ボタンの値は、サーバーが持つ */
 export type ApiPersonaCard = {
   card_id: string;
-  kind: "consent" | "approval" | "budget" | "bank" | "feedback";
+  /** notice は、ボタンの無いお知らせ（開催の案内） */
+  kind: "consent" | "approval" | "budget" | "bank" | "feedback" | "notice";
   text: string;
   /** 本文（Slack の mrkdwn。`*太字*`・改行・`• 箇条書き`） */
   sections: string[];
@@ -159,6 +163,22 @@ export type ApiPersonaCard = {
   created_at: string;
   /** 体験用の「銀行で承認する」のカード（押すと、銀行の承認ページを模した画面を挟む） */
   bank?: boolean;
+  /** 出欠のカードの入力欄（最寄り駅・苦手な食べ物）。値は、デモ用の候補 */
+  fields?: ApiCardField[];
+};
+
+export type ApiCardField = { key: "station" | "dislikes"; label: string; value: string; placeholder: string };
+
+/** 計画のカードに、はじめから入れておく値（`hint.example.plan`。架空） */
+export type ApiPlanExample = {
+  title?: string;
+  /** `datetime-local` の形（例: 2026-10-30T19:00） */
+  datetime?: string;
+  party_size?: number;
+  budget_per_person_yen?: number;
+  rsvp_deadline?: string;
+  /** 主役に選べる人（名簿の主役は `locked` で、外せない） */
+  honorees?: { user_id: string; display_name: string; selected: boolean; locked: boolean }[];
 };
 
 export type ApiPersona = {
@@ -229,8 +249,11 @@ export type ApiNotification = {
 export type ApiPlan = {
   title: string;
   datetime: string;
-  area: string;
   party_size: number;
   budget_per_person_yen: number;
   required_tags: string[];
+  /** 出欠の回答期限（YYYY-MM-DD。任意） */
+  rsvp_deadline?: string;
+  /** 幹事が足す主役（名簿の user_id） */
+  guests_of_honor?: string[];
 };

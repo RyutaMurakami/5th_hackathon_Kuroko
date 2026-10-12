@@ -1,6 +1,7 @@
 """振り返りの収集と、記憶への保存（SPEC 7.4・9.8）。決定論的なコード。LLM は使わない。
 
-1. `collect_feedback`: 完了の直後、出席者（Slack を使える人と、デモの登場人物）に依頼
+1. `collect_feedback`: 完了の直後、**出席者の全員**（幹事を除く）に依頼。体験用のイベントで、
+   Slack を使わない架空の参加者のぶんは、デモ用の代行が答える（SPEC 7.4・7.6）
 2. `record_rating`: 満足度（1〜5）。1人1回（二重回答は無視）。必須はこれだけ
 3. `record_comment`: 任意のコメント（200字まで）。語彙に落とした値だけを残し、原文は保存しない
 4. `tick`（Scheduler）: 2日後に1回だけリマインド、3日後に締切（全員が回答したら、その時点で締切）
@@ -33,6 +34,18 @@ logger = logging.getLogger(__name__)
 DEADLINE_DAYS = 3  # 完了の3日後が締切（MVPは定数。SPEC 9.8）
 REMIND_AFTER_DAYS = 2  # 未回答の人に、1回だけリマインドする
 MIN_RESPONSES_FOR_BREAKDOWN = 3  # これ未満のときは、内訳を出さない（個人の特定を避ける）
+
+# デモ用の代行の回答（体験用のイベントで、Slack を使わない架空の参加者のぶん。SPEC 7.6）。
+# 決まった値を順に使う（乱数・LLM は使わない）。語彙は `services/vocab.py` のもの
+PROXY_ANSWERS: tuple[tuple[int, tuple[str, ...], tuple[str, ...]], ...] = (
+    (5, ("food", "access"), ()),
+    (4, ("atmosphere",), ()),
+    (4, ("food", "price"), ()),
+    (5, ("access", "drinks"), ()),
+    (3, ("food",), ("noisy",)),
+    (4, ("service",), ()),
+    (5, ("food", "atmosphere"), ()),
+)
 
 THANKS = (
     "ご回答ありがとうございました。コメントがあれば、このDMに返信してください"
@@ -68,23 +81,70 @@ class Retrospectives:
         if event.status not in (EventStatus.COMPLETED, EventStatus.RETRO):
             return {"started": False, "reason": "not_completed"}  # 全員の入金を確認したあとだけ
         invited = await self._send(event, only=None, reminder=False)
+        proxied = self._proxy_answers(event)  # 体験用: Slack を使わない架空の参加者のぶん
         now = self._now()
         retro = Retrospective(
             event_id=event_id,
-            invited_count=len(invited),
-            invited_user_ids=invited,
+            invited_count=len(invited) + len(proxied),
+            invited_user_ids=invited + proxied,
+            response_count=len(proxied),
             retro_deadline=(event.completed_at or now) + timedelta(days=DEADLINE_DAYS),
             **self._auto_record(event),
         )
+        self._apply_summary(retro)
         self._store.save_retro(retro)
         self._store.save_event(event.model_copy(update={"status": EventStatus.RETRO}))
         if self._life:
             self._life.log(
-                event_id, "kuroko", "送信", f"{len(invited)}名に振り返り（満足度）を依頼しました"
+                event_id, "kuroko", "送信",
+                f"出席者 {retro.invited_count}名に振り返り（満足度）を依頼しました",
+            )  # fmt: skip
+            if proxied:
+                self._life.log(
+                    event_id, "kuroko", "記録",
+                    f"デモ用の代行: Slack を使わない {len(proxied)}名の振り返りを代行しました",
+                )  # fmt: skip
+            self._life.say(
+                event_id,
+                f"全員の入金を確認し、精算が完了しました。出席者の全員（{retro.invited_count}名）に、"
+                "振り返り（満足度）のお願いをお送りしました。個人ごとの回答は、幹事にも見えません。"
+                + (
+                    f"（体験用: 架空の参加者 {len(proxied)}名のぶんは、デモ用の代行が回答済みです）"
+                    if proxied
+                    else ""
+                ),
             )
         if not invited:
-            self._close(retro, event)  # 依頼できる人がいない。実績だけで、幹事の確認に進む
-        return {"started": True, "invited": len(invited)}
+            self._close(retro, event)  # 答えを待つ人がいない。その時点の集計で、幹事の確認に進む
+        return {"started": True, "invited": retro.invited_count}
+
+    def _proxy_answers(self, event: Event) -> list[str]:
+        """体験用のイベントで、カードを届けられない出席者の満足度を、デモ用の代行が記録する。
+
+        体験用でないイベントでは、何もしない（届けられる人にだけ依頼する）。主役・承認者を含む
+        出席者が対象で、幹事は含めない（Web で確認する側）。
+        """
+        if not event.sandbox:
+            return []
+        now, done = self._now(), []
+        for p in self._store.list_participants(event.event_id):
+            if (
+                not p.attendance_confirmed
+                or p.rsvp_status is RsvpStatus.DECLINING
+                or p.role is ParticipantRole.ORGANIZER
+                or reachable(event, p)
+            ):
+                continue
+            rating, liked, concerns = PROXY_ANSWERS[len(done) % len(PROXY_ANSWERS)]
+            if self._store.get_feedback(event.event_id, p.user_id) is None:
+                self._store.save_feedback(
+                    Feedback(
+                        event_id=event.event_id, user_id=p.user_id, rating=rating,
+                        liked=list(liked), concerns=list(concerns), submitted_at=now,
+                    )  # fmt: skip
+                )
+            done.append(p.user_id)
+        return done
 
     def _auto_record(self, event: Event) -> dict[str, Any]:
         """実績（入力なし）。イベントのデータから、コードが作る（SPEC 9.8 `venue_record`）。"""
@@ -189,6 +249,12 @@ class Retrospectives:
             self._life.notify(
                 event, NotificationKind.RETRO_READY, "振り返りがまとまりました。確認してください"
             )
+            self._life.say(
+                retro.event_id,
+                f"振り返りがまとまりました（回答 {retro.response_count} / "
+                f"{retro.invited_count}名）。下のカードで集計を確認して、次回のために"
+                "覚えさせる内容を選んでください。",
+            )
 
     def _draft(self, retro: Retrospective, event: Event) -> list[MemoryFact]:
         when = event.datetime
@@ -256,6 +322,16 @@ class Retrospectives:
         self._store.save_retro(retro)
         self._store.save_event(event.model_copy(update={"status": EventStatus.CLOSED}))
         if self._life:
+            self._life.say(
+                event_id,
+                (
+                    f"{len(chosen)}件の事実を、記憶（Memory Bank）に保存しました。"
+                    "次の企画で、同じお店が候補に出たときに、理由に添えます。"
+                    if save
+                    else "今回の内容は、記憶に保存しませんでした。"
+                )
+                + "これで、この会の幹事の仕事はすべて完了です。お疲れさまでした。",
+            )
             self._life.log(event_id, "human", "確認", "幹事が振り返りを確認しました")
             if save:
                 self._life.log(

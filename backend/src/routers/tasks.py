@@ -60,6 +60,18 @@ async def chat_reply(ref: ChatReplyRef) -> dict[str, str]:
     return {"status": status}
 
 
+@router.post("/internal/venue-searches", dependencies=[Depends(require_self)])
+async def venue_search(ref: EventRef) -> dict[str, str]:
+    """出欠が出そろったあと、店の候補を出す（駅すぱあと・Google Maps で30秒ほど。SPEC 7.5）。
+    失敗はイベントに残して成功を返す（Cloud Tasks に、再実行させない）。"""
+    try:
+        status = await get_dashboard().run_venue_search(ref.event_id)
+    except Exception:
+        logger.exception("venue search failed: event=%s", ref.event_id)
+        status = "error"
+    return {"status": status}
+
+
 @router.post("/internal/checkouts", dependencies=[Depends(require_self)])
 async def create_checkouts(ref: EventRef) -> dict:
     """按分の承認後、Policy Gate 6.2 を通った請求を `payment-api` に渡す（自分自身が投入）。"""

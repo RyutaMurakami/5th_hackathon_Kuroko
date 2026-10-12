@@ -31,12 +31,13 @@ const MESSAGES: Record<string, string> = {
   guest_event_limit: "体験用のイベントは2件までです。",
   guest_message_limit: "体験用の発言の上限（30通）に達しました。",
   invalid_state: "いまの段階では、この操作はできません。",
-  invalid_plan: "計画の入力を確認してください（日時・人数2〜50・予算1〜100,000円など）。",
+  invalid_plan: "計画の入力を確認してください（日時・人数2〜50・予算1〜100,000円・回答期限は開催日まで）。",
   unsupported_type: "画像（JPEG・PNG）か PDF を選んでください。",
   invalid_size: "ファイルは5MBまでです。",
   upload_limit: "このイベントのアップロードの上限に達しました。",
   upload_rejected: "アップロードを確認できませんでした。もう一度お試しください。",
   paste_not_allowed: "領収書は貼り付けできません。ファイルを選んでください。",
+  image_not_expected: "いまは、画像を送る段階ではありません（予約の画面は店を選んだあと、領収書は開催のあとに送ります）。",
   invalid_amount: "金額は1〜10,000,000円の整数で入力してください。",
   manual_not_allowed: "手入力は、読み取りに失敗したときだけできます。",
   invalid_reservation: "予約内容の入力を確認してください。",
@@ -96,7 +97,7 @@ export const sendMessage = (text: string, eventId?: string, mode: ApiUiMode = "e
 /** この画面（体験用／実演用）で自分が作ったイベントと通知を削除し、シナリオを最初から始める */
 export const resetScenario = (mode: ApiUiMode) => call<{ deleted: number }>("POST", "reset", { mode });
 
-/** 店の候補を出す（順位はサーバーのコードが決める。数秒〜30秒ほどかかる） */
+/** 店の候補を出し直す（ふだんは、出欠が出そろうと KUROKO が自分で探す。失敗したときの探し直し） */
 export const findVenues = (eventId: string) =>
   call<{ event_id: string; venue_candidates: ApiVenueCandidate[] }>("POST", `events/${eventId}/venue-candidates`);
 
@@ -113,7 +114,8 @@ export const confirmExtraction = (
   source: "extracted" | "manual",
 ) => call("POST", `events/${eventId}/confirm-extraction`, { kind, values, source });
 
-/** ファイルを署名付き URL に直接送り、登録する（種類・サイズの事前検査は補助。正は API） */
+/** 画像を署名付き URL に直接送り、登録する（種類・サイズの事前検査は補助。正は API）。
+ *  登録のときに、サーバーが読み取りを行う（数秒〜十数秒） */
 export async function uploadFile(eventId: string, kind: "reservation" | "receipt", file: File) {
   const issued = await call<{ upload_id: string; url: string }>("POST", `events/${eventId}/uploads`, {
     kind,
@@ -123,7 +125,10 @@ export async function uploadFile(eventId: string, kind: "reservation" | "receipt
   });
   const put = await fetch(issued.url, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
   if (!put.ok) throw new ApiError(502, "upload_rejected");
-  return call("POST", `events/${eventId}/uploads/${issued.upload_id}/register`);
+  return call<{ upload_id: string; status: string; extraction: string }>(
+    "POST",
+    `events/${eventId}/uploads/${issued.upload_id}/register`,
+  );
 }
 
 export const listNotifications = () => call<ApiNotification[]>("GET", "notifications");
@@ -134,9 +139,14 @@ export const confirmBudgetOverrun = (eventId: string) =>
 
 export const markHeld = (eventId: string) => call("POST", `events/${eventId}/mark-held`);
 
-/** 登場人物として、カードのボタンを押す（体験用のイベントだけ。値はサーバーのカードから取られる） */
-export const pressPersonaCard = (eventId: string, cardId: string, index: number) =>
-  call("POST", `events/${eventId}/persona-cards/${cardId}/actions`, { index });
+/** 登場人物として、カードのボタンを押す（体験用のイベントだけ。値はサーバーのカードから取る）。
+ *  `inputs` は、出欠のカードの入力欄（最寄り駅・苦手な食べ物） */
+export const pressPersonaCard = (
+  eventId: string,
+  cardId: string,
+  index: number,
+  inputs?: { station?: string; dislikes?: string },
+) => call("POST", `events/${eventId}/persona-cards/${cardId}/actions`, { index, inputs: inputs ?? null });
 
 /** 体験用の「銀行で承認する」（本物の銀行の振込には効かない） */
 export const approveBank = (eventId: string, userId: string) =>

@@ -22,21 +22,31 @@ _ROLE = {
 }
 
 
-def with_context(text: str, event: Event | None, speaker: str) -> str:
+# Web の画面では、計画の項目を、チャットの中のカード（入力欄）で幹事が入れる（SPEC 7.5）。
+# 同じことを文章で聞き返さないよう、コードが伝える
+WEB_PLANNING = (
+    "画面の案内: 幹事の画面には、計画のカード（題名・日時・人数・1人あたりの予算・主役・"
+    "出欠の回答期限の入力欄）が、この返答のすぐ下に出ている。これらの項目を、文章で質問しない。"
+    "お店の場所（エリア）も聞かない（参加者の最寄り駅から、システムが探す）。"
+    "依頼を受け取ったことと、下のカードを確かめて「この内容で進める」を押してほしいことだけを、"
+    "2文以内で伝える。"
+)
+
+
+def with_context(text: str, event: Event | None, speaker: str, *, web: bool = False) -> str:
     """発言に、イベントの ID・段階・話している人の立場を付ける。イベントが無ければ、そのまま。"""
     if event is None:
         return text
-    return "\n".join(
-        [
-            HEADER,
-            f"event_id: {event.event_id}",
-            f"段階: {event.status.value}",
-            f"話している人: {speaker}",
-            "ツールには、この event_id を使う。利用者に ID を聞かない。",
-            BODY,
-            text,
-        ]
-    )
+    lines = [
+        HEADER,
+        f"event_id: {event.event_id}",
+        f"段階: {event.status.value}",
+        f"話している人: {speaker}",
+        "ツールには、この event_id を使う。利用者に ID を聞かない。",
+    ]
+    if web and event.status is EventStatus.PLANNING:
+        lines.append(WEB_PLANNING)
+    return "\n".join([*lines, BODY, text])
 
 
 def event_for_slack_user(store: EventStore, slack_user_id: str) -> tuple[Event, str] | None:

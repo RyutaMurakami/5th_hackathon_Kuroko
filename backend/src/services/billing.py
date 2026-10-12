@@ -201,7 +201,9 @@ class BillingService:
             for r in split.rows
             if r.user_id != event.organizer_user_id and r.user_id not in guests and r.share_yen > 0
         }
-        date_from = _jst_date(event.datetime)
+        # 開催日が先の日付のまま精算まで進めたとき（デモ）は、今日からの明細を見る
+        # （`date_from` が `date_to` を超えると、銀行に照会できない）
+        date_from = min(_jst_date(event.datetime), self._today())
         date_to = min(self._today(), date_from + timedelta(days=MAX_STATEMENT_DAYS))
         entries = await self._bank.incoming(
             user_id=event.organizer_user_id, date_from=date_from, date_to=date_to

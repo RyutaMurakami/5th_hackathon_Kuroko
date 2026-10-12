@@ -172,6 +172,19 @@ body[data-demo-toolbar="true"] {
   padding-bottom: var(--demo-toolbar-height);
 }
 
+/*
+ * チャットの画面（DESIGN.md「DM Board」）: ページ全体は動かさず、各チャットの中だけをスクロールする。
+ * 画面の高さをヘッダーとチャットで分け合う。狭い画面（縦に積む）では、ふつうのページに戻す。
+ */
+@media (min-width: 1101px) {
+  body:has([data-chat-page]) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+  }
+}
+
 h1,
 h2,
 h3,

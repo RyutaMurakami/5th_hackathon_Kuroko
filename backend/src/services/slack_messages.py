@@ -4,8 +4,9 @@
 - 実名を見せるのは、幹事・承認者・本人への DM だけ（SPEC 10章）。LLM には渡さない
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import quote
 
 from src.models.event import Event, Participant
 from src.models.slack import Action, encode_value
@@ -18,8 +19,23 @@ def yen(amount: int) -> str:
     return f"{amount:,}円"
 
 
+JST = timezone(timedelta(hours=9))
+
+
 def _when(dt: datetime) -> str:
+    """日時の表示（日本時間）。時差の無い値（ローカル・テスト）は、そのまま出す。"""
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(JST)
     return f"{dt.month}/{dt.day} {dt:%H:%M}"
+
+
+def maps_url(name: str, place_id: str = "") -> str:
+    """Google マップでその店を開く URL（公開の検索 URL。API キーは要らない）。"""
+    url = f"https://www.google.com/maps/search/?api=1&query={quote(name)}"
+    # 幹事が名前で入れた店（候補に無い店）は、Google の place_id を持たない
+    if place_id and not place_id.startswith("manual-"):
+        url += f"&query_place_id={quote(place_id)}"
+    return url
 
 
 def _button(text: str, action: Action, value: dict[str, Any], style: str | None = None) -> dict:
@@ -57,8 +73,10 @@ def consent_request(
     title = event.title or "飲み会"
     text = f"「{title}」（{_when(event.datetime)}）への出欠と、支払いの委任のお願い"
     base = {"e": event.event_id, "u": participant.user_id, "s": slack_user_id}
+    deadline = str(event.plan.get("rsvp_deadline") or "")  # 幹事が決めた回答期限（YYYY-MM-DD）
+    due = f"\n回答期限: {int(deadline[5:7])}/{int(deadline[8:10])}" if len(deadline) == 10 else ""
     blocks: Blocks = [
-        _section(f"*{title}*\n日時: {_when(event.datetime)}"),
+        _section(f"*{title}*\n日時: {_when(event.datetime)}{due}"),
         _section(
             "*支払いの委任（同意の内容）*\n"
             f"• 上限: *{yen(cap_yen)}* まで\n"
@@ -212,6 +230,27 @@ def bank_request(
             ],
         },
     ]
+    return text, blocks
+
+
+def event_notice(event: Event, *, guest_of_honor: bool = False) -> tuple[str, Blocks]:
+    """開催の案内（予約が確定したあと。SPEC 7.5）。ボタンは無い。主役には、費用の話を書かない。"""
+    title = event.title or "飲み会"
+    venue = event.venue or {}
+    name = str(venue.get("name") or venue.get("venue_name") or "")
+    text = f"「{title}」の開催が決まりました（{_when(event.datetime)}・{name}）"
+    lines = [f"*{title}* の開催が決まりました。", f"日時: {_when(event.datetime)}"]
+    if name:
+        url = maps_url(name, str(venue.get("place_id") or ""))
+        lines.append(f"お店: {name}（<{url}|Google マップで見る>）")
+    blocks: Blocks = [_section("\n".join(lines))]
+    if not guest_of_honor:
+        blocks.append(
+            _section(
+                "会費は、開催後に領収書の金額が確定してから、会社の規程にもとづいて按分し、"
+                "承認者の承認のあとにご案内します。当日のお支払いは不要です。"
+            )
+        )
     return text, blocks
 
 
