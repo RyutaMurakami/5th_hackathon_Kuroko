@@ -298,7 +298,7 @@ AI に返すもの: なし（名前が決まっている）。
 - **Memory Bank**: 統括エージェント（`kuroko-agent`）の Agent Runtime のインスタンスに付く Memory Bank を使う（`…/reasoningEngines/<ID>/memories`。別のリソースを作らない）。`kuroko-api` が、幹事が Web で確認した定型の文だけを書き込み、店の候補を探すときに読む（SPEC 9.8）。設定は Terraform の `memory_bank_engine`（空なら `kuroko_agent_engine` と同じ）
   - **エンジンを作り直すと、記憶は新しいエンジンに引き継がれない**（ID が変わるため）。作り直したら、seed を入れ直す
   - 確かめ方（🖱）: Console の Agent Platform → Agent Runtime → `kuroko-agent` → Memories に、保存した文が出る
-- **RAG Engine**: まだ使っていない。規程は、`kuroko-api` のツール `retrieve_policy` が文書を条ごとに検索し、エージェントが自分の判断で呼ぶ（SPEC 9.7）。RAG Engine のコーパスは、既定の構成（Spanner）に常時の費用がかかるため、作っていない。作る場合は、検索の部分だけを差し替える
+- **RAG Engine**: **使わない（2026-10-12 ユーザー決定）**。規程は、`kuroko-api` のツール `retrieve_policy` が文書を条ごとに検索し、エージェントが自分の判断で呼ぶ（SPEC 9.7）。コーパスは作らない（human_task H24・H30 は不要）
 
 **あなたの作業（任意）**
 

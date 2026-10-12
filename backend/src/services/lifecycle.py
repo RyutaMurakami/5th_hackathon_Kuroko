@@ -56,7 +56,7 @@ class Lifecycle:
     def prepare_event(
         self, event: Event, *, owner_email: str = "", snapshot: PolicySnapshot | None = None
     ) -> Event:
-        """規程の写し（以後の計算はこれだけを使う。9.7）と、参加者（サンプル商事の名簿）を用意する。
+        """規程の写し（以後の計算はこれだけを使う。9.7）と、参加者（株式会社Akakuraの名簿）を用意する。
 
         Slack ユーザーは `config/slack_users`（登場人物 → Slack ID）から入れる。
         無い人には DM を送れない。

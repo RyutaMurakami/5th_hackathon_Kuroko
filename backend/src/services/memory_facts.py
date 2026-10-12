@@ -13,7 +13,7 @@ from src.models.feedback import MemoryFact, Retrospective
 from src.services.venue_ranking import MemoryRecord
 from src.services.vocab import CONCERNS, LIKED
 
-TEAM_LABEL = "第一開発チーム"  # サンプル商事（架空）のチーム
+TEAM_LABEL = "第一開発チーム"  # 株式会社Akakura（架空）のチーム
 TEAM_SCOPE = "team:sample-co:dev1"
 EVENT_LABELS = {"welcome_farewell": "歓送迎会"}
 

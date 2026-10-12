@@ -6,7 +6,7 @@
 policy_id: sample-co-social-event
 version: "1.0.0"
 effective_from: "2026-10-01"
-company_name: サンプル株式会社（架空）
+company_name: 株式会社Akakura（架空）
 owner_department: 総務部
 
 # 出席者の負担区分。上から順に評価し、最初に一致した区分を適用する。

@@ -1,4 +1,4 @@
-"""架空の会社「サンプル商事」の人物と数字（review 04。TASKS E8）。テストとデモの投入が使う。"""
+"""架空の会社「株式会社Akakura」の人物と数字（review 04。TASKS E8）。テストとデモの投入が使う。"""
 
 import datetime as dt
 
