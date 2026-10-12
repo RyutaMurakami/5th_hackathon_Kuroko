@@ -17,7 +17,9 @@ type IconName =
   | "close"
   | "chat"
   | "clipboard"
-  | "edit";
+  | "edit"
+  | "image"
+  | "map";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   info: (
@@ -82,6 +84,19 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   edit: <path d="M4 16h3l8.5-8.5-3-3L4 13v3ZM11 6l3 3" />,
+  image: (
+    <>
+      <rect x="3" y="4" width="14" height="12" rx="2" />
+      <circle cx="7.5" cy="8.5" r="1.2" />
+      <path d="m4 14 3.5-3.5 3 3 2-2L16 15" />
+    </>
+  ),
+  map: (
+    <>
+      <path d="M10 17s5-4.4 5-8.3A5 5 0 0 0 5 8.700c0 3.900 5 8.300 5 8.300Z" />
+      <circle cx="10" cy="8.5" r="1.8" />
+    </>
+  ),
   alert: (
     <>
       <path d="M10 3 17.5 16.5h-15L10 3Z" />

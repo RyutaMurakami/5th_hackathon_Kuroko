@@ -57,6 +57,12 @@ NAMES = {
 # Web のチャット画面に列がある登場人物（SPEC 7.7）
 PERSONAS = {"kurao", "hanako"}
 
+# 出欠のカードの入力欄（最寄り駅・苦手な食べ物）に、はじめから入れておくデモ用の値（SPEC 7.7）
+DEMO_ANSWERS = {
+    "kurao": {"station": "渋谷", "dislikes": "えびが苦手です"},
+    "hanako": {"station": "横浜", "dislikes": ""},
+}
+
 
 def demo_participants() -> list[Participant]:
     """歓送迎会の出席者10名（review 04 4章。配役は SPEC 7.6）。"""

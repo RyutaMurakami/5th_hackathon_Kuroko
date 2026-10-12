@@ -163,6 +163,19 @@ def get_venue_search():
     )
 
 
+@lru_cache
+def get_preference_intake():
+    """出欠のカードの入力欄（最寄り駅・苦手な食べ物）の取り込み（SPEC 7.7）。"""
+    from src.clients.ekispert import EkispertClient
+    from src.services.preferences import PreferenceIntake
+
+    return PreferenceIntake(
+        store=get_event_store(),
+        runner=get_extract_runner(),  # 無ければ、語彙の語がそのまま書かれているかだけを見る
+        stations=EkispertClient(api_key=get_settings().ekispert_api_key),
+    )
+
+
 def get_firebase_verifier():
     """Firebase の ID トークンの検証口。プロジェクトが未設定なら、全て拒否する。"""
     from src.services.dashboard_auth import GoogleFirebaseVerifier
@@ -216,6 +229,7 @@ def get_dashboard():
         venues=get_venue_search(),
         # 返答は Cloud Tasks で作る（Hosting の60秒制限。SPEC 7.5）。ローカルでは、その場で待つ
         enqueue_chat=_enqueue_self if project and s.kuroko_api_url else None,
+        prefs=get_preference_intake(),
         upload_ttl_seconds=s.upload_url_ttl_seconds,
         ocr=GeminiReceiptModel(project=project) if project else None,
         reservation_reader=GeminiReservationModel(project=project) if project else None,

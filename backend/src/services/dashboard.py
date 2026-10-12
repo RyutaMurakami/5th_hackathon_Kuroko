@@ -37,6 +37,8 @@ from src.models.dashboard import (
 )
 from src.models.event import Event, EventStatus, Receipt
 from src.models.split import BudgetEscalation
+from src.seed.sample_company import DEMO_ANSWERS
+from src.services import slack_messages as msg
 from src.services.agent_context import with_context
 from src.services.lifecycle import Lifecycle
 from src.services.policy_extract import PolicyReader
@@ -74,6 +76,17 @@ class PersonaActions(Protocol):
 
     async def approve_bank(self, event: Event, person: Any) -> bool:
         """体験用の承認待ちの振込を、承認済みにする（Slack のボタンと同じ処理）。"""
+
+    async def send_event_notice(self, event_id: str) -> dict[str, Any]:
+        """予約が確定したあと、参加者に開催の案内を届ける。"""
+
+
+class PreferenceForm(Protocol):
+    """出欠のカードの入力欄（最寄り駅・苦手な食べ物）の取り込み（`PreferenceIntake`）。"""
+
+    async def record_form(
+        self, event_id: str, user_id: str, *, station: str, dislikes: str
+    ) -> Any: ...
 
 
 class RetroOps(Protocol):
@@ -118,9 +131,11 @@ class DashboardService:
         retro: RetroOps | None = None,
         venues: VenueFinder | None = None,
         enqueue_chat: EnqueueSelf | None = None,
+        prefs: PreferenceForm | None = None,
         now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
     ) -> None:
         self._personas, self._policy, self._retro = personas, policy, retro
+        self._prefs = prefs
         self._reservation_reader = reservation_reader
         self._venues = venues
         self._enqueue_chat = enqueue_chat  # 無ければ（ローカル・テスト）、返答をその場で待つ
@@ -176,6 +191,7 @@ class DashboardService:
             "event_id": e.event_id, "title": e.title, "datetime": e.datetime.isoformat(),
             "status": e.status.value, "sandbox": e.sandbox, "plan": e.plan, "venue": e.venue,
             "ui_mode": e.ui_mode, "venue_candidates": e.venue_candidates,
+            "venue_search": {"status": e.venue_search, "error": e.venue_search_error},
             "total_amount_yen": e.total_amount_yen,
             # 実名は返さない（表示名は仮名のまま。再識別は別の経路）。承諾の状況だけ
             "participants": [
@@ -231,15 +247,22 @@ class DashboardService:
         return out
 
     async def press_persona_card(
-        self, actor: Actor, event_id: str, card_id: str, index: int
-    ) -> dict[str, Any]:
-        """登場人物として、カードのボタンを押す。体験用のイベントを作った本人だけ。"""
+        self, actor: Actor, event_id: str, card_id: str, index: int,
+        inputs: dict[str, str] | None = None,
+    ) -> dict[str, Any]:  # fmt: skip
+        """登場人物として、カードのボタンを押す。体験用のイベントを作った本人だけ。
+
+        `inputs` は、出欠のカードの入力欄（最寄り駅・苦手な食べ物。SPEC 7.7）。「参加」を押した
+        ときだけ取り込む。駅は駅すぱあとで確かめた駅コード、食べ物は固定の語彙にして持ち、
+        原文は保存しない。取り込めなくても、出欠の回答は止めない。
+        """
         from src.services.slack_actions import CardError
 
         event = self._own(actor, event_id)
         # 実演用のイベントは、本人が Slack と銀行で操作する（Web からは押せない。SPEC 7.7）
         if not event.sandbox or event.ui_mode == "live" or self._personas is None:
             raise DashboardError("not_allowed", 403)
+        await self._take_preferences(event_id, card_id, index, inputs or {})
         try:
             await self._personas.press_card(event, card_id, index, actor.uid)
         except CardError as e:
@@ -248,6 +271,34 @@ class DashboardService:
         if card is None or card.resolved_text is None:
             raise DashboardError("action_rejected", 409)  # 本人でない・段階が違う、など
         return {"card_id": card_id, "resolved_text": card.resolved_text}
+
+    async def _take_preferences(
+        self, event_id: str, card_id: str, index: int, inputs: dict[str, str]
+    ) -> None:
+        card = self._store.get_card(event_id, card_id)
+        station = str(inputs.get("station") or "").strip()[:40]
+        dislikes = str(inputs.get("dislikes") or "").strip()[:200]
+        if (
+            self._prefs is None
+            or card is None
+            or card.kind != "consent"
+            or card.resolved_text is not None
+            or _button_action(card, index) != "consent"  # 「欠席する」では取り込まない
+            or not (station or dislikes)
+        ):
+            return
+        try:
+            await self._prefs.record_form(
+                event_id, card.user_id, station=station, dislikes=dislikes
+            )
+        except Exception:  # 原文はログに出さない
+            logger.warning("could not record the preferences: event=%s", event_id)
+            return
+        self._life.log(
+            event_id, "kuroko", "記録",
+            "参加者1名の最寄り駅・苦手な食べ物を受け取りました（駅コードと固定の語彙に変換。"
+            "原文は保存しません）",
+        )  # fmt: skip
 
     async def approve_bank_transfer(
         self, actor: Actor, event_id: str, user_id: str
@@ -383,9 +434,10 @@ class DashboardService:
             return {"event_id": event.event_id, "reply": answer.model_dump(mode="json")}
         # 返答は待たない（Hosting の応答は60秒で切られる。SPEC 7.5）。「考え中」を保存して返し、
         # 返答の生成は Cloud Tasks で行う
+        # 発言のすぐあとに並ぶよう、時刻を少しだけ後ろにする（同じ時刻だと、順が ID で決まる）
         pending = Message(
             message_id=_id("m"), event_id=event.event_id, role="kuroko", text="",
-            status=MessageStatus.PENDING, created_at=self._now(),
+            status=MessageStatus.PENDING, created_at=now + dt.timedelta(milliseconds=1),
         )  # fmt: skip
         self._store.save_message(pending)
         try:
@@ -410,14 +462,14 @@ class DashboardService:
         status, reply = MessageStatus.DONE, ""
         try:
             # いま開いているイベントを、コードが伝える（ID を聞き返さない。SPEC 7.5）
-            asked = with_context(text, event, "幹事")
+            asked = with_context(text, event, "幹事", web=True)
             reply = await self._chat(f"web:{event.event_id}:{uid}", asked)
         except Exception:  # Gateway のブロックも含む。理由・本文はログに出さない
             status, reply = MessageStatus.FAILED, FAILED_REPLY
         answer = Message(
             message_id=pending.message_id if pending else _id("m"), event_id=event.event_id,
             role="kuroko", text=reply[:2000], status=status,
-            created_at=pending.created_at if pending else self._now(),
+            created_at=pending.created_at if pending else now_after(self._now()),
         )  # fmt: skip
         self._store.save_message(answer)
         return answer
@@ -483,8 +535,9 @@ class DashboardService:
         # 規程の写し（文書から読み取り、コードが検証した値。SPEC 9.7）と、参加者を用意する
         reading = await self._policy.read() if self._policy else None
         event = self._life.prepare_event(
-            event, owner_email=actor.email, snapshot=reading.snapshot if reading else None
-        )
+            event, owner_email=actor.email, snapshot=reading.snapshot if reading else None,
+            honorees=clean["honorees"],
+        )  # fmt: skip
         self._store.save_event(event)
         self._life.log(event_id, "human", "確認", "幹事が計画を確定しました")
         if reading is not None:
@@ -494,6 +547,12 @@ class DashboardService:
                 else "規程の文書から読み取れなかったため、既定の値を使いました",
             )  # fmt: skip
         self._life.log(event_id, "kuroko", "送信", "参加者に出欠の依頼を送ります（Slack）")
+        self._life.say(
+            event_id,
+            f"「{clean['title']}」の計画を確定しました。参加者に、出欠・支払いの委任・"
+            "最寄り駅・苦手な食べ物の確認をお送りしました。回答がそろったら、全員の最寄り駅から"
+            "帰りやすいお店を探します（場所は、こちらで調べます）。",
+        )
         await self._dispatcher.start_rsvp(event_id)
         return {"event_id": event_id, "status": event.status.value}
 
@@ -599,6 +658,11 @@ class DashboardService:
             how = "手入力" if source == "manual" else "読み取り結果"
             self._life.log(event_id, "human", "確認", f"幹事が領収書の金額を確定しました（{how}）")
             self._life.log(event_id, "kuroko", "送信", "按分を計算し、承認者に承認を依頼します")
+            self._life.say(
+                event_id,
+                f"領収書の金額（{amount:,}円）を確定しました。会社の規程（負担の係数・会社の補助・"
+                "端数の扱い・承認者の決め方）を確認して、按分を計算します。",
+            )
             await self._dispatcher.start_split_approval(event_id)
             return {"confirmed": "receipt", "total_amount_yen": amount, "source": source}
         if event.status is not EventStatus.VENUE:
@@ -623,7 +687,28 @@ class DashboardService:
             self._life.notify(
                 event, NotificationKind.CONFIRM_NEEDED, "予算超過です。続行するか確認してください"
             )
+            self._life.say(
+                event_id,
+                f"コース単価（{venue['course_price_yen']:,}円）が、規程の上限（{limit:,}円）を"
+                "超えています。続行するか、下のカードで確認してください。",
+            )
+        else:
+            self._life.say(
+                event_id,
+                f"予約の内容を確定しました（{venue['venue_name']}・{venue['party_size']}名・"
+                f"コース {venue['course_price_yen']:,}円）。",
+            )
+            await self._send_notice(event_id)
         return {"confirmed": "reservation", "source": source, "over_budget": over}
+
+    async def _send_notice(self, event_id: str) -> None:
+        """予約が確定したら、参加者に開催の案内を届ける。届けられなくても、確定は成立している。"""
+        if self._personas is None:
+            return
+        try:
+            await self._personas.send_event_notice(event_id)
+        except Exception:
+            logger.exception("could not send the event notice: event=%s", event_id)
 
     async def confirm_budget_overrun(self, actor: Actor, event_id: str) -> dict[str, Any]:
         """予算超過の確認（幹事の側。SPEC 9.1）。承認者への最終確認は Slack で行う。"""
@@ -654,6 +739,11 @@ class DashboardService:
             raise DashboardError("invalid_state", 409)
         self._store.save_event(event.model_copy(update={"status": EventStatus.RECEIPT}))
         self._life.log(event_id, "human", "確認", "幹事が開催の終了を伝えました")
+        self._life.say(
+            event_id,
+            "お疲れさまでした。お店の領収書の写真を、このチャットに送ってください。"
+            "金額を読み取って、確認のカードをお出しします。",
+        )
         self._life.notify(
             event, NotificationKind.CONFIRM_NEEDED, "領収書をアップロードしてください"
         )
@@ -678,12 +768,48 @@ class DashboardService:
         event = self._own(actor, event_id)
         if event.status is not EventStatus.VENUE or self._venues is None:
             raise DashboardError("invalid_state", 409)
+        candidates = await self._search_venues(event)
+        return {"event_id": event_id, "venue_candidates": candidates}
+
+    async def run_venue_search(self, event_id: str) -> str:
+        """出欠が出そろったあと、Cloud Tasks から呼ばれて、店の候補を出す（SPEC 7.5）。
+
+        幹事が「店の候補を出す」を押すのを待たない。失敗は、イベントに残して、幹事の画面の
+        「もう一度探す」に任せる（例外は出さない。Cloud Tasks に再実行させない）。
+        """
+        event = self._store.get_event(event_id)
+        if event is None:
+            return "gone"
+        if event.status is not EventStatus.VENUE or event.venue_candidates or self._venues is None:
+            return "skipped"
+        try:
+            await self._search_venues(event)
+        except DashboardError as e:
+            return e.code
+        return "done"
+
+    async def _search_venues(self, event: Event) -> list[dict[str, Any]]:
+        """店を探して、候補をイベントに保存する。失敗は、イベントに理由を残して例外にする。"""
+        assert self._venues is not None
+        event_id = event.event_id
+        code, status = "", 409
         try:
             result = await self._venues.run(event_id)
+            if not result.ok:
+                code = f"venue_search_{result.reason or 'failed'}"
         except Exception:  # 外部 API（駅・地図）の失敗。本文・キーは出さない
-            raise DashboardError("venue_search_failed", 502) from None
-        if not result.ok:
-            raise DashboardError(f"venue_search_{result.reason or 'failed'}", 409)
+            code, status = "venue_search_failed", 502
+        event = self._store.get_event(event_id) or event  # 探しているあいだの変更を上書きしない
+        if code:
+            self._store.save_event(
+                event.model_copy(update={"venue_search": "failed", "venue_search_error": code})
+            )
+            self._life.say(
+                event_id,
+                "すみません、お店を見つけられませんでした。下のカードの「もう一度探す」を"
+                "押すか、候補に無いお店を名前で入れてください。",
+            )
+            raise DashboardError(code, status)
         candidates = [
             {
                 "place_id": c.place_id, "name": c.name, "address": c.address,
@@ -696,12 +822,25 @@ class DashboardService:
             }
             for c in result.proposals
         ]  # fmt: skip
-        self._store.save_event(event.model_copy(update={"venue_candidates": candidates}))
+        self._store.save_event(
+            event.model_copy(
+                update={
+                    "venue_candidates": candidates, "venue_search": "done",
+                    "venue_search_error": "",
+                }
+            )  # fmt: skip
+        )
         self._life.log(
             event_id, "kuroko", "ツール",
             f"店の候補を{len(candidates)}件出しました（帰りやすさ・希望・過去の実績から）",
         )  # fmt: skip
-        return {"event_id": event_id, "venue_candidates": candidates}
+        self._life.say(
+            event_id,
+            f"お店の候補を {len(candidates)}件見つけました。全員の最寄り駅からの帰りやすさ・"
+            "苦手な食べ物・過去の実績から、決まった手順で順位を付けています。"
+            "下のカードから1つ選んでください。",
+        )
+        return candidates
 
     def select_venue(self, actor: Actor, event_id: str, place_id: str, name: str) -> dict[str, Any]:
         event = self._own(actor, event_id)
@@ -718,6 +857,11 @@ class DashboardService:
             event.model_copy(update={"venue": venue, "status": EventStatus.VENUE})
         )
         self._life.log(event_id, "human", "確認", f"幹事が店を選びました（{name[:40]}）")
+        self._life.say(
+            event_id,
+            f"「{name}」ですね。お店への予約をお願いします（予約は、幹事さんがお店で行います）。"
+            "予約が済んだら、予約完了の画面（スクリーンショット）を、このチャットに送ってください。",
+        )
         return {"event_id": event_id, "venue": venue}
 
     # ------------------------------------------------------------ 通知
@@ -804,9 +948,22 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
         when = dt.datetime.fromisoformat(str(plan.get("datetime")))
     except ValueError:
         raise DashboardError("invalid_plan") from None
-    title, area = str(plan.get("title", "")).strip(), str(plan.get("area", "")).strip()
+    # エリアは聞かない（店は、参加者の最寄り駅からコードが探す。SPEC 7.5）。来たら残すだけ
+    title, area = str(plan.get("title", "")).strip(), str(plan.get("area") or "").strip()
     size, budget = plan.get("party_size"), plan.get("budget_per_person_yen")
-    if not title or len(title) > 60 or not area or len(area) > 40:
+    if not title or len(title) > 60 or len(area) > 40:
+        raise DashboardError("invalid_plan")
+    # 出欠の回答期限（任意。開催日より後にはできない）と、幹事が足す主役（名簿の user_id）
+    deadline = str(plan.get("rsvp_deadline") or "")
+    if deadline:
+        try:
+            due = dt.date.fromisoformat(deadline)
+        except ValueError:
+            raise DashboardError("invalid_plan") from None
+        if due > (when.astimezone(msg.JST) if when.tzinfo else when).date():
+            raise DashboardError("invalid_plan")
+    honorees = plan.get("guests_of_honor") or []
+    if not isinstance(honorees, list) or len(honorees) > 20:
         raise DashboardError("invalid_plan")
     if not _is_int(size) or not 2 <= size <= 50:
         raise DashboardError("invalid_plan")
@@ -815,10 +972,28 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
     tags = only_vocab(
         [t for t in plan.get("required_tags", []) if isinstance(t, str)], REQUEST_TAGS
     )
+    details: dict[str, Any] = {"party_size": size, "budget_per_person_yen": budget}
+    if area:
+        details["area"] = area
+    if deadline:
+        details["rsvp_deadline"] = deadline
     return {
-        "title": title, "datetime": when, "required_tags": tags,
-        "plan": {"area": area, "party_size": size, "budget_per_person_yen": budget},
+        "title": title, "datetime": when, "required_tags": tags, "plan": details,
+        "honorees": [h for h in honorees if isinstance(h, str)],
     }  # fmt: skip
+
+
+def now_after(now: dt.datetime) -> dt.datetime:
+    """発言のすぐあとに並ぶ時刻（同じ時刻だと、並びが ID で決まってしまう）。"""
+    return now + dt.timedelta(milliseconds=1)
+
+
+def _button_action(card, index: int) -> str:  # noqa: ANN001
+    """カードの `index` 番目のボタンの action_id（無ければ空）。"""
+    buttons = [
+        el for b in card.blocks if b.get("type") == "actions" for el in b.get("elements", [])
+    ]
+    return str(buttons[index].get("action_id", "")) if 0 <= index < len(buttons) else ""
 
 
 def validate_reservation(values: dict[str, Any]) -> dict[str, Any]:
@@ -852,10 +1027,20 @@ def _card_view(card) -> dict[str, Any]:  # noqa: ANN001
                     "label": str((el.get("text") or {}).get("text", "")),
                     "style": el.get("style") or "default",
                 })  # fmt: skip
+    # 出欠のカードには、最寄り駅・苦手な食べ物の入力欄を出す（SPEC 7.7）。値はデモ用の候補
+    fields = []
+    if card.kind == "consent" and not card.resolved_text:
+        demo = DEMO_ANSWERS.get(card.user_id, {})
+        fields = [
+            {"key": "station", "label": "最寄り駅", "value": demo.get("station", ""),
+             "placeholder": "例: 渋谷"},
+            {"key": "dislikes", "label": "苦手な食べ物・食べられないもの",
+             "value": demo.get("dislikes", ""), "placeholder": "例: えびが苦手（無ければ空）"},
+        ]  # fmt: skip
     return {
         "card_id": card.card_id, "kind": card.kind, "text": card.text, "sections": sections,
         "buttons": [] if card.resolved_text else buttons, "resolved_text": card.resolved_text,
-        "created_at": card.created_at.isoformat(),
+        "created_at": card.created_at.isoformat(), "fields": fields,
         # 体験用の「銀行で承認する」。画面は、銀行の承認ページを模した確認を挟む（SPEC 7.7）
         "bank": card.kind == "bank" and not card.resolved_text,
     }  # fmt: skip

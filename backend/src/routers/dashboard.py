@@ -58,8 +58,15 @@ class ConfirmIn(BaseModel):
     source: Literal["extracted", "manual"]
 
 
+class CardInputs(BaseModel):
+    # 出欠のカードの入力欄（SPEC 7.7）。原文は保存しない（駅コードと固定の語彙にして持つ）
+    station: str = Field(default="", max_length=40)
+    dislikes: str = Field(default="", max_length=200)
+
+
 class CardActionIn(BaseModel):
     index: int = Field(ge=0, le=10)  # カードの何番目のボタンか（値はサーバー側のカードから取る）
+    inputs: CardInputs | None = None
 
 
 class BankApprovalIn(BaseModel):
@@ -193,7 +200,8 @@ async def press_persona_card(
 ) -> dict[str, Any]:
     """登場人物として、カードのボタンを押す（体験用のイベントを作った本人だけ。SPEC 7.7）。"""
     try:
-        return await s.press_persona_card(actor, event_id, card_id, body.index)
+        inputs = body.inputs.model_dump() if body.inputs else None
+        return await s.press_persona_card(actor, event_id, card_id, body.index, inputs)
     except DashboardError as e:
         raise _raise(e) from None
 

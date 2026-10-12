@@ -1,0 +1,747 @@
+/* DM Board / DM Thread（DESIGN.md「DM Board」。SPEC 7.7）。値は globals.css のトークンだけを使う。
+   ページ全体は動かさず、3人ぶんのチャットの中だけをスクロールする（globals.css の data-chat-page） */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+  padding: var(--spacing-16) var(--gutter);
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-8) var(--spacing-16);
+}
+
+.title {
+  font-size: var(--text-subheading);
+  line-height: var(--leading-subheading);
+  font-weight: var(--font-weight-bold);
+  font-feature-settings: "palt";
+}
+
+.headMeta {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-steel-text);
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+.barButton {
+  min-height: calc(var(--spacing-32) + var(--spacing-4));
+  padding: 0 var(--spacing-16);
+  font-size: var(--text-body-sm);
+}
+
+.eventTab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  min-height: calc(var(--spacing-32) + var(--spacing-4));
+  padding: 0 var(--spacing-16);
+  background: var(--color-pure-white);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-buttons);
+  color: var(--color-ink-navy);
+  font-size: var(--text-body-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.eventTabActive {
+  border-color: var(--color-ink-navy);
+  background: var(--color-navy-tint);
+}
+
+.about {
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-slate-blue);
+}
+
+.about summary {
+  width: fit-content;
+  color: var(--color-navy-text);
+  cursor: pointer;
+}
+
+.about p {
+  margin-top: var(--spacing-8);
+}
+
+/* ---------- 3人ぶんの DM を並べる ---------- */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+  gap: var(--element-gap);
+}
+
+.dm {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-pure-white);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-cards);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+@media (min-width: 1101px) {
+  .page {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .columns {
+    flex: 1;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
+/* 狭い画面では縦に積み、各チャットの高さを画面の中に収める（中だけをスクロールする） */
+@media (max-width: 1100px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dm {
+    height: calc(100dvh - var(--header-height) - var(--spacing-32));
+    min-height: calc(var(--spacing-80) * 5);
+  }
+}
+
+.dmHead {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing-8) + var(--spacing-4));
+  padding: calc(var(--spacing-8) + var(--spacing-4)) var(--spacing-16);
+  border-bottom: var(--border-width) solid var(--color-hairline);
+}
+
+.dmWho {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.dmName {
+  font-size: var(--text-body);
+  line-height: var(--leading-body-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.dmNote {
+  padding: var(--spacing-8) var(--spacing-16);
+  background: var(--color-sun-soft);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.dmNoteIdle {
+  background: var(--color-cream-subtle);
+  color: var(--color-steel-text);
+}
+
+.dmFoot {
+  padding: var(--spacing-8) var(--spacing-16);
+  border-top: var(--border-width) solid var(--color-hairline);
+}
+
+/* ---------- 発言の流れ ---------- */
+.thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+  padding: var(--spacing-16);
+  background: var(--color-cream-subtle);
+}
+
+/* 発言は縮めない（収まらないぶんは、この中をスクロールする） */
+.thread > * {
+  flex-shrink: 0;
+}
+
+.day {
+  align-self: center;
+  padding: 0 calc(var(--spacing-8) + var(--spacing-4));
+  border-radius: var(--radius-full);
+  background: var(--color-pure-white);
+  border: var(--border-width) solid var(--color-hairline);
+  font-size: var(--text-caption);
+  line-height: var(--pill-height);
+  color: var(--color-steel-text);
+}
+
+/* 相手（KUROKO）の発言: 左にアイコン、上に名前と時刻 */
+.row {
+  display: grid;
+  grid-template-columns: var(--avatar-size-sm) minmax(0, 1fr);
+  gap: var(--spacing-8);
+  align-items: start;
+}
+
+.rowBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+
+.rowHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-8);
+}
+
+.name {
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-caption);
+  font-weight: var(--font-weight-bold);
+}
+
+.app {
+  padding: 0 var(--spacing-4);
+  border-radius: var(--radius-checkbox);
+  background: var(--color-navy-tint);
+  color: var(--color-navy-text);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  font-weight: var(--font-weight-medium);
+}
+
+.time {
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  color: var(--color-steel-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.avatar {
+  width: var(--avatar-size-sm);
+  height: var(--avatar-size-sm);
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  background: var(--color-navy-tint);
+  flex: none;
+}
+
+.avatarInitial {
+  display: grid;
+  place-items: center;
+  color: var(--color-navy-text);
+  font-size: var(--text-body-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.bubble {
+  max-width: 100%;
+  padding: calc(var(--spacing-8) + var(--spacing-4)) var(--spacing-16);
+  background: var(--color-pure-white);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-checkbox) var(--radius-cards) var(--radius-cards) var(--radius-cards);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 操作のカード（入力欄・ボタンを持つ発言）は、横幅いっぱいに取る */
+.card {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing-8) + var(--spacing-4));
+  white-space: normal;
+}
+
+.cardTitle {
+  font-size: var(--text-body);
+  line-height: var(--leading-body-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.cardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-8);
+}
+
+/* 自分の発言: 右に寄せる */
+.mine {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--spacing-4);
+}
+
+.bubbleMine {
+  max-width: 85%;
+  background: var(--color-ink-navy);
+  border-color: var(--color-ink-navy);
+  color: var(--color-cream-text);
+  border-radius: var(--radius-cards) var(--radius-checkbox) var(--radius-cards) var(--radius-cards);
+}
+
+.photo {
+  display: block;
+  max-width: min(100%, calc(var(--spacing-80) * 3));
+  max-height: calc(var(--spacing-80) * 4);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-cards) var(--radius-checkbox) var(--radius-cards) var(--radius-cards);
+  background: var(--color-pure-white);
+}
+
+.fileChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+.typing {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  color: var(--color-navy-text);
+}
+
+/* 処理の途中経過（按分の計算など）。済んだ行に印を付ける */
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-8);
+  color: var(--color-steel-text);
+}
+
+.stepNow {
+  color: var(--color-ink-navy);
+  font-weight: var(--font-weight-medium);
+}
+
+.stepDone {
+  color: var(--color-lagoon-text);
+}
+
+.stepMark {
+  flex: none;
+  width: var(--icon-size);
+  text-align: center;
+}
+
+/* ---------- 入力欄 ---------- */
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  padding: calc(var(--spacing-8) + var(--spacing-4)) var(--spacing-16);
+  border-top: var(--border-width) solid var(--color-hairline);
+  background: var(--color-pure-white);
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+}
+
+.suggestion {
+  max-width: 100%;
+  padding: var(--spacing-4) calc(var(--spacing-8) + var(--spacing-4));
+  background: var(--color-pure-white);
+  border: var(--border-width) solid var(--color-input-border);
+  border-radius: var(--radius-buttons);
+  color: var(--color-navy-text);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.suggestion:hover {
+  background: var(--color-navy-tint);
+}
+
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--spacing-8);
+}
+
+.attach {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--control-height);
+  height: var(--control-height);
+  background: var(--color-pure-white);
+  border: var(--border-width-input) solid var(--color-input-border);
+  border-radius: var(--radius-full);
+  color: var(--color-ink-navy);
+  cursor: pointer;
+}
+
+.attach:hover:not(:disabled) {
+  background: var(--color-cream-subtle);
+}
+
+.attach:disabled,
+.send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--control-height);
+  max-height: calc(var(--control-height) * 3);
+  padding: calc(var(--spacing-8) + var(--spacing-4) / 2) var(--spacing-16);
+  background: var(--color-pure-white);
+  border: var(--border-width-input) solid var(--color-input-border);
+  border-radius: var(--radius-cards);
+  color: var(--color-ink-navy);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  resize: none;
+}
+
+.textarea::placeholder {
+  color: var(--color-steel-text);
+}
+
+.textarea:focus {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.send {
+  flex: none;
+  min-height: var(--control-height);
+  padding: 0 var(--spacing-16);
+}
+
+/* ---------- カードの中身 ---------- */
+.form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(var(--spacing-8) + var(--spacing-4));
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 600px) {
+  .form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  min-width: 0;
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-slate-blue);
+}
+
+.field input {
+  width: 100%;
+  height: calc(var(--spacing-32) + var(--spacing-8));
+  padding: 0 calc(var(--spacing-8) + var(--spacing-4));
+  background: var(--color-pure-white);
+  border: var(--border-width-input) solid var(--color-input-border);
+  border-radius: var(--radius-smallelements);
+  color: var(--color-ink-navy);
+  font-size: var(--text-body-sm);
+  font-weight: var(--font-weight-regular);
+}
+
+.field input:focus {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.group legend {
+  padding: 0;
+  margin-bottom: var(--spacing-4);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-slate-blue);
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+}
+
+/* 選べる札（主役・満足度・はい／いいえ）。選んだものを墨紺にする */
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  min-height: calc(var(--spacing-32) + var(--spacing-4));
+  padding: 0 calc(var(--spacing-8) + var(--spacing-4));
+  background: var(--color-pure-white);
+  border: var(--border-width-input) solid var(--color-input-border);
+  border-radius: var(--radius-buttons);
+  font-size: var(--text-body-sm);
+  cursor: pointer;
+}
+
+.choice:has(input:checked) {
+  background: var(--color-navy-tint);
+  border-color: var(--color-ink-navy);
+  font-weight: var(--font-weight-medium);
+}
+
+.choice:has(input:disabled) {
+  cursor: default;
+}
+
+.choice:has(input:focus-visible) {
+  box-shadow: var(--shadow-focus);
+}
+
+.choice input {
+  accent-color: var(--color-ink-navy);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+.actions button,
+.actions a {
+  min-height: calc(var(--spacing-32) + var(--spacing-8));
+  padding: 0 var(--spacing-16);
+  font-size: var(--text-body-sm);
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--color-navy-text);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+}
+
+.venue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  padding: calc(var(--spacing-8) + var(--spacing-4));
+  background: var(--color-cream-subtle);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-smallelements);
+}
+
+.venueChosen {
+  background: var(--color-navy-tint);
+  border-color: var(--color-ink-navy);
+}
+
+.venueName {
+  font-weight: var(--font-weight-bold);
+}
+
+.meta {
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  color: var(--color-steel-text);
+}
+
+.memory {
+  color: var(--color-sun-text);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--spacing-4) var(--spacing-16);
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--color-steel-text);
+}
+
+.facts dd {
+  margin: 0;
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.splitRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--spacing-16);
+  align-items: baseline;
+  padding-bottom: var(--spacing-4);
+  border-bottom: var(--border-width) solid var(--color-hairline);
+}
+
+.yen {
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-8);
+}
+
+.statBox {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-8) calc(var(--spacing-8) + var(--spacing-4));
+  background: var(--color-cream-subtle);
+  border-radius: var(--radius-smallelements);
+}
+
+.statValue {
+  font-size: var(--text-heading-sm);
+  line-height: var(--leading-heading-sm);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.statUnit {
+  margin-left: var(--spacing-4);
+  font-size: var(--text-body-sm);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-steel-text);
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: calc(var(--spacing-80) + var(--spacing-16)) minmax(0, 1fr) auto;
+  gap: var(--spacing-8);
+  align-items: center;
+}
+
+.fact {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-8);
+  padding: var(--spacing-8) calc(var(--spacing-8) + var(--spacing-4));
+  background: var(--color-cream-subtle);
+  border-radius: var(--radius-smallelements);
+  cursor: pointer;
+}
+
+.fact input {
+  margin-top: var(--spacing-4);
+  accent-color: var(--color-ink-navy);
+}
+
+.done {
+  color: var(--color-lagoon-text);
+}
+
+/* デモの終わり（すべて完了）。ひと目で分かるように、帯で区切る */
+.finale {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-8);
+  padding: var(--spacing-24) var(--spacing-16);
+  background: var(--color-lagoon-soft);
+  border: var(--border-width) solid var(--color-lagoon-done);
+  border-radius: var(--radius-cards);
+  text-align: center;
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.finaleTitle {
+  font-size: var(--text-subheading);
+  line-height: var(--leading-subheading);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-lagoon-text);
+}
+
+.finaleMark {
+  display: grid;
+  place-items: center;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-full);
+  background: var(--color-lagoon-done);
+  color: var(--color-pure-white);
+  font-size: var(--text-heading-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.finaleList {
+  text-align: left;
+  list-style: disc;
+  padding-left: var(--spacing-24);
+}
+
+.bubble code {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono);
+}
+
+.inlineLink {
+  color: var(--color-navy-text);
+  text-decoration: underline;
+}

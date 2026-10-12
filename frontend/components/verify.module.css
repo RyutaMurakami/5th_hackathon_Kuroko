@@ -463,6 +463,14 @@ button.sampleLink {
   line-height: var(--leading-body-sm);
 }
 
+.hintCompact {
+  gap: var(--spacing-4);
+  padding: var(--spacing-8) var(--spacing-16);
+  border-radius: 0;
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+}
+
 .hintHead {
   display: flex;
   flex-wrap: wrap;

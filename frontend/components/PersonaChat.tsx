@@ -2,31 +2,11 @@
 
 // 登場人物（参加者・承認者）と KUROKO のチャット（SPEC 7.7）。Slack の DM に届くのと同じカードを出し、
 // 体験用のイベントでは、ここからもボタンを押せる（押した結果は、Slack で押したときと同じ処理を通る）。
-import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ApiPersona, ApiPersonaCard } from "@/lib/api-types";
-import { Avatar, Button, Caption, Pill } from "./ui";
-import event from "./event.module.css";
+import { ChatAvatar, KurokoRow, Mrkdwn, Thread, chatStyles as chat } from "./ChatThread";
+import { Button, Caption, Pill } from "./ui";
 import styles from "./verify.module.css";
-
-/** Slack の mrkdwn のうち、カードで使っているもの（太字・コード・改行）だけを描く */
-function Mrkdwn({ text }: { text: string }) {
-  return (
-    <>
-      {text.split("\n").map((line, i) => (
-        <Fragment key={i}>
-          {i > 0 && <br />}
-          {line.split(/(\*[^*]+\*|`[^`]+`)/g).map((part, j) => {
-            if (part.startsWith("*") && part.endsWith("*") && part.length > 2)
-              return <strong key={j}>{part.slice(1, -1)}</strong>;
-            if (part.startsWith("`") && part.endsWith("`") && part.length > 2)
-              return <code key={j}>{part.slice(1, -1)}</code>;
-            return <Fragment key={j}>{part}</Fragment>;
-          })}
-        </Fragment>
-      ))}
-    </>
-  );
-}
 
 const WAITING: Record<ApiPersonaCard["kind"], string> = {
   consent: "出欠と委任の回答待ち",
@@ -34,7 +14,10 @@ const WAITING: Record<ApiPersonaCard["kind"], string> = {
   budget: "予算超過の確認待ち",
   bank: "銀行での承認待ち",
   feedback: "振り返りの回答待ち",
+  notice: "お知らせ",
 };
+
+export type CardInputs = { station?: string; dislikes?: string };
 
 /**
  * 銀行の承認ページを模した画面（体験用。SPEC 7.7）。
@@ -138,8 +121,8 @@ export function PersonaChat({
   persona: ApiPersona;
   /** 列の見出しに添える役割（例: 参加者／承認者） */
   role: string;
-  /** カードのボタン。終わるまで待てる Promise を返す */
-  onPress?: (card: ApiPersonaCard, index: number) => Promise<unknown>;
+  /** カードのボタン。終わるまで待てる Promise を返す。`inputs` は、出欠のカードの入力欄 */
+  onPress?: (card: ApiPersonaCard, index: number, inputs?: CardInputs) => Promise<unknown>;
   /** 体験用の「銀行で承認する」。承認できたら true を返す */
   onApproveBank?: () => Promise<boolean>;
   /** 銀行の承認ページに出す金額（この人の支払い） */
@@ -149,58 +132,84 @@ export function PersonaChat({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [bankOpen, setBankOpen] = useState(false);
+  // 出欠のカードの入力欄（最寄り駅・苦手な食べ物）。はじめは、サーバーが出したデモ用の候補
+  const [typed, setTyped] = useState<Record<string, string>>({});
   const open = persona.cards.filter((c) => c.buttons.length > 0);
+  const valueOf = (card: ApiPersonaCard, key: string) =>
+    typed[`${card.card_id}:${key}`] ?? card.fields?.find((f) => f.key === key)?.value ?? "";
   const press = async (card: ApiPersonaCard, index: number) => {
     if (card.bank) {
       setBankOpen(true); // 銀行の承認ページを模した画面を挟む（そこで「承認する」を押す）
       return;
     }
-    setBusy(card.card_id);
+    setBusy(`${card.card_id}:${index}`);
     try {
-      await onPress?.(card, index);
+      const inputs = card.fields?.length
+        ? { station: valueOf(card, "station"), dislikes: valueOf(card, "dislikes") }
+        : undefined;
+      await onPress?.(card, index, inputs);
     } finally {
       setBusy(null);
     }
   };
   return (
-    <section className={styles.column} aria-label={`${persona.display_name} と KUROKO のチャット`}>
-      <header className={styles.columnHead}>
-        <Avatar name={persona.display_name} />
-        <div className={styles.columnWho}>
-          <span className={styles.columnName}>{persona.display_name}</span>
+    <section className={chat.dm} aria-label={`${persona.display_name} と KUROKO のチャット`}>
+      <header className={chat.dmHead}>
+        <ChatAvatar who={persona.user_id} name={persona.display_name} />
+        <div className={chat.dmWho}>
+          <span className={chat.dmName}>{persona.display_name}</span>
           <Caption>
-            {persona.job_title}・{role}
+            {persona.job_title}・{role}（KUROKO との DM）
           </Caption>
         </div>
         {open.length > 0 ? <Pill tone="sun">{WAITING[open[0].kind]}</Pill> : <Pill tone="navy">対応なし</Pill>}
       </header>
       {/* この人が次にすること（いつも出す） */}
-      <p className={`${styles.personaHint} ${open.length > 0 ? "" : styles.personaHintIdle}`}>
+      <p className={`${chat.dmNote} ${open.length > 0 ? "" : chat.dmNoteIdle}`}>
         {open.length === 0
           ? "いまは、対応することはありません。KUROKO から依頼が届くと、ここに出ます。"
           : readOnly
             ? `次にすること：${persona.display_name} が、${open[0].kind === "bank" ? "銀行（sunabar のサービスサイト）" : "Slack の DM "}で対応します（${WAITING[open[0].kind]}）。`
             : `次にすること：下のカードのボタンを押します（${WAITING[open[0].kind]}）。`}
       </p>
-      <div className={styles.columnBody} aria-live="polite">
-        <div className={`${event.message} ${event.fromKuroko} ${styles.personaCard}`}>
-          <span className="visually-hidden">KUROKO：</span>
-          <p className={styles.personaText}>
-            {persona.display_name} さん、KUROKO です。飲み会の出欠・支払いの委任・承認などのお願いを、ここ（Slack の DM
-            と同じ内容）にお送りします。
-          </p>
-          <span className={event.messageMeta}>KUROKO</span>
-        </div>
+      <Thread
+        label={`${persona.display_name} に届いたメッセージ`}
+        follow={persona.cards.map((c) => `${c.card_id}:${c.resolved_text ? 1 : 0}`).join(",")}
+      >
+        <KurokoRow>
+          {persona.display_name} さん、KUROKO です。飲み会の出欠・支払いの委任・承認などのお願いを、ここ（Slack の DM
+          と同じ内容）にお送りします。
+        </KurokoRow>
         {persona.cards.map((card) => (
-          <div key={card.card_id} className={`${event.message} ${event.fromKuroko} ${styles.personaCard}`}>
-            <span className="visually-hidden">KUROKO：</span>
+          <KurokoRow key={card.card_id} at={card.created_at || null} card>
             {card.sections.map((s, i) => (
               <p key={i} className={styles.personaText}>
                 <Mrkdwn text={s} />
               </p>
             ))}
+            {!readOnly && card.fields && card.fields.length > 0 && (
+              <div className={chat.form}>
+                <span className={`${chat.wide} ${chat.cardTitle}`}>お店選びのために、教えてください</span>
+                {card.fields.map((f) => (
+                  <label key={f.key} className={`${chat.field} ${chat.wide}`}>
+                    {f.label}
+                    <input
+                      type="text"
+                      value={valueOf(card, f.key)}
+                      placeholder={f.placeholder}
+                      maxLength={f.key === "station" ? 40 : 200}
+                      onChange={(e) => setTyped((p) => ({ ...p, [`${card.card_id}:${f.key}`]: e.target.value }))}
+                    />
+                  </label>
+                ))}
+                <Caption className={chat.wide}>
+                  全員が帰りやすく、食べられるお店を探すのに使います。駅は駅コード、食べ物は決まった語彙に変換して
+                  持ち、書いた文そのものは保存しません（開催の完了後に削除します）。
+                </Caption>
+              </div>
+            )}
             {card.buttons.length > 0 && !readOnly && (
-              <div className={styles.formActions}>
+              <div className={chat.actions}>
                 {card.buttons.map((b) => (
                   <Button
                     key={b.index}
@@ -208,7 +217,7 @@ export function PersonaChat({
                     disabled={busy !== null || (!onPress && !card.bank) || (card.bank && !onApproveBank)}
                     onClick={() => void press(card, b.index)}
                   >
-                    {busy === card.card_id ? "送信中…" : b.label}
+                    {busy === `${card.card_id}:${b.index}` ? "送信中…" : b.label}
                   </Button>
                 ))}
               </div>
@@ -218,15 +227,16 @@ export function PersonaChat({
                 <Pill tone="lagoon">{card.kind === "bank" ? "完了" : "回答済み"}</Pill> {card.resolved_text}
               </p>
             )}
-            <span className={event.messageMeta}>KUROKO</span>
-          </div>
+          </KurokoRow>
         ))}
+      </Thread>
+      <div className={chat.dmFoot}>
+        <Caption>
+          {readOnly
+            ? "実演用の画面です。Slack に届いたカードを映しています。操作は、本人が Slack と銀行で行います。"
+            : "Slack の DM にも同じカードが届きます。どちらで押しても、同じ処理になります。"}
+        </Caption>
       </div>
-      <Caption>
-        {readOnly
-          ? "実演用の画面です。Slack に届いたカードを映しています。操作は、本人が Slack と銀行で行います。"
-          : "Slack にも同じカードが届きます。どちらで押しても、同じ処理になります。"}
-      </Caption>
       {bankOpen && onApproveBank && (
         <BankApprovalDialog
           payer={persona.display_name}

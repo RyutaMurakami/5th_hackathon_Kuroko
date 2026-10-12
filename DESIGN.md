@@ -273,6 +273,19 @@ Standard Card。上に Eyebrow Label（「予約内容の確認」「領収書�
 
 **イベント詳細では KUROKO Panel（右から開くパネル）の中**、新規の依頼の画面（`/`）では中央の Standard Card。上から、①**メッセージの並び**（幹事の発言は右寄せ・背景 `--color-navy-tint`、KUROKOの発言は左寄せ・背景 `--color-pure-white` と 1px `--color-hairline`。角丸 20px、`body`）②**入力欄**（Text Input の複数行版。送信は Primary Pill Button「送る」。**Enter で改行、Ctrl/⌘+Enter で送信**）。KUROKOが処理中のときは、その発言の位置に Activity Timeline の小さい版を出す。**KUROKOが提案した内容（イベントの計画・店舗候補）は、チャットの中に Confirmation Card として出す**（確認は、文章の返事ではなくボタンで）。空のときは、入力例（「来週金曜、チーム8人で軽く飲みに行きたい」）を `--color-steel-text` で出す。`aria-live="polite"` で新しい発言を読み上げる。**動き**: 送ると自分の発言が下から入り、KUROKOの返事は「考えています…」の3点のドット（Navy）のあと、**文字が順に流れて出る**（1秒あたり約60文字。流れ終わるまで読み上げは待つ。`prefers-reduced-motion` では一度に出す）。返事の間、Activity Timeline に作業の項目が1件ずつ追加される
 
+### DM Board（3人ぶんの KUROKO との DM。SPEC 7.7）
+**Role:** 体験用・実演用の画面（`/verify`・`/demo`）で、幹事・参加者・承認者の3人ぶんのチャットを、DM のように並べて見せる。
+
+**ページ全体は動かさず、各 DM の発言の流れだけをスクロールする**（画面の高さを、App Header・見出し・3つの DM で分け合う。`body` に `data-chat-page` の画面があるときだけ。1100px 以下では縦に積み、各 DM の高さを画面の中に収める）。1つの DM は、Standard Card と同じ面（`--color-pure-white`・1px `--color-hairline`・角丸 20px）で、上から ①**見出し**（アイコン 40px・名前 `body` 700・役割の caption・Status Pill）②**次にすることの帯**（`--color-sun-soft`。対応が無いときは `--color-cream-subtle`）③**発言の流れ**（背景 `--color-cream-subtle`。ここだけスクロール）④**入力欄**（幹事の DM だけ）。
+
+- **KUROKO の発言**: 左に KUROKO のアイコン（40px の円。`public/avatars/kuroko.png`）、上に「KUROKO」（`body-sm` 700）・「アプリ」の印（`--color-navy-tint`）・時刻（caption・tabular-nums）。吹き出しは `--color-pure-white`・1px `--color-hairline`、角丸は左上だけ 6px・ほかは 20px。**入力欄・ボタンを持つ発言（操作のカード）は、横幅いっぱい**に取り、見出し（`body` 700）・本文（`body-sm`）・入力欄（高さ 40px）・ボタン（高さ 40px の Pill）を縦に並べる
+- **自分の発言**: 右寄せ。吹き出しは `--color-ink-navy`・文字 `--color-cream-text`、角丸は右上だけ 6px。**送った画像**は、右寄せで最大 240×320px・角丸は同じ。読み直して画像が手元に無いときは、ファイルの印と「領収書の画像」の文字を出す
+- **処理中**: KUROKO の発言の位置に、3つの点（Chat Panel と同じ）と「KUROKO が考えています…」「画像を読み取っています…」「お店を探しています…」を出し、3秒を過ぎたら経過の秒数を添える。**按分の計算中**は、確認していることを4行で出し、済んだ行を `--color-lagoon-text` と「✓」にする
+- **入力欄**: 左に画像を送る丸ボタン（44px。送れない段階では薄くして押せなくする）、中央に1行から伸びる入力欄（角丸 20px）、右に Primary Pill Button「送る」。上に、入力の候補（Chat Panel と同じ札）。**Enter で改行、Ctrl/⌘+Enter で送信**。画像の貼り付けは、画像の送信として扱う
+- **選べる札**（主役・はい／いいえ）: 高さ 36px の Pill。選んだものは `--color-navy-tint` と 1.5px `--color-ink-navy`
+- **デモの終わり**: `--color-lagoon-soft` の面に 1px `--color-lagoon-done`、56px の円に「✓」、`subheading` の見出し、済んだことの箇条書き、Primary Pill Button「最初からやり直す」
+- 待たせる操作のボタンは、押してから終わるまで押せなくして、文字を「送信中…」にする
+
 ### Upload Dropzone（アップロード・貼り付け）
 **Role:** 予約画面・領収書の入力（SPEC 7.5）。**Confirmation Card の一部として使う。**
 
