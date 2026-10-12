@@ -108,3 +108,11 @@ export const confirmBudgetOverrun = (eventId: string) =>
   call("POST", `events/${eventId}/confirm-budget-overrun`);
 
 export const markHeld = (eventId: string) => call("POST", `events/${eventId}/mark-held`);
+
+/** 登場人物として、カードのボタンを押す（体験用のイベントだけ。値はサーバーのカードから取られる） */
+export const pressPersonaCard = (eventId: string, cardId: string, index: number) =>
+  call("POST", `events/${eventId}/persona-cards/${cardId}/actions`, { index });
+
+/** 体験用の「銀行で承認する」（本物の銀行の振込には効かない） */
+export const approveBank = (eventId: string, userId: string) =>
+  call("POST", `events/${eventId}/bank-approvals`, { user_id: userId });

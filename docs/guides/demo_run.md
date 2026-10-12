@@ -42,6 +42,12 @@ Web の `/verify` で進める。**次にやることは、画面の「シナリ
 - 銀行で承認する人を1人に減らすときは、Terraform の `demo_live_payer_labels` を `acct02` だけにする（SPEC 8.10）
 - ログの見方: `gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name=("kuroko-api" OR "payment-api" OR "bank-adapter")' --project=kuroko-509311 --freshness=30m`
 
+### 審査員と同じ流れ（Slack・銀行を使わない）
+
+`/verify` には、幹事・くらお・花子の3人ぶんのチャットが並ぶ（SPEC 7.7）。手順2・5・6 を、**くらお・花子の列のカードのボタン**で行える（Slack と同じカード。どちらで押してもよい）。手順6 は、カードの「銀行で承認する（体験用）」を押す（sunabar には送られない）。
+
+**本物の sunabar で承認する（動画用）**には、Firestore の `config/demo` に `live_bank_emails: ["<ログインする Google アカウントのメール>"]` を入れてから、そのアカウントでイベントを作る。入れていないアカウントのイベントは、すべて体験用のボタンになる。
+
 ### スクリプトで一部だけ動かす（開発用）
 
 `backend/scripts/seed_demo_event.py`（イベントを直接作る）と `scripts/run_step.py`（`rsvp`・`approval`・`checkouts`・`collections` を、sa-api の身元で Cloud Tasks に積む）は残してある。スクリプトで作るイベントは体験用（`sandbox`）ではないので、**デモ用の代行は働かない**（Slack の対応表に入れた人だけが回答できる）。

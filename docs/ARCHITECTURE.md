@@ -386,6 +386,8 @@ sequenceDiagram
 - **デモでの振込の代行（2026-10-11。SPEC 8.10）**: 環境変数 `DEMO_LIVE_PAYER_LABELS`（口座ラベル。Terraform の `demo_live_payer_labels`、既定 `acct02,acct03` = 赤坂 くらお・赤くら 花子）に入れた振込元だけを sunabar に通し、**それ以外の人の振込は銀行を呼ばずに「承認済み」として記録する**（`clients/demo_bank.py`。記録は `bank` の `simulated_transfers`。受付番号は `SIM` で始まり、応答に `simulated: true`）。明細は実機ぶんと代行ぶんを合わせて返すので、`payment-api`・`kuroko-api` の確認のコードは変わらない。空にすると全員が実機。
 - 疎通が取れない場合の代替は 13章 V10。
 
+- **体験用の「承認待ち」の代行（2026-10-12。SPEC 7.7）**: `POST /transfers` の `demo_hold`（`payment-api` が、体験用のイベントのときに付ける）で、実機に通すはずの人の振込も、銀行を呼ばずに**承認待ち**として持つ（`DemoBank.create_held`）。`POST /transfers/{id}/demo-approval`（**`sa-api` だけ**）で承認済みになり、はじめて明細に載る。本物の銀行の振込・自動の代行の振込には効かない（409）。期限（10分）では失効させない。
+
 ### 4.5 kuroko-dashboard
 
 - Next.js（App Router）。Cloud Run 上で SSR し、**Firestore・BigQuery・Cloud Storage には直接つながず**、`kuroko-api` の `/api/dashboard/*` だけを呼ぶ（D2）。データ取得と実名の再識別を1か所に集約するため。
@@ -404,6 +406,13 @@ sequenceDiagram
 - Hosting経由でCookieを使う場合は、Cloud Runに転送されるのが `__session` だけである点に注意する。
 - `NEXT_PUBLIC_` の変数には公開してよい値だけを入れる。`kuroko-api` への呼び出しに使うIDトークンとユーザーのトークンはサーバー側（Route Handler・Server Component）だけで扱う（`.agents/rules/frontend.md`）。
 - **送金は sunabar（銀行APIのサンドボックス）を通じて実行する**（SPEC 8.8）。送金の一覧には常に「sunabar（銀行API）経由で実行。サンドボックス環境のため資金は仮想です」を表示する（「送金していない」と読める文言にしない）。
+
+**Web のチャット画面（3人ぶん。2026-10-12。SPEC 7.7）**: `/verify` に、幹事・赤坂 くらお・赤くら 花子の「KUROKO とのチャット」を横に並べる（`components/PersonaChat.tsx`）。くらお・花子の列は、`kuroko-api` が保存したカード（`events/{id}/cards`。Slack に送った Block Kit と同じもの）と、支払いの状態から作る銀行のカードを出す。
+
+- `GET /api/dashboard/events/{id}` の `personas`（体験用のイベントだけ。ボタンは見出しだけを返し、値は返さない）
+- `POST /api/dashboard/events/{id}/persona-cards/{card_id}/actions`（何番目のボタンか、だけを受ける）→ `SlackActions.press_card` が、**保存したカードの値**から Slack の操作と同じ形を作り、同じ処理（`handle`）に渡す。だれとして押したか（`acting_for`）と押した人（`web_uid`）は、**`kuroko-api` の中でだけ**入れる（ゲートウェイから届いた値は捨てる）。有効なのは、体験用のイベントで、押した人がイベントを作った本人で、相手がデモの登場人物（`demo_persona`）のときだけ
+- 委任の同意は、`sa-demo-runner` の経路で `payment-api` の `POST /mandates` に署名を依頼する。按分の承認は `approved_via = web_demo` と UID を残し、Policy Gate 6.2 が体験用のイベントだけで通す
+- `POST /api/dashboard/events/{id}/bank-approvals` → `bank-adapter` の `demo-approval`（`event.bank_approval == "web"` のときだけ。実演用のアカウント（`config/demo` の `live_bank_emails`）のイベントは、本物の sunabar）
 
 ### 4.6 データストア
 

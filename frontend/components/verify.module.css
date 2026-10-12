@@ -143,3 +143,97 @@
   line-height: var(--leading-caption);
   color: var(--color-steel-text);
 }
+
+/* 3人ぶんのチャットを並べる（SPEC 7.7）。狭い画面では縦に積む */
+.eventBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+.eventBar .eventButton {
+  width: auto;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--spacing-8);
+}
+
+main.wide {
+  max-width: none;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+  gap: var(--element-gap);
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--element-gap);
+  min-width: 0;
+  padding: var(--spacing-16);
+  background: var(--color-cream-subtle);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-cards);
+}
+
+.columnHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+}
+
+.columnWho {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.columnName {
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  font-weight: var(--font-weight-bold);
+}
+
+.columnBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+}
+
+.personaCard {
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.personaText {
+  margin: 0;
+}
+
+.personaText code {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono);
+}
+
+.personaDone {
+  margin: 0;
+  color: var(--color-lagoon-text);
+}

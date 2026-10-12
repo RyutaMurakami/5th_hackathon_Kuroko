@@ -44,7 +44,7 @@ export function StartView() {
               <h1 className={styles.pageTitle}>飲み会の幹事を、KUROKOに。</h1>
               <p>
                 チャットで依頼すると、KUROKOが会社の規程に沿って、出欠・お店・按分・送金・振り返りまでを進めます。
-                お金の権限に触れる操作（委任・承認）は、本人が Slack で行います。
+                お金の権限に触れる操作（委任・承認）は、本人が Slack で行います（体験用の画面では、参加者・承認者のぶんも、この場で押して試せます）。
               </p>
               <div className={styles.actions}>
                 <Button
