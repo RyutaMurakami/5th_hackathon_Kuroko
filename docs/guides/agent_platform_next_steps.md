@@ -203,7 +203,7 @@ AI に返すもの: なし（名前が決まっている）。
 - [x] **4-3. 一覧に出て、ツールが 3 つあること**
   - ⌨ `gcloud agent-registry mcp-servers list --location=us-central1 --project=kuroko-509311`
 
-**確認すること**: ツール名が `check_budget`・`get_event_summary`・`search_venues`・`retrieve_policy` の **4 つだけ**であること（2026-10-12 に `retrieve_policy` を足した。登録が3つのままなら、`backend/mcp_toolspec.json` の中身を貼り直す。実行時のツールの一覧は、エージェントが `kuroko-api` に直接たずねるので、登録が古くても動く）。**`calculate_amounts`・`choose_approver`・`choose_payee`・`sign_mandates` などが無いこと**（お金・承認・署名に当たるツールは公開していない設計。あれば登録を止めて AI に連絡）。
+**確認すること**: ツール名が `check_budget`・`get_event_summary`・`search_venues`・`retrieve_policy` の **4 つだけ**であること（2026-10-12 に `retrieve_policy` を足した。Registry の登録は、2026-10-12 に API で4つに更新済み。ツールを足したときは、`backend/mcp_toolspec.json` の内容を `agentregistry.googleapis.com/v1/…/services/<ID>` の `mcpServerSpec` に PATCH する（Console の編集では貼れなかった）。実行時のツールの一覧は、エージェントが `kuroko-api` に直接たずねるので、登録が古くても動く）。**`calculate_amounts`・`choose_approver`・`choose_payee`・`sign_mandates` などが無いこと**（お金・承認・署名に当たるツールは公開していない設計。あれば登録を止めて AI に連絡）。
 
 **AI に返すもの**: 登録した MCP サーバーのリソース名
 

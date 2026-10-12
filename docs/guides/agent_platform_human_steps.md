@@ -74,7 +74,7 @@ Gateway・Registry の設定（下の 1〜6）を待たず、`kuroko-agent` だ�
 ## 4. Agent Registry に MCP を登録する（🖱 Console。**待ち: AI が `kuroko-api` の `/mcp` をデプロイしてから**）
 
 - [x] **4-1. `kuroko-api-mcp` を登録する**（2026-10-10 完了） — [H11 手順書](h11_agent_platform_lab.md) の 4-2
-  - AI からもらうもの: `/mcp` の URL（`https://kuroko-api-…run.app/mcp`。末尾の `/` は有っても無くてもよい）と、**`backend/mcp_toolspec.json`**（ツールは `get_event_summary`・`check_budget`・`search_venues`・`retrieve_policy` の4つ。2026-10-12 に `retrieve_policy` を足して再生成済み。**Registry の登録は、2026-10-10 の3つのまま**なので、Console の「編集」で貼り直す）
+  - AI からもらうもの: `/mcp` の URL（`https://kuroko-api-…run.app/mcp`。末尾の `/` は有っても無くてもよい）と、**`backend/mcp_toolspec.json`**（ツールは `get_event_summary`・`check_budget`・`search_venues`・`retrieve_policy` の4つ。2026-10-12 に `retrieve_policy` を足して再生成済み。Registry の登録も、同日に AI が API（`services` の `mcpServerSpec`）で4つに更新した。Console の「編集」では、JSON を貼り直せなかった）
   - AI に返すもの: **登録したリソース名**（`.../mcpServers/...`）
   - ツールが増えたら、AI が新しい `toolspec.json` を渡すので更新する
   - **学ぶこと**: 「エージェントが話しかけてよい相手の名簿」。非公開の MCP を toolspec で登録する理由
