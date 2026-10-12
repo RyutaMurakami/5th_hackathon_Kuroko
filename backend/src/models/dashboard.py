@@ -113,7 +113,7 @@ class PersonaCard(BaseModel):
     card_id: str
     event_id: str
     user_id: str  # 宛先の参加者
-    kind: Literal["consent", "approval", "budget"]
+    kind: Literal["consent", "approval", "budget", "bank", "feedback"]
     text: str
     blocks: list[dict]  # Slack に送ったものと同じ Block Kit（ボタンの値も、ここから取る）
     resolved_text: str | None = None  # 回答済みなら、その結果の文面

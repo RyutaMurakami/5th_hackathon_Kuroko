@@ -8,19 +8,19 @@
 
 import json
 import logging
-import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from src.db.events import ApprovedSplitIsFinal, EventStore
 from src.db.mandates import MandateReader
-from src.models.dashboard import NotificationKind, PersonaCard
+from src.models.dashboard import NotificationKind
 from src.models.event import Event, EventStatus, Participant, ParticipantRole, RsvpStatus
 from src.models.slack import Action, SlackHomeOpened, SlackInteraction
 from src.models.split import Approval, ApprovalStatus
 from src.services import slack_messages as msg
 from src.services.approver import determine_approver
+from src.services.cards import close_cards, deliver_card
 from src.services.members import SplitInputError, classify_member
 from src.services.policy_gates import load_and_check_before_split
 from src.services.slack_port import SlackPort
@@ -38,8 +38,12 @@ DEMO_RUNNER = "demo-runner"  # 代行で署名した委任状の `signed_via`（
 
 Enqueue = Callable[[str, dict, str], Awaitable[None]]  # (path, payload, task_id)
 
-# Web のカードから押せる操作（SPEC 7.7）。取り消し・振り返りは Slack だけ
-WEB_ACTIONS = {Action.CONSENT, Action.DECLINE, Action.APPROVE, Action.BUDGET}
+BankApprove = Callable[[str, str], Awaitable[bool]]  # (event_id, user_id) → 承認できたか
+
+# Web のカードから押せる操作（SPEC 7.7）。取り消しは Slack だけ
+WEB_ACTIONS = {
+    Action.CONSENT, Action.DECLINE, Action.APPROVE, Action.BUDGET, Action.RATE, Action.BANK,
+}  # fmt: skip
 
 
 class CardError(Exception):
@@ -58,8 +62,11 @@ class SlackActions:
         retro: "Retrospectives | None" = None,
         lifecycle: "Lifecycle | None" = None,
         proxy_sign: Enqueue | None = None,
+        bank_approve: BankApprove | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
+        # 体験用の「銀行で承認する」（体験用の承認待ちの振込だけに効く。SPEC 7.7）
+        self._bank_approve = bank_approve
         # デモ用の代行（SPEC 7.6）: Slack のアカウントを持たない参加者の、委任状の署名の依頼先
         self._proxy_sign = proxy_sign
         self._retro = retro
@@ -76,6 +83,7 @@ class SlackActions:
             Action.APPROVE: self._approve,
             Action.BUDGET: self._budget,
             Action.RATE: self._rate,
+            Action.BANK: self._bank,
         }[i.action]
         await handler(i)
 
@@ -91,9 +99,7 @@ class SlackActions:
         await self._reply(i, text)
 
     def _close_cards(self, event_id: str, kind: str, user_id: str, text: str) -> None:
-        for card in self._store.list_cards(event_id):
-            if card.kind == kind and card.user_id == user_id and card.resolved_text is None:
-                self._store.save_card(card.model_copy(update={"resolved_text": text}))
+        close_cards(self._store, event_id, kind, user_id, text)
 
     def _acts_as(self, i: SlackInteraction, event: Event, person: Participant | None) -> bool:
         """この操作を、記録上の本人のものとして扱ってよいか。
@@ -117,23 +123,9 @@ class SlackActions:
         self, event: Event, person: Participant, kind: str, text: str, blocks: list[dict]
     ) -> bool:
         """カードを届ける。Slack の DM と、体験用のイベントでは Web のチャット画面にも。"""
-        delivered = False
-        if event.sandbox and person.demo_persona:
-            # 作り直したカード（按分のやり直しなど）は、古いほうを閉じる
-            replaced = "新しい依頼に置き換わりました。"
-            self._close_cards(event.event_id, kind, person.user_id, replaced)
-            self._store.save_card(
-                PersonaCard(
-                    card_id=f"cd_{uuid.uuid4().hex[:16]}", event_id=event.event_id,
-                    user_id=person.user_id, kind=kind, text=text, blocks=blocks,  # type: ignore[arg-type]
-                    created_at=self._now(),
-                )
-            )  # fmt: skip
-            delivered = True
-        if person.slack_user_id:
-            await self._slack.post_dm(person.slack_user_id, text, blocks)
-            delivered = True
-        return delivered
+        return await deliver_card(
+            self._store, self._slack, event, person, kind, text, blocks, self._now()
+        )
 
     # ------------------------------------------------------------------ Web のカード（SPEC 7.7）
     async def press_card(self, event: Event, card_id: str, index: int, web_uid: str) -> None:
@@ -296,8 +288,14 @@ class SlackActions:
             rating = int(i.value["r"])
         except (KeyError, TypeError, ValueError):
             return await self._reply(i, "この操作はできません。")
+        web = i.acting_for is not None
+        if web:
+            # Web: 体験用のイベントを作った本人が、デモの登場人物として押した（SPEC 7.7）
+            found = self._event_and_person(i)
+            if found is None or not self._acts_as(i, *found):
+                return await self._reply(i, "この操作はできません。")
         result = self._retro.record_rating(
-            str(i.value.get("e", "")), str(i.value.get("u", "")), i.user_id, rating
+            str(i.value.get("e", "")), str(i.value.get("u", "")), i.user_id, rating, via_web=web
         )
         await self._reply(
             i,
@@ -307,6 +305,76 @@ class SlackActions:
                 "closed": "この振り返りは、すでに締め切りました。",
             }.get(result, "この操作はできません。"),
         )
+
+    # ------------------------------------------------------------------ 銀行での承認（体験用）
+    async def send_bank_requests(self, event_id: str, outcomes: dict[str, str]) -> dict[str, Any]:
+        """体験用のイベントで、登場人物に「銀行で承認してください」を届ける（SPEC 7.7）。
+
+        本物の銀行（sunabar）で承認するイベントでは、`payment-api` が DM を送るので、何もしない。
+        """
+        event = self._store.get_event(event_id)
+        if event is None or not event.sandbox or event.bank_approval != "web":
+            return {"sent": []}
+        split = self._store.get_split(event_id)
+        shares = {r.user_id: r.share_yen for r in split.rows} if split else {}
+        sent = []
+        # 再送（Cloud Tasks のやり直し）で、同じ依頼を二重に届けない
+        asked = {
+            c.user_id
+            for c in self._store.list_cards(event_id)
+            if c.kind == "bank" and c.resolved_text is None
+        }
+        for p in self._store.list_participants(event_id):
+            if (
+                not p.demo_persona
+                or outcomes.get(p.user_id) != "awaiting_bank_approval"
+                or p.user_id not in shares
+                or p.user_id in asked
+            ):
+                continue
+            text, blocks = msg.bank_request(
+                event, p, amount_yen=shares[p.user_id], slack_user_id=p.slack_user_id or ""
+            )
+            await self._deliver(event, p, "bank", text, blocks)
+            sent.append(p.user_id)
+        return {"sent": sent}
+
+    async def approve_bank(self, event: Event, person: Participant) -> bool:
+        """体験用の承認待ちの振込を、承認済みにする。Slack のボタンと Web の画面の両方が通る。
+
+        呼び出し側が、本人（または、体験用のイベントを作った本人）の操作であることを確かめてから呼ぶ。
+        支払いを完了にするのは、これまでどおり、明細での確認（payment-api・kuroko-api）。
+        """
+        if (
+            not event.sandbox
+            or event.bank_approval != "web"
+            or not person.demo_persona
+            or self._bank_approve is None
+        ):
+            return False
+        if not await self._bank_approve(event.event_id, person.user_id):
+            return False
+        self._close_cards(
+            event.event_id, "bank", person.user_id,
+            "銀行で振込を承認しました（体験用）。入金の確認に進みます。",
+        )  # fmt: skip
+        if self._life:
+            self._life.log(
+                event.event_id, "human", "確認",
+                f"{person.display_name} が銀行で振込を承認しました（体験用）",
+            )  # fmt: skip
+        return True
+
+    async def _bank(self, i: SlackInteraction) -> None:
+        found = self._event_and_person(i)
+        if found is None or not self._acts_as(i, *found):
+            return await self._reply(i, "この操作はできません。")
+        event, person = found
+        if not await self.approve_bank(event, person):
+            return await self._reply(
+                i, "承認できる振込がありません（すでに承認済みか、体験用の振込ではありません）。"
+            )
+        await self._reply(i, "銀行で振込を承認しました（体験用）。1〜2分で、入金の確認に進みます。")
 
     async def _budget(self, i: SlackInteraction) -> None:
         event = self._store.get_event(str(i.value.get("e", "")))

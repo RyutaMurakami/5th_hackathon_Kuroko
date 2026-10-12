@@ -18,7 +18,9 @@ def _hint(step: int, where: str, who: str, title: str, do: str, example: Any = N
     }  # fmt: skip
 
 
-def hint_for(event: Event, people: list[Participant], *, has_receipt: bool) -> dict[str, Any]:
+def hint_for(
+    event: Event, people: list[Participant], *, has_receipt: bool, retro_ready: bool = False
+) -> dict[str, Any]:
     s = event.status
     if s is EventStatus.PLANNING:
         return _hint(
@@ -46,11 +48,12 @@ def hint_for(event: Event, people: list[Participant], *, has_receipt: bool) -> d
         return _hint(
             3, "web", "幹事", "店を選び、予約の内容を確定する",
             "チャットで「お店を探して」と頼むと、帰りやすさと希望から候補が出ます。選んだら「この店にする」を押し、"
-            "店で予約したあと、予約の内容を確定します。コース単価が規程の上限を超えると、"
+            "店で予約したあと、予約画面（サンプルをダウンロードできます）をアップロードして、読み取った"
+            "内容を確かめて確定します（手入力もできます）。コース単価が規程の上限を超えると、"
             "予算超過の確認（幹事 → 承認者）に進みます。",
             {"chat": "お店を探して",
-             "reservation": {"venue_name": "炭火酒場 渋谷店", "party_size": 10,
-                             "datetime": event.datetime.isoformat(), "course_price_yen": 4500}},
+             "reservation": {"venue_name": "炭火酒場 くろこ 渋谷店", "party_size": 10,
+                             "datetime": event.datetime.isoformat(), "course_price_yen": 4950}},
         )  # fmt: skip
     if s is EventStatus.BOOKED:
         return _hint(
@@ -85,24 +88,43 @@ def hint_for(event: Event, people: list[Participant], *, has_receipt: bool) -> d
             "bank",
             "参加者",
             "銀行（sunabar）で振込を承認する",
-            "赤坂 くらお・赤くら 花子の2人に、振込の承認の依頼が届きます。2人の列のカードの"
-            "「銀行で承認する（体験用）」を押してください（実演用のイベントでは、それぞれの口座で "
-            "sunabar のサービスサイトに入り、10分以内に承認します）。ほかの人の振込は代行され、"
-            "全員ぶんの入金を確認できると、1〜2分で自動で完了になります。",
+            "赤坂 くらお・赤くら 花子の2人に、振込の承認の依頼が届きます。2人の列のカード"
+            "（または Slack の DM）の「銀行で承認する（体験用）」を押すと、銀行の承認ページを模した"
+            "画面が開きます（実演用のイベントでは、それぞれの口座で sunabar のサービスサイトに"
+            "入り、10分以内に承認します）。ほかの人の振込は代行され、全員ぶんの入金を確認できると、"
+            "1〜2分で自動で完了になり、振り返りが始まります。",
         )
     if s is EventStatus.COMPLETED:
         return _hint(
             8,
             "system",
             "KUROKO",
-            "入金の確認と経費記録",
-            "全員の入金を明細で確認し、経費精算の記録を作ります。完了すると振り返りが始まります。",
+            "入金の確認が済み、振り返りを始める",
+            "全員の入金を明細で確認しました。まもなく、参加者に振り返り（満足度）の依頼が届きます。",
+        )
+    if s is EventStatus.RETRO and not retro_ready:
+        return _hint(
+            8,
+            "slack",
+            "参加者",
+            "振り返りに答える",
+            "赤坂 くらお・赤くら 花子の2人に、満足度（1〜5）を聞くカードが届きます。2人の列の"
+            "カード（または Slack の DM）で答えます。2人が答えると、幹事の確認に進みます"
+            "（待たずに進めたいときは、幹事が「回答を締め切る」を押せます）。",
+        )
+    if s is EventStatus.RETRO:
+        return _hint(
+            9,
+            "web",
+            "幹事",
+            "振り返りを確認し、次回に覚えさせる",
+            "実績と満足度の集計を見て、「次回もこの店を使いたいか」に答え、覚えさせる内容を選んで"
+            "「次回に覚えさせる」を押します。保存されるのは、定型の事実だけです。",
         )
     return _hint(
         9,
-        "slack",
-        "参加者",
-        "振り返りに答える",
-        "参加者が Slack の DM で満足度（1〜5）を答えます。"
-        "集まったら、次回に覚えさせる内容を Web で確認します。",
+        "system",
+        "KUROKO",
+        "完了",
+        "この会は終わりました。覚えさせた内容は、次の企画の店の候補に使われます。",
     )

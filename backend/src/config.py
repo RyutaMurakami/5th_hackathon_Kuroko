@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     # 空のあいだは、振り返りのコメントだけ、キーワードの仮実装で語彙に落とす
     extract_agent_engine: str = ""
 
+    # --- 記憶（Memory Bank。SPEC 9.8。TASKS B28）---
+    # 記憶を置く Agent Runtime のエンジン名（既定は、統括エージェントのエンジン）。
+    # 空のあいだは、記憶を読まず、保存の操作も受け付けない
+    memory_bank_engine: str = ""
+
     # --- 統括エージェント（Agent Runtime。TASKS B22）---
     # 空のあいだは仮のエージェント（下）で返す。値は「projects/<番号>/locations/<リージョン>/
     # reasoningEngines/<ID>」。デプロイ後に Terraform の変数で渡す（infra/terraform/variables.tf）

@@ -20,7 +20,7 @@ from src.clients.payment_api import PaymentApi, PaymentApiError, PaymentOutcome
 from src.db.events import EventStore
 from src.db.payments import PaymentReader
 from src.models.dashboard import NotificationKind
-from src.models.event import EventStatus
+from src.models.event import EventStatus, Preferences
 from src.models.split import Approval, SplitResult
 from src.services.policy_gates import CheckoutLine, Gate, check_before_checkout
 
@@ -69,9 +69,12 @@ class BillingService:
         payments: PaymentReader,
         checkout_ttl_seconds: int,
         lifecycle=None,  # noqa: ANN001
+        enqueue_self=None,  # noqa: ANN001
         now=lambda: datetime.now(UTC),
         today=None,
     ) -> None:
+        # 完了のあとの処理（振り返りの依頼）を、自分自身のタスクとして投入する（SPEC 7.4）
+        self._enqueue = enqueue_self
         self._store, self._signer = store, signer
         self._payment_api, self._bank, self._payments = payment_api, bank, payments
         self._ttl = timedelta(seconds=checkout_ttl_seconds)
@@ -242,11 +245,48 @@ class BillingService:
             if self._life:
                 self._life.log(event_id, "payment_agent", "確認", "全員の入金を明細で確認しました")
                 self._life.notify(event, NotificationKind.COMPLETED, "全員の入金を確認しました")
+            await self._after_completed(event_id)
         elif run.missing and self._life:
             self._life.log(
                 event_id, "payment_agent", "待機", f"{len(run.missing)}名の入金を待っています"
             )
         return run
+
+    async def _after_completed(self, event_id: str) -> None:
+        """完了の直後: 参加者の好み・最寄り駅を削除し（SPEC 9.6）、振り返りを始める（7.4）。
+
+        どちらの失敗も、完了を取り消さない（振り返りは、1日1回の定期実行が拾い直す）。
+        """
+        try:
+            removed = redact_personal_data(self._store, event_id)
+            if self._life and removed:
+                self._life.log(
+                    event_id, "kuroko", "更新",
+                    f"{removed}名の好み・最寄り駅を削除しました（開催の完了）",
+                )  # fmt: skip
+        except Exception:
+            logger.exception("redact failed: event=%s", event_id)
+        if self._enqueue is None:
+            return
+        try:
+            await self._enqueue(
+                "/tasks/internal/feedback-requests", {"event_id": event_id}, f"feedback-{event_id}"
+            )
+        except Exception:
+            logger.exception("could not start the retrospective: event=%s", event_id)
+
+
+def redact_personal_data(store: EventStore, event_id: str) -> int:
+    """参加者の好み（最寄り駅・食べられないもの・苦手なもの・店の希望）を削除する（SPEC 9.6）。
+
+    ドキュメントは残し、`preferences` だけを空にする。削除した人数を返す。
+    """
+    removed = 0
+    for p in store.list_participants(event_id):
+        if p.preferences != Preferences():
+            store.save_participant(event_id, p.model_copy(update={"preferences": Preferences()}))
+            removed += 1
+    return removed
 
 
 def _jst_date(value: datetime) -> date:

@@ -40,7 +40,25 @@ def get_billing() -> BillingService:
         payments=payments,
         checkout_ttl_seconds=s.checkout_ttl_seconds,
         lifecycle=get_lifecycle(),
+        enqueue_self=_enqueue_self,
     )
+
+
+async def _enqueue_self(path: str, payload: dict, task_id: str) -> None:
+    from src.clients.cloud_tasks import enqueue_kuroko_api
+
+    await enqueue_kuroko_api(path, payload, task_id)
+
+
+@lru_cache
+def get_memory():
+    """記憶（Memory Bank）。エンジンが未設定なら、読まない・書けない（SPEC 9.8）。"""
+    from src.clients.memory_bank import DisabledMemory, VertexMemoryBank
+
+    s = get_settings()
+    if not s.memory_bank_engine:
+        return DisabledMemory()
+    return VertexMemoryBank(engine=s.memory_bank_engine)
 
 
 class _SlackClientPort:
@@ -67,7 +85,11 @@ def get_retro():
     from src.services.retrospective import Retrospectives
 
     return Retrospectives(
-        store=get_event_store(), slack=_SlackClientPort(), extractor=_feedback_extractor()
+        store=get_event_store(),
+        slack=_SlackClientPort(),
+        extractor=_feedback_extractor(),
+        memory=get_memory(),
+        lifecycle=get_lifecycle(),
     )
 
 
@@ -114,7 +136,16 @@ def get_slack_actions():
         retro=get_retro(),
         lifecycle=get_lifecycle(),
         proxy_sign=enqueue_demo_mandate if s.demo_runner_service_account else None,
+        bank_approve=_approve_demo_transfer,
     )
+
+
+async def _approve_demo_transfer(event_id: str, user_id: str) -> bool:
+    """体験用の承認待ちの振込を、`bank-adapter` で承認済みにする（本物の振込には効かない）。"""
+    transfer_id = _payment_reader().open_transfer_id(event_id, user_id)
+    if not transfer_id:
+        return False
+    return await HttpBankAdapter(base_url=get_settings().bank_adapter_url).demo_approve(transfer_id)
 
 
 @lru_cache
@@ -128,6 +159,7 @@ def get_venue_search():
         store=get_event_store(),
         stations=EkispertClient(api_key=s.ekispert_api_key),
         maps=MapsClient(api_key=s.maps_api_key),
+        memory_store=get_memory(),
     )
 
 
@@ -161,9 +193,12 @@ def get_dashboard():
     from src.clients.uploads import DisabledUploadSigner, GcsUploadSigner
     from src.services import kuroko_chat
     from src.services.dashboard import DashboardService
+    from src.services.policy_extract import GeminiPolicyModel, PolicyReader
     from src.services.receipt_ocr import GeminiReceiptModel
+    from src.services.reservation_read import GeminiReservationModel
 
     s = get_settings()
+    project = s.google_cloud_project
     signer = (
         GcsUploadSigner(bucket=s.upload_bucket, service_account_email=s.api_service_account)
         if s.upload_bucket
@@ -177,9 +212,12 @@ def get_dashboard():
         lifecycle=get_lifecycle(),
         payments=_payment_reader(),
         personas=get_slack_actions(),
-        bank=HttpBankAdapter(base_url=s.bank_adapter_url),
+        retro=get_retro(),
         upload_ttl_seconds=s.upload_url_ttl_seconds,
-        ocr=GeminiReceiptModel(project=s.google_cloud_project) if s.google_cloud_project else None,
+        ocr=GeminiReceiptModel(project=project) if project else None,
+        reservation_reader=GeminiReservationModel(project=project) if project else None,
+        # 規程は、文書から読み取って検証する（プロジェクトが無いローカルでは、既定の値）
+        policy=PolicyReader(model=GeminiPolicyModel(project=project) if project else None),
     )
 
 

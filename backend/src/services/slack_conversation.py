@@ -5,7 +5,8 @@ import logging
 from src.clients import slack
 from src.models.schemas import SlackDirectMessage
 from src.services import kuroko_chat
-from src.services.container import get_retro
+from src.services.agent_context import event_for_slack_user, with_context
+from src.services.container import get_event_store, get_retro
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,10 @@ async def handle_direct_message(message: SlackDirectMessage) -> None:
         return
     thinking_ts = await _show_thinking(message.channel_id)
     try:
-        text = await kuroko_chat.reply(f"slack:{message.team_id}:{message.user_id}", message.text)
+        # いま話しているイベントを、コードが伝える（利用者にイベントの ID を聞き返さない。SPEC 7.5）
+        found = event_for_slack_user(get_event_store(), message.user_id)
+        asked = with_context(message.text, *found) if found else message.text
+        text = await kuroko_chat.reply(f"slack:{message.team_id}:{message.user_id}", asked)
     except Exception:
         # 再試行すると同じ質問に二重に答えかねないので、固定の文面を返して終える
         logger.exception("agent failed: event_id=%s", message.event_id)

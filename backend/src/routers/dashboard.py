@@ -64,6 +64,13 @@ class BankApprovalIn(BaseModel):
     user_id: str = Field(min_length=1, max_length=64)
 
 
+class RetroIn(BaseModel):
+    # 画面から受けるのは、選択だけ（事実の文面は受けない。コードが作り直す。Policy Gate 6.4）
+    reuse_intent: Literal["yes", "no", "unanswered"] = "unanswered"
+    include: list[Literal["venue_record", "venue_evaluation"]] = Field(default=[], max_length=2)
+    decision: Literal["save", "skip"]
+
+
 class VenueIn(BaseModel):
     place_id: str
     name: str
@@ -170,6 +177,26 @@ async def approve_bank(event_id: str, body: BankApprovalIn, actor: Who, s: Svc) 
     """体験用の「銀行で承認する」（本物の銀行の振込には効かない。SPEC 7.7）。"""
     try:
         return await s.approve_bank_transfer(actor, event_id, body.user_id)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
+@router.post("/events/{event_id}/close-retro")
+def close_retro(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
+    """振り返りの回答を、待たずに締め切る（その時点の回答で集計する。SPEC 7.4）。"""
+    try:
+        return s.close_retro(actor, event_id)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
+@router.post("/events/{event_id}/confirm-retro")
+async def confirm_retro(event_id: str, body: RetroIn, actor: Who, s: Svc) -> dict[str, Any]:
+    """振り返りのまとめの確認。「覚えさせる」なら、定型の事実を記憶に保存する（SPEC 9.8）。"""
+    try:
+        return await s.confirm_retro(
+            actor, event_id, body.reuse_intent, list(body.include), body.decision
+        )
     except DashboardError as e:
         raise _raise(e) from None
 

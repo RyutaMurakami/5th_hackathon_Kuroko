@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -8,6 +10,7 @@ from src.services.container import get_billing, get_dashboard, get_retro, get_sl
 from src.services.slack_conversation import handle_direct_message
 from src.services.task_auth import require_gateway, require_scheduler, require_self
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tasks")
 
 
@@ -43,6 +46,12 @@ async def create_checkouts(ref: EventRef) -> dict:
         run = await get_billing().create_checkouts(ref.event_id)
     except UnknownEvent:
         raise HTTPException(status_code=404, detail="unknown_event") from None
+    # 体験用のイベントでは、登場人物に「銀行で承認してください」を届ける（SPEC 7.7）。
+    # 届けられなくても、請求は成立している（Web の画面は、支払いの状態からカードを出す）
+    try:
+        await get_slack_actions().send_bank_requests(ref.event_id, run.outcomes)
+    except Exception:
+        logger.exception("could not deliver the bank requests: event=%s", ref.event_id)
     return {
         "ok": run.ok,
         "failures": [f.value for f in run.failures],
@@ -86,7 +95,7 @@ async def budget_requests(ref: EventRef) -> dict:
 
 @router.post("/internal/feedback-requests", dependencies=[Depends(require_self)])
 async def feedback_requests(ref: EventRef) -> dict:
-    """振り返りの依頼を、出席者の DM に送る（完了の翌日。通常は Scheduler 経由）。"""
+    """振り返りの依頼を、出席者に送る（完了の直後に、kuroko-api が自分に投入する。SPEC 7.4）。"""
     return await get_retro().collect_feedback(ref.event_id)
 
 
@@ -98,7 +107,7 @@ def purge_sandbox() -> dict[str, int]:
 
 @router.post("/scheduled/retrospectives", dependencies=[Depends(require_scheduler)])
 async def scheduled_retrospectives() -> dict[str, int]:
-    """1日1回: 完了の翌日の依頼・2日後のリマインド（1回だけ）・3日後の締切。件数だけを返す。"""
+    """1日1回: 始まっていない依頼の拾い直し・2日後のリマインド・3日後の締切。件数だけを返す。"""
     return await get_retro().tick()
 
 

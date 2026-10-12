@@ -183,6 +183,38 @@ def feedback_request(
     return text, blocks
 
 
+def bank_request(
+    event: Event, participant: Participant, *, amount_yen: int, slack_user_id: str
+) -> tuple[str, Blocks]:
+    """体験用の「銀行で承認してください」（SPEC 7.7）。本物の銀行のイベントでは使わない。"""
+    title = event.title or "飲み会"
+    text = f"「{title}」の負担額 {yen(amount_yen)} の振込を、銀行で承認してください"
+    blocks: Blocks = [
+        _section(
+            f"「{title}」の負担額 *{yen(amount_yen)}* の振込を、"
+            "あなたの委任の範囲内で依頼しました。\n"
+            "銀行の承認ページで承認すると、実際に振込が行われます。"
+        ),
+        _section(
+            "体験用: 本物では、銀行のサービスサイトにログインし、取引パスワードで承認します。"
+            "ここでは、下のボタンがその代わりです（資金は仮想）。"
+        ),
+        {
+            "type": "actions",
+            "elements": [
+                _button(
+                    "銀行で承認する（体験用）",
+                    Action.BANK,
+                    {"k": "bank", "e": event.event_id, "u": participant.user_id,
+                     "s": slack_user_id},  # fmt: skip
+                    "primary",
+                )
+            ],
+        },
+    ]
+    return text, blocks
+
+
 def resolved(text: str) -> Blocks:
     """ボタンを消して、結果だけを残す（押したあとのメッセージの置き換え）。"""
     return [_section(text)]

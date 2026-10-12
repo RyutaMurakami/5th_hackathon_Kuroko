@@ -34,8 +34,11 @@ from src.models.dashboard import (
 )
 from src.models.event import Event, EventStatus, Receipt
 from src.models.split import BudgetEscalation
+from src.services.agent_context import with_context
 from src.services.lifecycle import Lifecycle
+from src.services.policy_extract import PolicyReader
 from src.services.receipt_ocr import ReceiptModel, ocr_receipt
+from src.services.reservation_read import ReservationModel, ingest_reservation
 from src.services.scenario_hint import hint_for
 from src.services.vocab import REQUEST_TAGS, only_vocab
 
@@ -63,9 +66,18 @@ class PersonaActions(Protocol):
 
     async def press_card(self, event: Event, card_id: str, index: int, web_uid: str) -> None: ...
 
+    async def approve_bank(self, event: Event, person: Any) -> bool:
+        """体験用の承認待ちの振込を、承認済みにする（Slack のボタンと同じ処理）。"""
 
-class DemoBank(Protocol):
-    async def demo_approve(self, transfer_id: str) -> bool: ...
+
+class RetroOps(Protocol):
+    """振り返りの締切と、幹事の確認（`Retrospectives`。SPEC 7.4・9.8）。"""
+
+    def close_now(self, event_id: str) -> str: ...
+
+    async def confirm(
+        self, event_id: str, web_uid: str, *, reuse_intent: str, include: list[str], save: bool
+    ) -> Any: ...
 
 
 class RsvpDispatcher(Protocol):
@@ -91,10 +103,13 @@ class DashboardService:
         lifecycle: Lifecycle | None = None,
         payments: PaymentReader | None = None,
         personas: PersonaActions | None = None,
-        bank: DemoBank | None = None,
+        policy: PolicyReader | None = None,
+        reservation_reader: ReservationModel | None = None,
+        retro: RetroOps | None = None,
         now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
     ) -> None:
-        self._personas, self._bank = personas, bank
+        self._personas, self._policy, self._retro = personas, policy, retro
+        self._reservation_reader = reservation_reader
         self._store, self._chat, self._signer = store, chat, signer
         self._dispatcher, self._ttl, self._now = dispatcher, upload_ttl_seconds, now
         self._ocr = ocr
@@ -129,6 +144,8 @@ class DashboardService:
     def get_event(self, actor: Actor, event_id: str) -> dict[str, Any]:
         e = self._own(actor, event_id)
         people = self._store.list_participants(event_id)
+        retro = self._retro_view(event_id)
+        retro_ready = (retro or {}).get("status") == "awaiting_organizer"
         return {
             "event_id": e.event_id, "title": e.title, "datetime": e.datetime.isoformat(),
             "status": e.status.value, "sandbox": e.sandbox, "plan": e.plan, "venue": e.venue,
@@ -141,16 +158,20 @@ class DashboardService:
             ],
             "uploads": [u.model_dump(mode="json") for u in self._store.list_uploads(event_id)],
             "messages": [m.model_dump(mode="json") for m in self._store.list_messages(event_id)],
-            "waiting_for": waiting_for(e, people),
+            "waiting_for": waiting_for(e, people, retro_ready=retro_ready),
             "split": self._split_view(event_id),
             "budget_overrun": _budget_view(e),
             "payments": self._payments.list_payments(event_id) if self._payments else [],
             "bank_approval": e.bank_approval,
             "personas": self._personas_view(e, people),
+            "retro": retro,
             "decision_log": [
                 d.model_dump(mode="json") for d in self._store.list_decisions(event_id)
             ],
-            "hint": hint_for(e, people, has_receipt=self._store.get_receipt(event_id) is not None),
+            "hint": hint_for(
+                e, people, has_receipt=self._store.get_receipt(event_id) is not None,
+                retro_ready=retro_ready,
+            ),
         }  # fmt: skip
 
     # ------------------------------------------------------------ 登場人物のチャット（SPEC 7.7）
@@ -166,8 +187,13 @@ class DashboardService:
             if not p.demo_persona:
                 continue
             mine = [_card_view(c) for c in cards if c.user_id == p.user_id]
+            # 体験用の「銀行で承認してください」は、届いたカード（Slack と同じもの）を出す。
+            # 届いていないときだけ、支払いの状態から作る
+            has_bank_card = any(c["kind"] == "bank" for c in mine)
             mine += [
-                _payment_card(pay, title, web=event.bank_approval == "web")
+                _payment_card(
+                    pay, title, web=event.bank_approval == "web", requested=has_bank_card
+                )
                 for pay in payments
                 if pay.get("payer_user_id") == p.user_id
             ]
@@ -212,18 +238,67 @@ class DashboardService:
             or event.bank_approval != "web"
             or person is None
             or not person.demo_persona
-            or self._bank is None
-            or self._payments is None
+            or self._personas is None
         ):
             raise DashboardError("not_allowed", 403)
-        transfer_id = self._payments.open_transfer_id(event_id, user_id)
-        if not transfer_id or not await self._bank.demo_approve(transfer_id):
+        if not await self._personas.approve_bank(event, person):
             raise DashboardError("no_transfer_to_approve", 409)
-        self._life.log(
-            event_id, "human", "確認",
-            f"{person.display_name} が銀行で振込を承認しました（Web・体験用）",
-        )  # fmt: skip
         return {"user_id": user_id, "status": "approved"}
+
+    # ------------------------------------------------------------ 振り返り（SPEC 7.4・9.8）
+    def _retro_view(self, event_id: str) -> dict[str, Any] | None:
+        """振り返りの集計と、覚えさせる事実の下書き。**個人ごとの回答は出さない**（集計だけ）。"""
+        r = self._store.get_retro(event_id)
+        if r is None:
+            return None
+        return {
+            "status": r.status.value,
+            "invited_count": r.invited_count,
+            "response_count": r.response_count,
+            "avg_rating": r.avg_rating,
+            "liked_counts": r.liked_counts,
+            "concern_counts": r.concern_counts,
+            "venue_name": r.venue_name,
+            "party_size": r.party_size,
+            "per_person_yen": r.per_person_yen,
+            "within_budget": r.within_budget,
+            "reuse_intent": r.reuse_intent,
+            "memory_facts": [
+                {"kind": f.kind, "text": f.text, "include": f.include, "saved": f.ref is not None}
+                for f in r.memory_facts
+            ],
+            "saved_at": r.saved_at.isoformat() if r.saved_at else None,
+        }
+
+    def close_retro(self, actor: Actor, event_id: str) -> dict[str, Any]:
+        """幹事が、回答を待たずに振り返りを締め切る（その時点の回答で集計する）。"""
+        self._own(actor, event_id)
+        if self._retro is None or self._retro.close_now(event_id) != "closed":
+            raise DashboardError("invalid_state", 409)
+        return {"event_id": event_id, "status": "awaiting_organizer"}
+
+    async def confirm_retro(
+        self, actor: Actor, event_id: str, reuse_intent: str, include: list[str], decision: str
+    ) -> dict[str, Any]:
+        """振り返りのまとめの確認（SPEC 4.3）。保存するのは、定型の事実だけ（Policy Gate 6.4）。
+
+        画面から受けるのは、選択だけ（事実の文面は受けない。コードが作り直す）。
+        """
+        from src.services.retrospective import RetroError
+
+        self._own(actor, event_id)
+        if self._retro is None or decision not in ("save", "skip"):
+            raise DashboardError("invalid_state", 409)
+        kinds = [k for k in include if k in ("venue_record", "venue_evaluation")]
+        try:
+            retro = await self._retro.confirm(
+                event_id, actor.uid, reuse_intent=reuse_intent, include=kinds,
+                save=decision == "save",
+            )  # fmt: skip
+        except RetroError as e:
+            unavailable = str(e) in ("memory_unavailable", "memory_not_configured")
+            raise DashboardError(str(e), 503 if unavailable else 409) from None
+        return {"event_id": event_id, "status": retro.status.value}
 
     def _split_view(self, event_id: str) -> dict[str, Any] | None:
         """按分の内訳。保存された SplitResult の値をそのまま返す（Web で再計算しない。7.3.1）。"""
@@ -231,8 +306,15 @@ class DashboardService:
         if split is None:
             return None
         approval = self._store.get_approval(event_id)
+        event = self._store.get_event(event_id)
+        snap = event.policy_snapshot if event else None
         return {
             **split.model_dump(mode="json"),
+            # 根拠の規程（どこから取った値か・条。SPEC 9.7）
+            "policy": {
+                "policy_id": snap.policy_id, "version": snap.version, "source": snap.source,
+                "citations": snap.citations,
+            } if snap else None,
             "approval": {
                 "approver_user_id": split.approver_user_id,
                 "status": approval.status.value if approval else "pending",
@@ -265,7 +347,9 @@ class DashboardService:
         )  # fmt: skip
         status, reply = MessageStatus.DONE, ""
         try:
-            reply = await self._chat(f"web:{event.event_id}:{actor.uid}", text)
+            # いま開いているイベントを、コードが伝える（ID を聞き返さない。SPEC 7.5）
+            asked = with_context(text, event, "幹事")
+            reply = await self._chat(f"web:{event.event_id}:{actor.uid}", asked)
         except Exception:  # Gateway のブロックも含む。理由・本文はログに出さない
             status, reply = MessageStatus.FAILED, FAILED_REPLY
         answer = Message(
@@ -301,10 +385,19 @@ class DashboardService:
             "title": clean["title"], "datetime": clean["datetime"], "plan": clean["plan"],
             "plan_required_tags": clean["required_tags"], "status": EventStatus.RSVP,
         })  # fmt: skip
-        # 規程の写しと参加者を用意する
-        event = self._life.prepare_event(event, owner_email=actor.email)
+        # 規程の写し（文書から読み取り、コードが検証した値。SPEC 9.7）と、参加者を用意する
+        reading = await self._policy.read() if self._policy else None
+        event = self._life.prepare_event(
+            event, owner_email=actor.email, snapshot=reading.snapshot if reading else None
+        )
         self._store.save_event(event)
         self._life.log(event_id, "human", "確認", "幹事が計画を確定しました")
+        if reading is not None:
+            self._life.log(
+                event_id, "kuroko", "規程",
+                "規程の文書から値を読み取り、検証しました" if reading.from_document
+                else "規程の文書から読み取れなかったため、既定の値を使いました",
+            )  # fmt: skip
         self._life.log(event_id, "kuroko", "送信", "参加者に出欠の依頼を送ります（Slack）")
         await self._dispatcher.start_rsvp(event_id)
         return {"event_id": event_id, "status": event.status.value}
@@ -347,6 +440,8 @@ class DashboardService:
         up = up.model_copy(update={"status": "registered"})
         if up.kind is UploadKind.RECEIPT:
             up = await self._read_receipt(up)  # 登録後に ocr_receipt を起動する（SPEC 4.3）
+        else:
+            up = await self._read_reservation(up)  # 予約画面は ingest_reservation
         self._store.save_upload(up)
         return {"upload_id": upload_id, "status": "registered", "extraction": up.extraction_status}
 
@@ -361,6 +456,22 @@ class DashboardService:
             "extraction": {
                 "venue_name": reading.venue_name, "date": reading.date,
                 "total_amount_yen": reading.total_amount_yen, "line_items": reading.line_items,
+                "warnings": reading.warnings,
+            },
+        })  # fmt: skip
+
+    async def _read_reservation(self, up: Upload) -> Upload:
+        """読み取れなければ failed（手入力できる）。結果は、幹事が確定するまで使われない。"""
+        model = self._reservation_reader
+        data = self._signer.read_bytes(up.object_path) if model else None
+        reading = await ingest_reservation(model, data) if model and data else None
+        if reading is None or not reading.ok:
+            return up.model_copy(update={"extraction_status": "failed"})
+        return up.model_copy(update={
+            "extraction_status": "done",
+            "extraction": {
+                "venue_name": reading.venue_name, "datetime": reading.datetime,
+                "party_size": reading.party_size, "course_price_yen": reading.course_price_yen,
                 "warnings": reading.warnings,
             },
         })  # fmt: skip
@@ -397,12 +508,18 @@ class DashboardService:
             return {"confirmed": "receipt", "total_amount_yen": amount, "source": source}
         if event.status is not EventStatus.VENUE:
             raise DashboardError("invalid_state", 409)
+        if source == "extracted" and not self._extraction_done(event_id, UploadKind.RESERVATION):
+            raise DashboardError("no_extraction")  # 読み取り結果が無いものは名乗れない
         venue = validate_reservation(values)
         limit = event.policy_snapshot.hard_limit_per_person_yen if event.policy_snapshot else None
         over = limit is not None and venue["course_price_yen"] > limit
         booked = EventStatus.VENUE if over else EventStatus.BOOKED
+        # 選んだ店（候補から選んだ名前・place_id）は残す。振り返りの実績は、選んだ店の名前で残す
+        chosen = {k: v for k, v in (event.venue or {}).items() if k in ("place_id", "name")}
         self._store.save_event(
-            event.model_copy(update={"venue": {**venue, "source": source}, "status": booked})
+            event.model_copy(
+                update={"venue": {**chosen, **venue, "source": source}, "status": booked}
+            )
         )
         how = "手入力" if source == "manual" else "読み取り結果"
         self._life.log(event_id, "human", "確認", f"幹事が予約の内容を確定しました（{how}）")
@@ -448,7 +565,10 @@ class DashboardService:
         return {"event_id": event_id, "status": "receipt"}
 
     def _receipt_extraction_done(self, event_id: str) -> bool:
-        ups = [u for u in self._store.list_uploads(event_id) if u.kind is UploadKind.RECEIPT]
+        return self._extraction_done(event_id, UploadKind.RECEIPT)
+
+    def _extraction_done(self, event_id: str, kind: UploadKind) -> bool:
+        ups = [u for u in self._store.list_uploads(event_id) if u.kind is kind]
         return any(u.extraction_status == "done" for u in ups)
 
     def _receipt_extraction_failed(self, event_id: str) -> bool:
@@ -513,7 +633,7 @@ def _is_int(v: Any) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
-def waiting_for(event: Event, people: list) -> dict[str, Any] | None:
+def waiting_for(event: Event, people: list, *, retro_ready: bool = False) -> dict[str, Any] | None:
     """次に誰の対応を待っているか（Web には実行ボタンを置かず、待ち相手だけを出す。SPEC 7.5）。"""
     if event.status is EventStatus.PLANNING:
         return {"who": "organizer", "where": "web", "what": "計画の確認"}
@@ -525,6 +645,10 @@ def waiting_for(event: Event, people: list) -> dict[str, Any] | None:
         return {"who": "approver", "where": "slack", "what": "按分の承認", "users": approvers}
     if event.status is EventStatus.PAYMENT:
         return {"who": "approver", "where": "bank", "what": "銀行での承認"}
+    if event.status is EventStatus.RETRO and retro_ready:
+        return {"who": "organizer", "where": "web", "what": "振り返りの確認"}
+    if event.status is EventStatus.RETRO:
+        return {"who": "participants", "where": "slack", "what": "振り返り（満足度）の回答"}
     return None
 
 
@@ -586,10 +710,14 @@ def _card_view(card) -> dict[str, Any]:  # noqa: ANN001
         "card_id": card.card_id, "kind": card.kind, "text": card.text, "sections": sections,
         "buttons": [] if card.resolved_text else buttons, "resolved_text": card.resolved_text,
         "created_at": card.created_at.isoformat(),
+        # 体験用の「銀行で承認する」。画面は、銀行の承認ページを模した確認を挟む（SPEC 7.7）
+        "bank": card.kind == "bank" and not card.resolved_text,
     }  # fmt: skip
 
 
-def _payment_card(pay: dict, title: str, *, web: bool) -> dict[str, Any] | None:
+def _payment_card(
+    pay: dict, title: str, *, web: bool, requested: bool = False
+) -> dict[str, Any] | None:
     """支払いの状態から作る、銀行での承認の依頼・完了の通知（保存しない。SPEC 7.7）。"""
     status, amount = pay.get("status"), int(pay.get("amount_yen") or 0)
     base = {
@@ -598,6 +726,8 @@ def _payment_card(pay: dict, title: str, *, web: bool) -> dict[str, Any] | None:
     }  # fmt: skip
     lead = f"「{title}」の負担額 *{amount:,}円*"
     if status == "awaiting_bank_approval":
+        if web and requested:
+            return None  # 届いたカード（Slack と同じもの）を出している
         if web:
             text = (
                 f"{lead} の振込を、あなたの委任の範囲内で依頼しました。\n"

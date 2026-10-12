@@ -266,11 +266,15 @@ async def test_everyone_paid_completes_the_event_once_and_leaves_a_log_and_a_not
     done = store.get_event("ev-demo")
     assert done.status is EventStatus.COMPLETED and done.completed_at == NOW  # 振り返りの起点
     assert [d.summary for d in store.list_decisions("ev-demo")] == [
-        "全員の入金を明細で確認しました"
+        "全員の入金を明細で確認しました",
+        "10名の好み・最寄り駅を削除しました（開催の完了）",  # SPEC 9.6
     ]
+    assert all(
+        p.preferences.nearest_station_code is None for p in store.list_participants("ev-demo")
+    )
     assert [n.kind.value for n in store.list_notifications("uid")] == ["completed"]
     await svc.confirm_incoming_payments("ev-demo")  # もう一度確認しても、完了の記録は増えない
-    assert len(store.list_decisions("ev-demo")) == 1 and len(store.list_notifications("uid")) == 1
+    assert len(store.list_decisions("ev-demo")) == 2 and len(store.list_notifications("uid")) == 1
 
 
 async def test_a_missing_payment_keeps_the_event_in_payment_and_logs_the_wait():
