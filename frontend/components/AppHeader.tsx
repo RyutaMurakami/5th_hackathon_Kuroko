@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
@@ -23,9 +24,7 @@ export function AppHeader() {
     <header className={styles.header}>
       <div className={styles.headerInner}>
         <Link className={styles.brand} href={href("/")}>
-          <span className={styles.logo} aria-hidden>
-            黒
-          </span>
+          <Image className={styles.logo} src="/avatars/kuroko-logo.png" alt="" width={36} height={36} unoptimized />
           KUROKO
         </Link>
         <nav className={styles.nav} aria-label="メイン">

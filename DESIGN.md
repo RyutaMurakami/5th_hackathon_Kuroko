@@ -162,7 +162,7 @@
 ### App Header
 **Role:** 画面上部のナビゲーション
 
-背景 `--color-pure-white`、下に 1px `--color-hairline`、高さ 64px。左にロゴ（角丸 10px の正方形、背景 `--color-sun-signal`（アイコンの月）、「黒」の字は `--color-ink-navy`）と `KUROKO`。ロゴの右にナビ（14px/500。「イベント」「開発者」。選択中は `--color-ink-navy`、ほかは `--color-steel-text`。幅 640px 以下は隠す）。右に、ログイン中の役割のピル（`幹事` / `ゲスト`）とアカウント（ゲストも Google ログインだが、**画面には実名・写真を出さず「ゲスト」だけ**表示する。2026-09-27決定）と、Text Button「ログアウト」。アカウントの部分にも、メールアドレスや名前をツールチップで出さない。
+背景 `--color-pure-white`、下に 1px `--color-hairline`、高さ 64px。左にロゴ（アプリアイコン `frontend/images/kurko_v1.png` を縮めた画像。角丸 10px・40px 四方。`public/avatars/kuroko-logo.png`）と `KUROKO`。ロゴの右にナビ（14px/500。「イベント」「開発者」。選択中は `--color-ink-navy`、ほかは `--color-steel-text`。幅 640px 以下は隠す）。右に、ログイン中の役割のピル（`幹事` / `ゲスト`）とアカウント（ゲストも Google ログインだが、**画面には実名・写真を出さず「ゲスト」だけ**表示する。2026-09-27決定）と、Text Button「ログアウト」。アカウントの部分にも、メールアドレスや名前をツールチップで出さない。
 
 ### Tab Pill Navigation
 **Role:** 画面内の切り替え。**イベント詳細では、概要（Event Summary）の下を「送金・承諾／按分／振り返り／経緯」のタブで切り替え、1画面に出す量を絞る。**
