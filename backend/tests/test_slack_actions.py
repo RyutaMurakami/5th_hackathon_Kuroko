@@ -222,8 +222,12 @@ async def test_no_answers_after_the_split_has_been_approved():
 
 # ---------------- 按分の承認 ----------------
 async def requested(total=60_300):
-    actions, store, slack, queued, mandates = build(total)
+    """按分を計算し、幹事が内訳を確かめて、承認者に承認を依頼したところまで（SPEC 7.5）。"""
+    actions, store, slack, queued, mandates = build(total, status=EventStatus.SPLIT)
     out = await actions.request_split_approval("ev-demo")
+    assert slack.dms == [] and store.get_event("ev-demo").status.value == "split"  # 内訳が先
+    sent = await actions.send_approval_request("ev-demo")
+    assert sent["ok"]
     return actions, store, slack, queued, out
 
 
@@ -250,7 +254,7 @@ async def test_approval_request_is_blocked_by_policy_gate_6_1():
     assert slack.dms == [] and store.get_split("ev-demo") is None
 
 
-async def test_only_the_approver_can_approve_and_it_starts_billing():
+async def test_only_the_approver_can_approve_and_billing_waits_for_the_organizer():
     actions, store, slack, queued, out = await requested()
     value = {"k": "approve", "e": "ev-demo", "h": out["hash"], "s": SLACK["hanako"]}
     # 承認者以外（幹事・別の参加者）は承認できない
@@ -261,15 +265,9 @@ async def test_only_the_approver_can_approve_and_it_starts_billing():
     approval = store.get_approval("ev-demo")
     assert approval.status is ApprovalStatus.APPROVED
     assert approval.approved_by_slack_user_id == SLACK["hanako"] and approval.approved_at == NOW
-    # 承認が請求の起点（kuroko-api 自身のタスク）
-    assert queued == [
-        (
-            "/tasks/internal/checkouts",
-            {"event_id": "ev-demo"},
-            f"checkout-ev-demo-{out['hash'][:16]}",
-        )
-    ]
-    assert store.get_event("ev-demo").status.value == "payment"
+    # 承認だけでは請求は始まらない。幹事が振込の依頼を送ることを承認してから（SPEC 7.5）
+    assert queued == []
+    assert store.get_event("ev-demo").status.value == "approval"
     assert "承認しました" in slack.responses[-1][1]
 
 
@@ -278,7 +276,7 @@ async def test_approving_twice_does_not_queue_billing_twice():
     value = {"k": "approve", "e": "ev-demo", "h": out["hash"], "s": SLACK["hanako"]}
     await actions.handle(press(Action.APPROVE, value, SLACK["hanako"]))
     await actions.handle(press(Action.APPROVE, value, SLACK["hanako"]))
-    assert len(queued) == 1 and "すでに承認" in slack.responses[-1][1]
+    assert "すでに承認" in slack.responses[-1][1] and queued == []
 
 
 async def test_a_stale_approval_card_cannot_approve_a_recomputed_split():
@@ -359,6 +357,10 @@ def test_button_values_stay_under_slack_limit():
 # ---------------- Slack の制約（Block Kit） ----------------
 def _check_limits(blocks):
     assert len(blocks) <= 50
+    all_ids = [
+        el["action_id"] for b in blocks for el in b.get("elements", []) if "action_id" in el
+    ]
+    assert len(all_ids) == len(set(all_ids))
     for b in blocks:
         text = (b.get("text") or {}).get("text", "")
         assert len(text) <= 3000  # section の文字数の上限
@@ -366,13 +368,17 @@ def _check_limits(blocks):
             if el["type"] == "button":
                 assert len(el["text"]["text"]) <= 75 and len(el["value"]) <= 2000
                 assert len(el["action_id"]) <= 255
+        # Slack は、1通のメッセージの中の action_id の重複を認めない（`invalid_blocks`）
+        ids = [el["action_id"] for el in b.get("elements", []) if "action_id" in el]
+        assert len(ids) == len(set(ids))
         assert len(b.get("elements", [])) <= 25
 
 
 async def test_every_card_respects_slack_block_kit_limits():
-    actions, store, slack, queued, mandates = build()
+    actions, store, slack, queued, mandates = build(status=EventStatus.SPLIT)
     await actions.send_consent_requests("ev-demo")
     await actions.request_split_approval("ev-demo")
+    await actions.send_approval_request("ev-demo")
     event = store.get_event("ev-demo")
     event.budget_escalation = BudgetEscalation(organizer_confirmed_at=NOW)
     store.save_event(event)

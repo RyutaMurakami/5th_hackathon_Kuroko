@@ -19,9 +19,9 @@ from src.services.dashboard import DashboardError, validate_plan
 from src.services.preferences import PreferenceIntake
 from src.services.scenario_hint import FIRST_REQUEST, plan_example
 from src.services.slack_messages import _when, maps_url
-from tests.sample_company import demo_event
+from tests.sample_company import demo_event, demo_participants
 from tests.test_close_the_loop import Finder, proposals, to_venue
-from tests.test_web_personas import JUDGE, World
+from tests.test_web_personas import JUDGE, OTHER, World
 
 PLAN = {
     "title": "第一開発チーム 歓送迎会", "datetime": "2026-10-30T19:00:00+09:00",
@@ -185,3 +185,117 @@ def test_times_are_shown_in_japan_time_and_manual_venues_get_a_plain_map_search(
     assert _when(dt.datetime(2026, 10, 30, 10, 0, tzinfo=dt.UTC)) == "10/30 19:00"
     assert _when(dt.datetime(2026, 10, 30, 19, 0)) == "10/30 19:00"  # 時差の無い値は、そのまま
     assert "query_place_id" not in maps_url("たけちゃん", "manual-たけちゃん")
+
+
+# ---------------------------------------------------------------- 按分 → 承認 → 振込の順
+async def test_the_breakdown_comes_first_then_the_approval_request_then_the_transfer_request():
+    w = World()
+    eid = await w.start()
+    await w.to_approval(eid)  # 内訳が先。承認の依頼は、幹事の確認のあと
+    msgs = [m for m in w.store.list_messages(eid) if m.role == "kuroko" and m.card]
+    assert [m.card for m in msgs] == ["split"] and "内訳" in msgs[0].text
+    with pytest.raises(DashboardError):  # 承認されていないあいだは、振込の依頼を送れない
+        await w.svc.approve_transfers(JUDGE, eid)
+    hint = w.svc.get_event(JUDGE, eid)["hint"]
+    assert hint["who"] == "承認者"  # 承認者の対応待ち
+
+
+async def test_the_organizer_must_confirm_the_breakdown_before_the_approver_is_asked():
+    w = World()
+    eid = await w.start()
+    for user in ("kurao", "hanako"):
+        await w.svc.press_persona_card(JUDGE, eid, w.cards(eid, user)[0]["card_id"], 0)
+    event = w.store.get_event(eid)
+    w.store.save_event(
+        event.model_copy(update={"total_amount_yen": 49_500, "status": EventStatus.SPLIT})
+    )
+    from src.models.event import Receipt
+
+    w.store.save_receipt(Receipt(event_id=eid, total_amount_yen=49_500, confirmed_by="g1",
+                                 confirmed_at=event.datetime))  # fmt: skip
+    await w.actions.request_split_approval(eid)
+    view = w.svc.get_event(JUDGE, eid)
+    assert view["status"] == "split" and view["split"] is not None
+    assert view["waiting_for"]["what"] == "按分の内訳の確認" and view["hint"]["where"] == "web"
+    assert not [c for c in w.cards(eid, "hanako") if c["kind"] == "approval"]
+    with pytest.raises(DashboardError):
+        await w.svc.request_approval(OTHER, eid)  # 他人は、依頼できない
+    await w.svc.request_approval(JUDGE, eid)
+    assert [c["kind"] for c in w.cards(eid, "hanako")][-1] == "approval"
+    assert w.store.get_event(eid).status is EventStatus.APPROVAL
+
+
+# ---------------------------------------------------------------- 振り返りの重複・アンケートの回答
+class FailingSlack:
+    """Slack が `invalid_blocks` で DM を拒否する（本番で起きた）。"""
+
+    def __init__(self):
+        self.tried = 0
+
+    async def post_dm(self, *a):
+        self.tried += 1
+        raise RuntimeError("invalid_blocks")
+
+    async def respond(self, *a):
+        pass
+
+    async def publish_home(self, *a):
+        pass
+
+
+async def test_a_slack_failure_does_not_stop_or_duplicate_the_survey_and_answers_are_accepted():
+    from tests.test_close_the_loop import RetroWorld
+
+    w = RetroWorld(slack_users={"kurao": "U_K", "hanako": "U_H"})
+    broken = FailingSlack()
+    w.retro._slack = broken
+    eid = await w.completed()
+    first = await w.retro.collect_feedback(eid)
+    assert first["started"] and broken.tried == 2  # 2人に送ろうとして、失敗しても止まらない
+    again = await w.retro.collect_feedback(eid)  # タスクが再実行されても、重複しない
+    assert again == {"started": False, "reason": "already_started"}
+    for user in ("kurao", "hanako"):  # Web のカードは、2人ともに1枚ずつ届く
+        cards = [c for c in w.cards(eid, user) if c["kind"] == "feedback" and c["buttons"]]
+        assert len(cards) == 1
+    card = next(c for c in w.cards(eid, "hanako") if c["kind"] == "feedback")
+    out = await w.svc.press_persona_card(JUDGE, eid, card["card_id"], 3)  # 4 を選ぶ
+    assert out["resolved_text"]
+
+
+def test_the_rating_buttons_have_distinct_action_ids_and_still_parse_to_the_same_action():
+    from src.models.slack import Action
+    from src.services import slack_messages as msg
+    from src.services.slack_interactions import extract_interaction
+
+    event = demo_event()
+    person = demo_participants()[0]
+    _, blocks = msg.feedback_request(event, person, slack_user_id="U1")
+    buttons = next(b for b in blocks if b["type"] == "actions")["elements"]
+    ids = [b["action_id"] for b in buttons]
+    assert len(ids) == len(set(ids)) == 5  # Slack は、重複を認めない（invalid_blocks）
+    payload = {
+        "type": "block_actions", "user": {"id": "U1"},
+        "actions": [{"action_id": ids[2], "value": buttons[2]["value"]}],
+    }  # fmt: skip
+    assert extract_interaction(payload).action is Action.RATE
+
+
+# -------------------------------------------------------- 苦手な食べ物の取り込みは待たせない
+async def test_dislikes_written_with_vocabulary_words_do_not_wait_for_the_llm():
+    class Runner:
+        calls = 0
+
+        async def run(self, mode, text):
+            Runner.calls += 1
+            return {"dislikes": ["かに"]}
+
+    w = World()
+    w.svc._prefs = PreferenceIntake(store=w.store, runner=Runner(), stations=Stations({}))
+    eid = await w.start()
+    card = w.cards(eid, "kurao")[0]
+    await w.svc.press_persona_card(JUDGE, eid, card["card_id"], 0, {"dislikes": "えびが苦手です"})
+    assert w.person(eid, "kurao").preferences.dietary_avoid == ["えび"]
+    assert Runner.calls == 0  # 語彙の語が見つかれば、隔離抽出を待たない
+    card = w.cards(eid, "hanako")[0]
+    await w.svc.press_persona_card(JUDGE, eid, card["card_id"], 0, {"dislikes": "甲殻類が苦手"})
+    assert Runner.calls == 1 and w.person(eid, "hanako").preferences.dietary_avoid == ["かに"]

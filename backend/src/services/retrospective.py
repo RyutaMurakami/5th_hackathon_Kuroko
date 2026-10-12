@@ -80,7 +80,9 @@ class Retrospectives:
             return {"started": False, "reason": "already_started"}  # 再実行しても二重に依頼しない
         if event.status not in (EventStatus.COMPLETED, EventStatus.RETRO):
             return {"started": False, "reason": "not_completed"}  # 全員の入金を確認したあとだけ
-        invited = await self._send(event, only=None, reminder=False)
+        # **記録を先に作り、そのあとでカードを送る**。送る途中の失敗でタスクが再実行されても、
+        # 「すでに始まっている」で止まり、同じカードが重複しない（回答も、この記録に入る）
+        invited = self._recipients(event, only=None)
         proxied = self._proxy_answers(event)  # 体験用: Slack を使わない架空の参加者のぶん
         now = self._now()
         retro = Retrospective(
@@ -94,6 +96,7 @@ class Retrospectives:
         self._apply_summary(retro)
         self._store.save_retro(retro)
         self._store.save_event(event.model_copy(update={"status": EventStatus.RETRO}))
+        await self._send_cards(event, invited, reminder=False)
         if self._life:
             self._life.log(
                 event_id, "kuroko", "送信",
@@ -113,6 +116,7 @@ class Retrospectives:
                     if proxied
                     else ""
                 ),
+                card="retro",
             )
         if not invited:
             self._close(retro, event)  # 答えを待つ人がいない。その時点の集計で、幹事の確認に進む
@@ -167,8 +171,9 @@ class Retrospectives:
             "within_budget": per_person <= limit if per_person and limit else None,
         }
 
-    async def _send(self, event: Event, *, only: set[str] | None, reminder: bool) -> list[str]:
-        sent = []
+    def _recipients(self, event: Event, *, only: set[str] | None) -> list[str]:
+        """振り返りを依頼する人（幹事を除く出席者のうち、カードを届けられる人）。"""
+        out = []
         for p in self._store.list_participants(event.event_id):
             if (
                 not p.attendance_confirmed
@@ -178,14 +183,19 @@ class Retrospectives:
                 or (only is not None and p.user_id not in only)
             ):
                 continue
+            out.append(p.user_id)
+        return out
+
+    async def _send_cards(self, event: Event, user_ids: list[str], *, reminder: bool) -> None:
+        people = {p.user_id: p for p in self._store.list_participants(event.event_id)}
+        for user_id in user_ids:
+            p = people[user_id]
             text, blocks = msg.feedback_request(
                 event, p, slack_user_id=p.slack_user_id or "", reminder=reminder
             )
             await deliver_card(
                 self._store, self._slack, event, p, "feedback", text, blocks, self._now()
             )
-            sent.append(p.user_id)
-        return sent
 
     # ---------------------------------------------------------------- 回答
     def record_rating(
@@ -254,6 +264,7 @@ class Retrospectives:
                 f"振り返りがまとまりました（回答 {retro.response_count} / "
                 f"{retro.invited_count}名）。下のカードで集計を確認して、次回のために"
                 "覚えさせる内容を選んでください。",
+                card="retro",
             )
 
     def _draft(self, retro: Retrospective, event: Event) -> list[MemoryFact]:
@@ -331,6 +342,7 @@ class Retrospectives:
                     else "今回の内容は、記憶に保存しませんでした。"
                 )
                 + "これで、この会の幹事の仕事はすべて完了です。お疲れさまでした。",
+                card="retro",
             )
             self._life.log(event_id, "human", "確認", "幹事が振り返りを確認しました")
             if save:
@@ -401,7 +413,9 @@ class Retrospectives:
                 answered = {f.user_id for f in self._store.list_feedbacks(retro.event_id)}
                 pending = set(retro.invited_user_ids) - answered
                 if pending:
-                    await self._send(event, only=pending, reminder=True)
+                    await self._send_cards(
+                        event, self._recipients(event, only=pending), reminder=True
+                    )
                 retro.reminded_at = now  # 1回だけ
                 self._store.save_retro(retro)
                 out["reminded"] += 1

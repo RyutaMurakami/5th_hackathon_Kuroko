@@ -80,6 +80,9 @@ class PersonaActions(Protocol):
     async def send_event_notice(self, event_id: str) -> dict[str, Any]:
         """予約が確定したあと、参加者に開催の案内を届ける。"""
 
+    async def send_approval_request(self, event_id: str) -> dict[str, Any]:
+        """幹事が内訳を確かめたあと、承認者に按分の承認を依頼する。"""
+
 
 class PreferenceForm(Protocol):
     """出欠のカードの入力欄（最寄り駅・苦手な食べ物）の取り込み（`PreferenceIntake`）。"""
@@ -107,6 +110,8 @@ class RsvpDispatcher(Protocol):
     async def start_rsvp(self, event_id: str) -> None: ...
 
     async def start_split_approval(self, event_id: str) -> None: ...
+
+    async def start_checkouts(self, event_id: str, split_hash: str) -> None: ...
 
 
 def _id(prefix: str) -> str:
@@ -187,6 +192,8 @@ class DashboardService:
         people = self._store.list_participants(event_id)
         retro = self._retro_view(event_id)
         retro_ready = (retro or {}).get("status") == "awaiting_organizer"
+        split = self._split_view(event_id)
+        approved = bool(split and split["approval"]["status"] == "approved")
         return {
             "event_id": e.event_id, "title": e.title, "datetime": e.datetime.isoformat(),
             "status": e.status.value, "sandbox": e.sandbox, "plan": e.plan, "venue": e.venue,
@@ -201,8 +208,10 @@ class DashboardService:
             ],
             "uploads": [u.model_dump(mode="json") for u in self._store.list_uploads(event_id)],
             "messages": [m.model_dump(mode="json") for m in self._messages(event_id)],
-            "waiting_for": waiting_for(e, people, retro_ready=retro_ready),
-            "split": self._split_view(event_id),
+            "waiting_for": waiting_for(
+                e, people, retro_ready=retro_ready, approved=approved, split_ready=split is not None
+            ),
+            "split": split,
             "budget_overrun": _budget_view(e),
             "payments": self._payments.list_payments(event_id) if self._payments else [],
             "bank_approval": e.bank_approval,
@@ -213,7 +222,7 @@ class DashboardService:
             ],
             "hint": hint_for(
                 e, people, has_receipt=self._store.get_receipt(event_id) is not None,
-                retro_ready=retro_ready,
+                retro_ready=retro_ready, split_ready=split is not None, approved=approved,
             ),
         }  # fmt: skip
 
@@ -323,6 +332,49 @@ class DashboardService:
         if not await self._personas.approve_bank(event, person):
             raise DashboardError("no_transfer_to_approve", 409)
         return {"user_id": user_id, "status": "approved"}
+
+    # ---------------------------------------------- 按分の承認・振込の依頼（SPEC 7.5）
+    async def request_approval(self, actor: Actor, event_id: str) -> dict[str, Any]:
+        """幹事が按分の内訳を確かめて、承認者に承認を依頼する（内訳を見せたあとに、依頼が届く）。
+
+        金額は、すでに計算して保存した金額表のまま（ここでは変わらない・再計算しない）。
+        """
+        event = self._own(actor, event_id)
+        if event.status not in (EventStatus.SPLIT, EventStatus.APPROVAL) or self._personas is None:
+            raise DashboardError("invalid_state", 409)
+        out = await self._personas.send_approval_request(event_id)
+        if not out.get("ok"):
+            raise DashboardError("invalid_state", 409)
+        self._life.log(event_id, "human", "確認", "幹事が按分の内訳を確かめ、承認を依頼しました")
+        return {"event_id": event_id, "status": "approval"}
+
+    async def approve_transfers(self, actor: Actor, event_id: str) -> dict[str, Any]:
+        """承認者が按分を承認したあと、幹事が「参加者に振込の依頼を送る」ことを承認する。
+
+        ここで初めて請求（Policy Gate 6.2）に進み、参加者に、銀行で承認する依頼が届く。
+        押すのは幹事（イベントの持ち主）だけ。承認者の承認がなければ受け付けない。
+        """
+        event = self._own(actor, event_id)
+        approval = self._store.get_approval(event_id)
+        split = self._store.get_split(event_id)
+        if (
+            event.status is not EventStatus.APPROVAL
+            or approval is None or split is None
+            or approval.status.value != "approved"
+            or approval.split_hash != split.hash
+        ):  # fmt: skip
+            raise DashboardError("invalid_state", 409)
+        # 同じ金額表の請求は1回だけ（タスクの ID が同じ。押し直しても二重にならない）
+        await self._dispatcher.start_checkouts(event_id, split.hash)
+        self._life.log(
+            event_id, "human", "署名", "幹事が、参加者への振込の依頼を送ることを承認しました（Web）"
+        )
+        self._life.say(
+            event_id,
+            "振込の依頼を作成しています。参加者に、銀行での承認のお願いをお送りします。"
+            "各自が銀行で承認すると、振込が実行されます。",
+        )
+        return {"event_id": event_id, "status": "payment_requested"}
 
     # ------------------------------------------------------------ 振り返り（SPEC 7.4・9.8）
     def _retro_view(self, event_id: str) -> dict[str, Any] | None:
@@ -608,7 +660,6 @@ class DashboardService:
         return up.model_copy(update={
             "extraction_status": "done",
             "extraction": {
-                "venue_name": reading.venue_name, "date": reading.date,
                 "total_amount_yen": reading.total_amount_yen, "line_items": reading.line_items,
                 "warnings": reading.warnings,
             },
@@ -839,6 +890,7 @@ class DashboardService:
             f"お店の候補を {len(candidates)}件見つけました。全員の最寄り駅からの帰りやすさ・"
             "苦手な食べ物・過去の実績から、決まった手順で順位を付けています。"
             "下のカードから1つ選んでください。",
+            card="venues",
         )
         return candidates
 
@@ -923,13 +975,20 @@ def _is_int(v: Any) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
-def waiting_for(event: Event, people: list, *, retro_ready: bool = False) -> dict[str, Any] | None:
-    """次に誰の対応を待っているか（Web には実行ボタンを置かず、待ち相手だけを出す。SPEC 7.5）。"""
+def waiting_for(
+    event: Event, people: list, *, retro_ready: bool = False, approved: bool = False,
+    split_ready: bool = False,
+) -> dict[str, Any] | None:  # fmt: skip
+    """次に誰の対応を待っているか（SPEC 7.5）。承認・振込は、承認者・参加者の本人の操作。"""
     if event.status is EventStatus.PLANNING:
         return {"who": "organizer", "where": "web", "what": "計画の確認"}
     if event.status is EventStatus.RSVP:
         pending = [p.user_id for p in people if p.rsvp_status.value == "pending"]
         return {"who": "participants", "where": "slack", "what": "出欠の回答", "users": pending}
+    if event.status is EventStatus.SPLIT and split_ready:
+        return {"who": "organizer", "where": "web", "what": "按分の内訳の確認"}
+    if event.status is EventStatus.APPROVAL and approved:
+        return {"who": "organizer", "where": "web", "what": "振込の依頼を送る承認"}
     if event.status is EventStatus.APPROVAL:
         approvers = [p.user_id for p in people if p.role.value == "approver"]
         return {"who": "approver", "where": "slack", "what": "按分の承認", "users": approvers}
