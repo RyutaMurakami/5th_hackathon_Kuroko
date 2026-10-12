@@ -1,4 +1,4 @@
-"""デモ用のイベント「サンプル商事」の歓送迎会を Firestore に作る（TASKS B30・O7）。
+"""デモ用のイベント「株式会社Akakura」の歓送迎会を Firestore に作る（TASKS B30・O7）。
 
 `kuroko-api` の Slack の流れ（出欠の依頼 → 按分の承認 → 請求 → 銀行での承認 → 入金の確認）を
 実機で通すための下準備。**架空の人物だけ**を入れ、口座番号・トークンは入れない。
@@ -47,7 +47,7 @@ def main() -> None:
     event = demo_event(args.total).model_copy(
         update={
             "event_id": args.event_id,
-            "title": "営業1課 歓送迎会（デモ）",
+            "title": "第一開発チーム 歓送迎会（デモ）",
             "datetime": held,
             "organizer_web_uid": args.web_uid,
             "policy_snapshot": load_snapshot(),

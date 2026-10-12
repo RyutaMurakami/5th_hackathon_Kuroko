@@ -16,6 +16,7 @@ class Action(StrEnum):
     APPROVE = "approve"  # 按分の承認（承認者）
     BUDGET = "budget"  # 予算超過の最終確認（承認者）
     RATE = "rate"  # 振り返りの満足度（1〜5。1タップ）
+    BANK = "bank"  # 体験用の「銀行で承認する」（体験用の承認待ちの振込だけ。SPEC 7.7）
 
 
 class SlackInteraction(BaseModel):

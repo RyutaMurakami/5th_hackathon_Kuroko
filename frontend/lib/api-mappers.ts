@@ -118,7 +118,7 @@ export function toEventDetail(e: ApiEventDetail): EventDetail {
     paidYen: payments.filter((p) => p.status === "completed").reduce((sum, p) => sum + p.amountYen, 0),
     billedYen: e.split ? e.split.rows.reduce((sum, r) => sum + r.share_yen, 0) : 0,
     sandbox: e.sandbox,
-    companyName: e.sandbox ? "サンプル商事（体験用）" : "",
+    companyName: e.sandbox ? "株式会社Akakura（体験用）" : "",
     venueName,
     waitingOn: w ? `${w.what}（${w.where === "slack" ? "Slack" : w.where === "bank" ? "銀行" : "Web"}）` : null,
     nextStep: e.hint.title,

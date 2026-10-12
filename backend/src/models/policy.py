@@ -47,6 +47,10 @@ class PolicySnapshot(BaseModel):
     venue_max_travel_minutes: int = Field(default=45, ge=10, le=200)
     venue_relax_step_minutes: int = Field(default=15, ge=0, le=60)
     venue_relax_limit_minutes: int = Field(default=75, ge=10, le=200)
+    # どこから取った値か（document: 規程の文書から読み取り、コードが検証した。yaml: 既定の値）と、
+    # 値のまとまりごとの根拠の条（例: member_classes → 第4条）。按分の内訳に出す（SPEC 9.7）
+    source: Literal["document", "yaml"] = "yaml"
+    citations: dict[str, str] = {}
 
     @model_validator(mode="after")
     def _check(self) -> "PolicySnapshot":

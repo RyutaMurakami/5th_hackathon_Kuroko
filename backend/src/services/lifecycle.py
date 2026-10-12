@@ -11,6 +11,7 @@ from collections.abc import Callable
 from src.db.events import EventStore
 from src.models.dashboard import DecisionEntry, Notification, NotificationKind
 from src.models.event import Event, EventStatus, Participant, ParticipantRole, RsvpStatus
+from src.models.policy import PolicySnapshot
 from src.seed.sample_company import demo_participants
 from src.services.policy import load_snapshot
 
@@ -52,14 +53,17 @@ class Lifecycle:
         )
 
     # ---- 計画の確定: 規程の写しと参加者を用意する ----
-    def prepare_event(self, event: Event, *, owner_email: str = "") -> Event:
-        """規程の写し（以後の計算はこれだけを使う。9.7）と、参加者（サンプル商事の名簿）を用意する。
+    def prepare_event(
+        self, event: Event, *, owner_email: str = "", snapshot: PolicySnapshot | None = None
+    ) -> Event:
+        """規程の写し（以後の計算はこれだけを使う。9.7）と、参加者（株式会社Akakuraの名簿）を用意する。
 
         Slack ユーザーは `config/slack_users`（登場人物 → Slack ID）から入れる。
         無い人には DM を送れない。
         幹事の `user_id` は名簿の幹事（銀行の口座の対応づけに使う）。
         """
-        snap = self._snapshot()
+        # 規程の文書から読み取って検証した値（呼び出し側が渡す）。無ければ、既定の値（yaml）
+        snap = snapshot or self._snapshot()
         people = self._roster()
         slack = self._store.slack_user_map()
         organizer = next((p for p in people if p.role is ParticipantRole.ORGANIZER), None)
@@ -72,7 +76,8 @@ class Lifecycle:
             )
         # 体験用のイベントでは、登場人物の振込を Web のカードで承認する。実演用に登録した
         # アカウントのイベントだけ、本物の銀行（sunabar）で承認する（SPEC 7.7）
-        live = owner_email.lower() in self._store.live_bank_emails()
+        # 開発者の実演用の画面で作ったイベント（`ui_mode = live`）で、登録したアカウントのときだけ
+        live = event.ui_mode == "live" and owner_email.lower() in self._store.live_bank_emails()
         return event.model_copy(
             update={
                 "bank_approval": "web" if event.sandbox and not live else "bank",

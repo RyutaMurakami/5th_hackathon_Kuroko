@@ -5,6 +5,7 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -37,6 +38,15 @@ class RetroStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class MemoryFact(BaseModel):
+    """記憶の事実の下書き（SPEC 9.8）。文面は定型のテンプレートからコードが作る。編集できない。"""
+
+    kind: Literal["venue_record", "venue_evaluation"]
+    text: str
+    include: bool = True  # 幹事が、含める・含めないを選ぶ
+    ref: str | None = None  # Memory Bank に書き込んだ記憶の名前（書き込みの冪等に使う）
+
+
 class Retrospective(BaseModel):
     event_id: str
     status: RetroStatus = RetroStatus.COLLECTING
@@ -49,3 +59,16 @@ class Retrospective(BaseModel):
     avg_rating: float | None = None
     liked_counts: dict[str, int] = {}
     concern_counts: dict[str, int] = {}
+    # 実績（入力なし。イベントのデータから、コードが作る）
+    venue_name: str = ""
+    party_size: int = 0
+    per_person_yen: int | None = None  # 会計金額 ÷ 出席者数
+    course_price_yen: int | None = None
+    within_budget: bool | None = None  # 1人あたりが、規程の上限以内か
+    # 幹事の確認（Web。Policy Gate 6.4）
+    reuse_intent: Literal["yes", "no", "unanswered"] = "unanswered"
+    memory_facts: list[MemoryFact] = []
+    confirmed_by: str | None = None  # 確認した幹事の Firebase の UID
+    confirmed_at: datetime | None = None
+    memory_refs: list[str] = []  # Memory Bank に書き込んだ記憶の名前
+    saved_at: datetime | None = None

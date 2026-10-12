@@ -39,23 +39,11 @@ resource "google_cloud_tasks_queue_iam_member" "enqueuer" {
 }
 
 # Cloud Scheduler（8章）。sa-scheduler は Cloud Run を呼ぶ権限だけを持つ。
-# 呼び先のルートは TASKS B17 で実装する。ルートができるまで scheduler_paused = true にしておく。
+# 開催前・確認待ちのリマインドは作らない（2026-10-12 ユーザー決定）。通しをしないあいだは scheduler_paused = true。
 locals {
   scheduler_jobs = {
-    "event-reminders" = {
-      description = "出欠・委任などのリマインド"
-      schedule    = "*/30 * * * *"
-      service     = "kuroko-api"
-      path        = "/tasks/scheduled/reminders"
-    }
-    "confirmation-reminders" = {
-      description = "確認待ちのリマインドと期限切れの差し戻し"
-      schedule    = "*/15 * * * *"
-      service     = "kuroko-api"
-      path        = "/tasks/scheduled/confirmations"
-    }
     "retrospective-requests" = {
-      description = "振り返りの依頼（開催の翌日）・リマインド・締切"
+      description = "振り返りの拾い直し（依頼は完了の直後に始まる）・リマインド・締切"
       schedule    = "0 10 * * *"
       service     = "kuroko-api"
       path        = "/tasks/scheduled/retrospectives"

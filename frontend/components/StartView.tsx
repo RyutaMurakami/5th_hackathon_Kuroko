@@ -2,33 +2,26 @@
 
 import { motion } from "motion/react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { useDemoHref, useDemoRole } from "@/lib/demo";
-import { defaultEventIdFor } from "@/lib/mock-data";
 import { EASE_OUT } from "@/lib/motion";
-import { ChatPanel } from "./ChatPanel";
 import { useToast } from "./Toast";
-import { Button, Card, Caption } from "./ui";
+import { Button, ButtonLink, Card, Caption } from "./ui";
 import detail from "./detail.module.css";
 import styles from "./event.module.css";
 
 // SPEC 7.6「体験できる流れ」
 const HOW_TO = [
-  "チャットで飲み会を依頼する（例: 来週金曜、チーム8人で軽く飲みに行きたい）",
-  "KUROKOが整理した条件を確認して進める",
-  "店舗の候補（過去の記憶に基づく理由つき）から1つ選ぶ",
-  "予約画面のサンプルをダウンロードして、アップロードする",
-  "開催後、領収書のサンプルをアップロードして金額を確定する",
-  "按分の内訳を見る。承認・委任・銀行での承認は、デモ用の代行（架空の参加者・承認者）が Slack の代わりに行う",
-  "送金の状況と、振り返り・KUROKOが覚えることを確かめる",
+  "入力の候補を押して、チャットで歓送迎会を依頼する。KUROKO が整理した計画を確かめて、確定する",
+  "参加者（赤坂 くらお）と承認者（赤くら 花子）に届いたカードで、出欠と支払いの委任に答える（2人の代わりに、あなたが押せます）",
+  "店の候補（選んだ理由と、過去の実績つき）から1つ選び、予約画面のサンプルをアップロードして確定する",
+  "領収書のサンプルをアップロードして金額を確定する。決まった手順のコードが、規程に沿って按分する",
+  "承認者として按分を承認し、参加者として銀行で振込を承認する（銀行は、承認ページを模した画面）",
+  "入金の確認のあと、振り返りに答え、KUROKO が次回に覚える内容を確かめて保存する",
+  "いつでも、チャットで規程のことを聞ける（KUROKO が規程の文書を調べて、条番号を添えて答えます）",
 ];
 
-/** はじめる画面（`/`）。ログインの前はログインの選択、後は依頼のチャット */
+/** はじめる画面（`/`）。ログインの前はログインの選択、後は使い方と、チャットの画面への入口 */
 export function StartView() {
-  const router = useRouter();
-  const role = useDemoRole();
-  const href = useDemoHref();
   const { user, loading, signInWithGoogle } = useAuth();
   const { toast } = useToast();
 
@@ -60,7 +53,7 @@ export function StartView() {
                 </Button>
               </div>
               <Caption>
-                幹事として登録されていない Google アカウントは、ゲストとして架空の会社「サンプル商事」のデータで体験できます（7日で削除されます）。
+                幹事として登録されていない Google アカウントは、ゲストとして架空の会社「株式会社Akakura」のデータで体験できます（7日で削除されます）。
               </Caption>
             </div>
             <motion.div
@@ -80,29 +73,29 @@ export function StartView() {
   return (
     <main className={styles.page}>
       <div>
-        <h1 className={styles.pageTitle}>新しい飲み会を依頼する</h1>
-        <p className={styles.pageMeta}>自然文で書いてください。足りないことは、KUROKOが質問します。</p>
+        <h1 className={styles.pageTitle}>KUROKO を体験する</h1>
+        <p className={styles.pageMeta}>
+          あなたが幹事になって、依頼から送金・振り返りまでを、1人で通して試せます。Slack や銀行の口座は要りません。
+        </p>
       </div>
-      <ChatPanel
-        messages={[]}
-        title="KUROKOに依頼する"
-        autoFocus
-        onSend={() =>
-          // ダミー: 依頼を受けたイベント（企画中）へ移る。本番は send_message で Event が planning で作られる
-          router.push(href(`/events/${defaultEventIdFor(role)}`, { stage: "planning" }))
-        }
-      />
-      {role === "guest" && (
-        <Card eyebrow="使い方" title="体験の流れ" id="how-to">
-          <ol style={{ listStyle: "decimal", paddingLeft: "var(--spacing-24)" }}>
-            {HOW_TO.map((step) => (
-              <li key={step} style={{ padding: "var(--spacing-4) 0" }}>
-                {step}
-              </li>
-            ))}
-          </ol>
-        </Card>
-      )}
+      <Card eyebrow="使い方" title="体験の流れ" id="how-to">
+        <ol style={{ listStyle: "decimal", paddingLeft: "var(--spacing-24)" }}>
+          {HOW_TO.map((step) => (
+            <li key={step} style={{ padding: "var(--spacing-4) 0" }}>
+              {step}
+            </li>
+          ))}
+        </ol>
+        <div className={styles.actions}>
+          <ButtonLink href="/verify">体験をはじめる</ButtonLink>
+          <ButtonLink href="/demo" variant="secondary">
+            実演（開発者用）
+          </ButtonLink>
+        </div>
+        <Caption>
+          画面には、いつも「次にすること」が出ます。銀行は実験用の環境で、お金は動きません。入力した内容は7日で削除されます。実在の個人情報や領収書は入れないでください。
+        </Caption>
+      </Card>
     </main>
   );
 }

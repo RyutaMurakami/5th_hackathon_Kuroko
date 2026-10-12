@@ -3,12 +3,41 @@
 
 export type ApiRole = "organizer" | "guest";
 
+/** 画面の種類。experience: 審査員の体験用（Web だけで進める）。live: 開発者の実演用（Slack と本物の銀行） */
+export type ApiUiMode = "experience" | "live";
+
+export type ApiMe = {
+  role: ApiRole;
+  /** 実演用の画面（本物の銀行に振込を依頼する）を使えるアカウントか */
+  live_allowed: boolean;
+  /** イベントを作る前の進行ヒント */
+  start_hints: Record<ApiUiMode, ApiHint>;
+};
+
+export type ApiVenueCandidate = {
+  place_id: string;
+  name: string;
+  address: string;
+  nearest_station: string;
+  max_travel_minutes: number;
+  avg_travel_minutes: number;
+  price_min_yen: number | null;
+  price_max_yen: number | null;
+  features: string[];
+  rating: number | null;
+  /** 選んだ理由（コードが作った事実からの定型の文） */
+  selection_reason: string;
+  /** 記憶に基づく理由（同じ店の過去の実績。無ければ null） */
+  memory_note: string | null;
+};
+
 export type ApiEventSummary = {
   event_id: string;
   title: string;
   datetime: string;
   status: string;
   sandbox: boolean;
+  ui_mode: ApiUiMode;
 };
 
 export type ApiMessage = {
@@ -29,10 +58,15 @@ export type ApiUpload = {
   /** 読み取り結果（幹事が確認するまで使われない） */
   extraction?: {
     venue_name: string | null;
-    date: string | null;
-    total_amount_yen: number | null;
-    line_items: { name: string; unit_price_yen: number | null; quantity: number | null; amount_yen: number | null }[];
     warnings: string[];
+    /** 領収書（`ocr_receipt`） */
+    date?: string | null;
+    total_amount_yen?: number | null;
+    line_items?: { name: string; unit_price_yen: number | null; quantity: number | null; amount_yen: number | null }[];
+    /** 予約画面（`ingest_reservation`） */
+    datetime?: string | null;
+    party_size?: number | null;
+    course_price_yen?: number | null;
   } | null;
 };
 
@@ -53,6 +87,9 @@ export type ApiEventDetail = {
   datetime: string;
   status: string;
   sandbox: boolean;
+  ui_mode: ApiUiMode;
+  /** 店の候補（「店の候補を出す」で作る。順位はコードが決める） */
+  venue_candidates: ApiVenueCandidate[];
   plan: Record<string, unknown>;
   venue: Record<string, unknown> | null;
   total_amount_yen: number | null;
@@ -82,19 +119,45 @@ export type ApiEventDetail = {
   bank_approval: "web" | "bank";
   /** 登場人物ごとの、KUROKO から届いたカード（体験用のイベントだけ。SPEC 7.7） */
   personas: ApiPersona[];
+  /** 振り返りの集計と、覚えさせる事実の下書き（個人ごとの回答は含まない。SPEC 9.8） */
+  retro: ApiRetro | null;
+};
+
+export type ApiMemoryFact = {
+  kind: "venue_record" | "venue_evaluation";
+  /** 定型の文（編集できない。含める・含めないだけ） */
+  text: string;
+  include: boolean;
+  saved: boolean;
+};
+
+export type ApiRetro = {
+  status: "collecting" | "awaiting_organizer" | "saved" | "skipped" | "expired";
+  invited_count: number;
+  response_count: number;
+  avg_rating: number | null;
+  liked_counts: Record<string, number>;
+  concern_counts: Record<string, number>;
+  venue_name: string;
+  party_size: number;
+  per_person_yen: number | null;
+  within_budget: boolean | null;
+  reuse_intent: "yes" | "no" | "unanswered";
+  memory_facts: ApiMemoryFact[];
+  saved_at: string | null;
 };
 
 /** KUROKO から登場人物に届いたカード（Slack の DM と同じ中身）。ボタンの値は、サーバーが持つ */
 export type ApiPersonaCard = {
   card_id: string;
-  kind: "consent" | "approval" | "budget" | "bank";
+  kind: "consent" | "approval" | "budget" | "bank" | "feedback";
   text: string;
   /** 本文（Slack の mrkdwn。`*太字*`・改行・`• 箇条書き`） */
   sections: string[];
   buttons: { index: number; label: string; style: string }[];
   resolved_text: string | null;
   created_at: string;
-  /** 体験用の「銀行で承認する」のカード */
+  /** 体験用の「銀行で承認する」のカード（押すと、銀行の承認ページを模した画面を挟む） */
   bank?: boolean;
 };
 
@@ -145,6 +208,13 @@ export type ApiSplit = {
     approved_at: string | null;
     split_hash: string;
   };
+  /** 根拠の規程（どこから取った値か・値のまとまりごとの条。SPEC 9.7） */
+  policy?: {
+    policy_id: string;
+    version: string;
+    source: "document" | "yaml";
+    citations: Record<string, string>;
+  } | null;
 };
 
 export type ApiNotification = {

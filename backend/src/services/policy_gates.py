@@ -3,6 +3,7 @@
 決定論的なコードだけで判定する（LLM・エージェントは関与しない）。**1つでも満たさなければ次に進まない**。
 不合格の理由は、止めた項目をすべて集めて返す（判断ログに残すため。最初の1つで止めない）。
 
+- 6.4: 記憶（Memory Bank）に書き込んでよいか（`save_memory` の手前）
 - 6.1: 按分に進んでよいか（`calculate_split` の手前）
 - 6.2: 請求（Checkout）を作ってよいか（請求の手前）。6.3（支払いエージェント側）は `payment_api/` が
   別に検査する（請求側を信用しすぎない）
@@ -15,6 +16,7 @@ from typing import Protocol
 
 from src.db.events import EventStore
 from src.models.event import Event, Participant, Receipt
+from src.models.feedback import MemoryFact, Retrospective, RetroStatus
 from src.models.policy import PolicySnapshot
 from src.models.split import Approval, ApprovalStatus, SplitResult
 from src.services.approver import determine_approver
@@ -42,6 +44,12 @@ class Gate(StrEnum):
     CHECKOUT_NOT_IN_SPLIT = "checkout_not_in_split"
     INVALID_AMOUNT = "invalid_amount"
     DUPLICATE_PAYMENT = "duplicate_payment"
+    # 6.4 記憶を保存する前
+    RETRO_NOT_READY = "retro_not_awaiting_organizer"
+    NOT_THE_ORGANIZER = "not_the_organizer"
+    FACT_NOT_FROM_TEMPLATE = "fact_not_from_template"
+    BREAKDOWN_WITH_FEW_RESPONSES = "breakdown_with_few_responses"
+    MEMORY_ALREADY_SAVED = "memory_already_saved"
 
 
 @dataclass(frozen=True)
@@ -238,3 +246,29 @@ def load_and_check_before_split(store: EventStore, event_id: str) -> GateResult:
     if event is None:
         return GateResult([Gate.POLICY_SNAPSHOT_MISSING])
     return check_before_split(event, store.list_participants(event_id), store.get_receipt(event_id))
+
+
+MIN_RESPONSES_FOR_BREAKDOWN = 3
+
+
+def check_before_memory(
+    event: Event, retro: Retrospective | None, web_uid: str, facts: list[MemoryFact]
+) -> GateResult:
+    """Policy Gate 6.4（記憶を保存する前）。書き込むのは、幹事が確認した、定型の事実だけ。"""
+    from src.services.memory_facts import has_breakdown, is_template_fact
+
+    failures: list[Gate] = []
+    if retro is None or retro.status is not RetroStatus.AWAITING_ORGANIZER:
+        failures.append(Gate.RETRO_NOT_READY)
+    # 確認したのは、このイベントの幹事本人（Web の認証の UID）
+    if not web_uid or web_uid != event.organizer_web_uid:
+        failures.append(Gate.NOT_THE_ORGANIZER)
+    # 定型のテンプレートの形の文だけ（LLM が書いた文・編集した文は、ここで落ちる）
+    if any(not is_template_fact(f.text) for f in facts):
+        failures.append(Gate.FACT_NOT_FROM_TEMPLATE)
+    few = retro is None or retro.response_count < MIN_RESPONSES_FOR_BREAKDOWN
+    if few and any(has_breakdown(f.text) for f in facts):
+        failures.append(Gate.BREAKDOWN_WITH_FEW_RESPONSES)
+    if retro is not None and (retro.saved_at is not None or retro.memory_refs):
+        failures.append(Gate.MEMORY_ALREADY_SAVED)
+    return GateResult(failures)

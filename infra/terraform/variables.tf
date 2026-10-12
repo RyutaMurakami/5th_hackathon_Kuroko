@@ -38,6 +38,12 @@ variable "kuroko_agent_engine" {
   default     = ""
 }
 
+variable "memory_bank_engine" {
+  type        = string
+  description = "記憶（Memory Bank）を置く Agent Runtime のエンジン名。空なら、統括エージェントのエンジン（kuroko_agent_engine）を使う（SPEC 9.8）"
+  default     = ""
+}
+
 variable "extract_agent_engine" {
   type        = string
   description = "隔離抽出エージェント（extract-agent）の Agent Runtime のエンジン名。デプロイしたあとに設定する（TASKS B26）。空のあいだ、振り返りのコメントはキーワードの仮実装で語彙に落とす"

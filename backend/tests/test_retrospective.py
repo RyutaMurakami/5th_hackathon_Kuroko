@@ -180,12 +180,11 @@ async def test_three_or_more_responses_show_the_breakdown_without_names():
 
 
 # ---------------- Scheduler ----------------
-async def test_tick_starts_collection_the_day_after_completion():
+async def test_tick_picks_up_a_completed_event_whose_collection_did_not_start():
+    """依頼は完了の直後に始まる（SPEC 7.4）。定期実行は、始まらなかったものを拾い直す。"""
     retro, store, slack, clock = build()
-    clock.t = DONE + dt.timedelta(hours=23)
-    assert (await retro.tick())["started"] == 0  # 翌日になっていない
-    clock.t = DONE + dt.timedelta(days=1)
-    assert (await retro.tick())["started"] == 1
+    clock.t = DONE + dt.timedelta(minutes=5)
+    assert (await retro.tick())["started"] == 1  # 翌日を待たない
     assert (await retro.tick())["started"] == 0  # 二重に始めない
     assert len(slack.dms) == 9
 

@@ -149,7 +149,8 @@ async def test_reservation_uploads_are_not_read_as_receipts():
     up = svc.issue_upload_url(ORG, eid, UploadKind.RESERVATION, "image/png", len(PNG))
     signer.sizes[store.get_upload(eid, up["upload_id"]).object_path] = len(PNG)
     out = await svc.register_upload(ORG, eid, up["upload_id"])
-    assert out["extraction"] == "pending" and model.calls == []
+    # 予約画面は、領収書の読み取りには回さない（予約の読み取りが無ければ、手入力に切り替える）
+    assert out["extraction"] == "failed" and model.calls == []
 
 
 def test_the_prompt_treats_the_image_text_as_data():

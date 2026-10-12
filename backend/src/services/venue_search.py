@@ -8,15 +8,18 @@
 エージェントに渡さない）。
 """
 
+import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from src.clients.maps import Venue
+from src.clients.memory_bank import MemoryStore
 from src.db.events import EventStore
-from src.models.event import RsvpStatus
+from src.models.event import Event, RsvpStatus
 from src.models.venue import VenueCandidate
 from src.services.access import AccessibleStation, RangeSearcher, search_accessible_stations
+from src.services.memory_facts import read_scopes, records_by_venue, venue_key
 from src.services.venue_ranking import (
     Constraints,
     MemoryRecord,
@@ -24,6 +27,8 @@ from src.services.venue_ranking import (
     rank_venues,
 )
 from src.services.vocab import ATMOSPHERE_TAGS, GENRE_TAGS
+
+logger = logging.getLogger(__name__)
 
 MAX_STATIONS = 3  # 店を探す候補駅の数（最も遠い人の所要時間が短い駅から）
 VENUES_PER_STATION = 10
@@ -71,9 +76,30 @@ class VenueSearch:
         stations: RangeSearcher,
         maps: VenueFinder,
         memory: dict[str, MemoryRecord] | None = None,
+        memory_store: MemoryStore | None = None,
     ) -> None:
         self._store, self._stations, self._maps = store, stations, maps
         self._memory = memory or {}
+        # 記憶（Memory Bank）。同じ店の過去の実績を引く（SPEC 9.8）
+        self._memory_store = memory_store
+
+    async def _recall(self, event: Event, venues: list[Venue]) -> dict[str, MemoryRecord]:
+        """記憶から、候補の店と同じ名前の実績を引く。**順位の調整と、理由に添える文だけ**に使う。
+
+        スコープは、イベントからコードが決める（LLM・利用者の値を使わない）。記憶が読めなくても、
+        店の検索は続ける（記憶なしの順位になるだけ）。
+        """
+        if self._memory_store is None:
+            return {}
+        facts: list[str] = []
+        try:
+            for scope in read_scopes(event.sandbox, event.guest_owner_uid):
+                facts += [f.fact for f in await self._memory_store.list_facts(scope)]
+        except Exception:  # 記憶の失敗で、店の検索を止めない。本文はログに出さない
+            logger.warning("memory recall failed; ranking without memory")
+            return {}
+        by_name = records_by_venue(facts)
+        return {v.place_id: by_name[k] for v in venues if (k := venue_key(v.name)) in by_name}
 
     async def run(self, event_id: str) -> VenueSearchResult:
         event = self._store.get_event(event_id)
@@ -131,7 +157,7 @@ class VenueSearch:
             found,
             constraints,
             prefs,
-            memory=self._memory,
+            memory=self._memory | await self._recall(event, [v for v, _ in found]),
             relaxed_to_minutes=access.used_max_minutes if access.relaxed else None,
         )
         if not ranked.proposals:

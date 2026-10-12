@@ -21,7 +21,7 @@ URL = "https://kuroko-api.test"
 AGENT = "agent-kuroko-principal"
 RULES = Path(__file__).resolve().parents[2] / "policies" / "company_rules.yaml"
 HEADERS = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
-TOOLS = {"get_event_summary", "check_budget", "search_venues"}
+TOOLS = {"get_event_summary", "check_budget", "search_venues", "retrieve_policy"}
 
 
 def bearer(identity: str | None, aud: str = URL, claim: str = "email") -> dict[str, str]:
@@ -130,7 +130,10 @@ async def test_tools_accept_only_an_event_id_and_a_price(monkeypatch):
         tools = result_of(await rpc(client, "tools/list"))["tools"]
         assert {t["name"] for t in tools} == TOOLS
         for t in tools:  # 条件（人数・予算・食べられないもの）は、LLM から受けない
-            assert set(t["inputSchema"]["properties"]) <= {"event_id", "course_price_yen"}
+            allowed = {"event_id", "course_price_yen"}
+            if t["name"] == "retrieve_policy":
+                allowed = {"event_id", "question"}  # 規程の検索の問いだけ（値は変えられない）
+            assert set(t["inputSchema"]["properties"]) <= allowed
 
 
 # ---------------- ツールの挙動 ----------------

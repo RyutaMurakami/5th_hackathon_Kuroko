@@ -37,6 +37,8 @@ def _raise(e: DashboardError) -> HTTPException:
 class MessageIn(BaseModel):
     event_id: str | None = None  # 最初の発言は無し（イベントが作られる）
     text: str = Field(max_length=2000)
+    # イベントを作るときだけ使う。live（実演用）は、登録したアカウントだけ（SPEC 7.7）
+    mode: Literal["experience", "live"] = "experience"
 
 
 class PlanIn(BaseModel):
@@ -64,20 +66,29 @@ class BankApprovalIn(BaseModel):
     user_id: str = Field(min_length=1, max_length=64)
 
 
+class RetroIn(BaseModel):
+    # 画面から受けるのは、選択だけ（事実の文面は受けない。コードが作り直す。Policy Gate 6.4）
+    reuse_intent: Literal["yes", "no", "unanswered"] = "unanswered"
+    include: list[Literal["venue_record", "venue_evaluation"]] = Field(default=[], max_length=2)
+    decision: Literal["save", "skip"]
+
+
 class VenueIn(BaseModel):
     place_id: str
     name: str
 
 
 @router.get("/me")
-def me(actor: Who) -> dict[str, str]:
+def me(actor: Who, s: Svc) -> dict[str, Any]:
     """利用者の役割（幹事／ゲスト）。画面の出し分けに使う（権限の強制は各操作の側）。"""
-    return {"role": actor.role.value}
+    return s.me(actor)
 
 
 @router.get("/events")
-def list_events(actor: Who, s: Svc) -> list[dict[str, Any]]:
-    return s.list_events(actor)
+def list_events(
+    actor: Who, s: Svc, mode: Literal["experience", "live"] | None = None
+) -> list[dict[str, Any]]:
+    return s.list_events(actor, mode)
 
 
 @router.get("/events/{event_id}")
@@ -91,7 +102,7 @@ def get_event(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
 @router.post("/messages")
 async def send_message(body: MessageIn, actor: Who, s: Svc) -> dict[str, Any]:
     try:
-        return await s.send_message(actor, body.event_id, body.text)
+        return await s.send_message(actor, body.event_id, body.text, body.mode)
     except DashboardError as e:
         raise _raise(e) from None
 
@@ -146,6 +157,15 @@ def mark_held(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
         raise _raise(e) from None
 
 
+@router.post("/events/{event_id}/venue-candidates")
+async def find_venues(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
+    """店の候補を出す（順位はコードが決める。幹事が画面で選ぶ）。"""
+    try:
+        return await s.find_venues(actor, event_id)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
 @router.post("/events/{event_id}/select-venue")
 def select_venue(event_id: str, body: VenueIn, actor: Who, s: Svc) -> dict[str, Any]:
     try:
@@ -170,6 +190,26 @@ async def approve_bank(event_id: str, body: BankApprovalIn, actor: Who, s: Svc) 
     """体験用の「銀行で承認する」（本物の銀行の振込には効かない。SPEC 7.7）。"""
     try:
         return await s.approve_bank_transfer(actor, event_id, body.user_id)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
+@router.post("/events/{event_id}/close-retro")
+def close_retro(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
+    """振り返りの回答を、待たずに締め切る（その時点の回答で集計する。SPEC 7.4）。"""
+    try:
+        return s.close_retro(actor, event_id)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
+@router.post("/events/{event_id}/confirm-retro")
+async def confirm_retro(event_id: str, body: RetroIn, actor: Who, s: Svc) -> dict[str, Any]:
+    """振り返りのまとめの確認。「覚えさせる」なら、定型の事実を記憶に保存する（SPEC 9.8）。"""
+    try:
+        return await s.confirm_retro(
+            actor, event_id, body.reuse_intent, list(body.include), body.decision
+        )
     except DashboardError as e:
         raise _raise(e) from None
 

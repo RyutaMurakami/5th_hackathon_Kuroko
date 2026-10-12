@@ -237,3 +237,261 @@ main.wide {
   margin: 0;
   color: var(--color-lagoon-text);
 }
+
+.sampleLink {
+  color: var(--color-navy-text);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  text-decoration: underline;
+}
+
+.sampleLink:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-checkbox);
+}
+
+/* 按分の内訳（検証用の画面） */
+.splitList,
+.retroStats,
+.factList {
+  list-style: none;
+  margin: 0 0 var(--spacing-16);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.splitList li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--spacing-16);
+  align-items: baseline;
+  padding-bottom: var(--spacing-8);
+  border-bottom: var(--border-width) solid var(--color-hairline);
+}
+
+.splitMeta {
+  color: var(--color-steel-text);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+}
+
+.splitYen {
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* 振り返り */
+.retroQuestion {
+  margin: 0 0 var(--spacing-16);
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8) var(--spacing-16);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.retroQuestion legend {
+  padding: 0;
+  margin-bottom: var(--spacing-8);
+  font-weight: var(--font-weight-bold);
+}
+
+.retroQuestion label,
+.factList label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-8);
+  cursor: pointer;
+}
+
+.factList li {
+  padding: var(--spacing-8) var(--spacing-16);
+  background: var(--color-cream-subtle);
+  border-radius: var(--radius-smallelements);
+}
+
+/* 銀行の承認ページを模した画面（体験用。SPEC 7.7） */
+.bankOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-16);
+  background: color-mix(in srgb, var(--color-ink-navy) 45%, transparent);
+}
+
+.bankPage {
+  width: 100%;
+  max-width: 440px;
+  background: var(--color-pure-white);
+  border-radius: var(--radius-cards);
+  box-shadow: var(--shadow-popover);
+  overflow: hidden;
+}
+
+.bankHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-8);
+  padding: var(--spacing-16);
+  background: var(--color-ink-navy);
+  color: var(--color-cream-text);
+  font-weight: var(--font-weight-bold);
+}
+
+.bankBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+  padding: var(--spacing-16);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.bankTitle {
+  margin: 0;
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  font-weight: var(--font-weight-bold);
+}
+
+.bankRows {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--spacing-8) var(--spacing-16);
+}
+
+.bankRows dt {
+  color: var(--color-steel-text);
+}
+
+.bankRows dd {
+  margin: 0;
+  font-weight: var(--font-weight-bold);
+  overflow-wrap: anywhere;
+}
+
+.bankDone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-8);
+  padding: var(--spacing-16) 0;
+  text-align: center;
+  color: var(--color-lagoon-text);
+  font-weight: var(--font-weight-bold);
+}
+
+.bankNote {
+  margin: 0;
+  padding: var(--spacing-8) var(--spacing-16);
+  background: var(--color-sun-soft);
+  color: var(--color-sun-text);
+  border-radius: var(--radius-smallelements);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+}
+
+/* 店の候補（チャットの中のカード） */
+.venueList {
+  list-style: none;
+  margin: 0 0 var(--spacing-16);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.venueList li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  padding: var(--spacing-16);
+  background: var(--color-cream-subtle);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-smallelements);
+}
+
+.venueList li.venueChosen {
+  border-color: var(--color-ink-navy);
+  background: var(--color-navy-tint);
+}
+
+.venueHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-8);
+}
+
+.memoryNote {
+  color: var(--color-sun-text);
+}
+
+button.sampleLink {
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* 進行ヒント（チャットの列の先頭に、いつも出す） */
+.hint {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  padding: var(--spacing-16);
+  background: var(--color-sun-soft);
+  border-radius: var(--radius-smallelements);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.hintHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-8);
+  font-weight: var(--font-weight-bold);
+}
+
+.hintStep {
+  color: var(--color-sun-text);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+}
+
+.hintText {
+  margin: 0;
+}
+
+.personaHint {
+  margin: 0;
+  padding: var(--spacing-8) var(--spacing-16);
+  background: var(--color-sun-soft);
+  border-radius: var(--radius-smallelements);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.personaHintIdle {
+  background: var(--color-pure-white);
+  border: var(--border-width) solid var(--color-hairline);
+  color: var(--color-steel-text);
+}
