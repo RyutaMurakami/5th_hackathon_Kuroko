@@ -4,7 +4,7 @@
 
   cd backend
   # V1: kuroko-api の /mcp に、エージェントのどの身元が届くか（AGENT_KUROKO_PRINCIPAL に入れる値を決める）
-  uv run python ../infra/agent_platform/verify_g2.py v1 --kuroko-engine <kuroko-agent-gw のエンジン名>
+  uv run python ../infra/agent_platform/verify_g2.py v1 --kuroko-engine <kuroko-agent のエンジン名>
   # V2: 2つのエージェントの身元が別か。extract-agent に余計な権限が付いていないか
   uv run python ../infra/agent_platform/verify_g2.py v2 --kuroko-engine <…> --extract-engine <…>
   # V8: 日本語の攻撃文を入口から流す（Model Armor の検知は、Console の Logs Explorer で確かめる）

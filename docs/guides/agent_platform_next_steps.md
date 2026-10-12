@@ -213,6 +213,8 @@ AI に返すもの: なし（名前が決まっている）。
 
 ## 8. フェーズ 5: エージェントを Gateway 付きでデプロイする（**待ち: AI のデプロイスクリプト**）
 
+> **2026-10-12: 表示名から `-gw` を外した**（`kuroko-agent`・`extract-agent`。エンジンの ID・権限・記憶は変わらない）。`-gw` は、identity なしの旧エンジンと並べるための仮の名前だった。**今後のデプロイは `--display-name` を付けない**（既定が `kuroko-agent` / `extract-agent`）。以下の `-gw` の手順は、初回の作成の記録。
+
 ### 🤖 AI の準備（2026-10-10 に `deploy_agent.py` を用意した）
 
 | # | AI がやること | 状態 |
@@ -304,7 +306,7 @@ AI に返すもの: なし（名前が決まっている）。
 
 - [ ] **過去の会の記憶（seed）を入れる**（human_task H27。入れると、最初の企画でも、店の候補に「前回の実績」が出る）。店名は、実際に候補に出る店の名前と同じにする。`backend/` で、まず `--dry-run` で文面を確かめる:
   `MEMORY_BANK_ENGINE=<kuroko-agent のエンジン名> uv run python scripts/seed_memory.py "<店名>" --year 2026 --month 6 --per-person 5200 --rating 4.3 --reuse yes --dry-run`
-- [x] **統括エージェントの再デプロイ**（**2026-10-12 済み**。AI が `deploy_agent.py --display-name kuroko-agent-gw` で、同じエンジンを更新した。本番で `retrieve_policy` が呼ばれることを確認）。ツール `retrieve_policy`（規程の文書を調べる）を、許可リスト（`kuroko_agent/app/callbacks.py`）と指示文に足した。Agent Registry のツールの一覧は3件のままでも動いた（Gateway は、いまの設定ではツールごとに絞っていない）。名簿を実態に合わせるなら、`backend/mcp_toolspec.json`（4件）に貼り直す（任意）
+- [x] **統括エージェントの再デプロイ**（**2026-10-12 済み**。AI が `deploy_agent.py` で、同じエンジンを更新した。本番で `retrieve_policy` が呼ばれることを確認）。ツール `retrieve_policy`（規程の文書を調べる）を、許可リスト（`kuroko_agent/app/callbacks.py`）と指示文に足した。Agent Registry のツールの一覧は3件のままでも動いた（Gateway は、いまの設定ではツールごとに絞っていない）。名簿を実態に合わせるなら、`backend/mcp_toolspec.json`（4件）に貼り直す（任意）
 - 過去の会の記憶（seed）は、1組（実績と評価）を投入済み（2026-10-12。スコープ `team:sample-co:dev1`）
 
 ---
