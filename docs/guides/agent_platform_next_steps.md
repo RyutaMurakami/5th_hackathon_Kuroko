@@ -22,7 +22,7 @@
 | `kuroko-api` を呼べる主体（Cloud Run invoker） | `sa-api`・`sa-dashboard`・`sa-gateway`・`sa-scheduler`・`sa-demo-runner` | **エージェントの身元は未登録**。V1 のあと、AI が `roles/run.invoker` を付ける |
 | デプロイスクリプト `infra/agent_platform/deploy_agent.py` | **用意済み（2026-10-10）**。Gateway なしの環境で `--dry-run` まで確認。**実際の作成は、Gateway ができてから初めて通る**（未検証） | `agents-cli deploy` には Gateway を付けるオプションが無いため、SDK（`client.agent_engines`）で同じ経路に `agent_gateway_config` と Agent identity を足した |
 | `agents-cli` | 1.3.1（1.9.0 が出ている） | 今回は更新しなくてよい（更新するなら `uv tool upgrade google-agents-cli`。挙動が変わるので、更新するなら先に AI に伝える） |
-| Memory Bank・RAG Engine | **未作成。コードも未実装**（B27・B28） | 今は人間の作業なし。AI の手順書ができるまで待つ（フェーズ 7） |
+| Memory Bank・RAG Engine | **Memory Bank は、統括エージェントのエンジンに付くものを使う（新しく作らない）。RAG Engine は使っていない**（2026-10-12。B27・B28） | 任意: 記憶の seed の投入、統括エージェントの再デプロイ（フェーズ 7） |
 | Firestore `config/slack_users` | **無い** | シナリオを Slack で通すのに必要（Agent Platform ではないが、同時に済ませる。フェーズ 8） |
 
 > **一番大事な依存**: `kuroko-agent` が `/mcp` を呼ぶには、**Gateway の出口と Agent identity が要る**（Gateway なしでは ID トークンが付かない）。よって「`kuroko-agent` の再デプロイ」は、**Gateway・Registry の準備と AI のデプロイスクリプトが揃ってから**1回で行う（Gateway とリビジョンは併用できず、あとから付けると作り直しになるため）。先に進められるのは `extract-agent` だけ。
@@ -291,12 +291,20 @@ AI に返すもの: なし（名前が決まっている）。
 
 ---
 
-## 10. フェーズ 7: Memory Bank・RAG Engine（待ち）
+## 10. フェーズ 7: Memory Bank・RAG Engine（2026-10-12 に方式を決めて実装）
 
-**今は人間の作業なし**。コード（B27 RAG・B28 Memory Bank）が未実装で、手順書も未作成。AI が先に実装と手順書（リージョン・TTL・埋め込みモデルなどの設定値つき）を用意し、声をかける。
+**Console で新しく作るリソースは、いまはありません。**
 
-- 🤖 AI の未実施: B27・B28 の実装、H24（規程の PDF の下書き）・H27（記憶の seed の下書き）、手順書
-- あなた: 手順書が届いてから、Console で作成し、リソース名を AI に返す
+- **Memory Bank**: 統括エージェント（`kuroko-agent`）の Agent Runtime のインスタンスに付く Memory Bank を使う（`…/reasoningEngines/<ID>/memories`。別のリソースを作らない）。`kuroko-api` が、幹事が Web で確認した定型の文だけを書き込み、店の候補を探すときに読む（SPEC 9.8）。設定は Terraform の `memory_bank_engine`（空なら `kuroko_agent_engine` と同じ）
+  - **エンジンを作り直すと、記憶は新しいエンジンに引き継がれない**（ID が変わるため）。作り直したら、seed を入れ直す
+  - 確かめ方（🖱）: Console の Agent Platform → Agent Runtime → `kuroko-agent` → Memories に、保存した文が出る
+- **RAG Engine**: 使っていない。規程は、文書（`policies/company_rules.md`）の全文を Gemini に渡して値を読み取り、コードが検証する（SPEC 9.7）。コーパスを作るのは、文書が増えて検索が要るようになってから
+
+**あなたの作業（任意）**
+
+- [ ] **過去の会の記憶（seed）を入れる**（human_task H27。入れると、最初の企画でも、店の候補に「前回の実績」が出る）。店名は、実際に候補に出る店の名前と同じにする。`backend/` で、まず `--dry-run` で文面を確かめる:
+  `MEMORY_BANK_ENGINE=<kuroko-agent のエンジン名> uv run python scripts/seed_memory.py "<店名>" --year 2026 --month 6 --per-person 5200 --rating 4.3 --reuse yes --dry-run`
+- [ ] **統括エージェントの再デプロイ**（指示文に、発言の先頭の「システム情報」の読み方を足した。`kuroko_agent/app/agent.py`。再デプロイしなくても動くが、したほうが、イベントの ID を聞き返しにくい）
 
 ---
 
@@ -353,5 +361,5 @@ AI に返すもの: なし（名前が決まっている）。
 - [x] 🤖 `deploy_agent.py` の用意（2026-10-10。`--dry-run` まで確認）／ [ ] 🤖 `verify_g2.py`（V1・V2・V7・V8。Gateway ができてから）
 - [x] フェーズ 5: Gateway 付きデプロイ（5-1〜5-5）→ 🤖 IAM・V1・`agent_kuroko_principal`（**2026-10-11 完了**。kuroko-agent-gw: V1 OK、extract-agent-gw: V2 OK。両エンジンへ切り替え済み。旧エンジンは 2026-10-11 に削除済み）
 - [ ] フェーズ 6: 確かめる・P9 の判断（V1・V2・V7・V8 は完了。**残り: P9 の判断（INSPECT_ONLY → ブロック）**）
-- [ ] フェーズ 7: Memory Bank・RAG（AI の手順書待ち）
+- [ ] フェーズ 7: Memory Bank・RAG（任意: seed の投入・統括エージェントの再デプロイ）
 - [ ] フェーズ 8: `config/slack_users`

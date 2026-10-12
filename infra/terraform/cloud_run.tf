@@ -58,6 +58,8 @@ locals {
         FIREBASE_PROJECT_ID  = var.project_id
         KUROKO_AGENT_ENGINE  = var.kuroko_agent_engine
         EXTRACT_AGENT_ENGINE = var.extract_agent_engine
+        # 記憶（Memory Bank）の保存先。既定は、統括エージェントのエンジンに付く Memory Bank（SPEC 9.8）
+        MEMORY_BANK_ENGINE = var.memory_bank_engine != "" ? var.memory_bank_engine : var.kuroko_agent_engine
         # /mcp（エージェント用のツール）を通す身元。既定は sa-agent-mcp（Agent identity だけが偽装できる。TASKS B21）
         AGENT_KUROKO_PRINCIPAL = var.agent_kuroko_principal != "" ? var.agent_kuroko_principal : local.sa["sa-agent-mcp"]
       })
