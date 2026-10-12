@@ -10,6 +10,7 @@
 """
 
 import datetime as dt
+import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal, Protocol
@@ -23,6 +24,7 @@ from src.models.dashboard import (
     LIVE_MAX_EVENTS,
     MAX_UPLOAD_BYTES,
     MAX_UPLOADS,
+    PENDING_REPLY_TTL_SECONDS,
     SANDBOX_DAYS,
     Actor,
     Message,
@@ -43,7 +45,10 @@ from src.services.reservation_read import ReservationModel, ingest_reservation
 from src.services.scenario_hint import hint_for, start_hint
 from src.services.vocab import REQUEST_TAGS, only_vocab
 
+logger = logging.getLogger(__name__)
+
 Chat = Callable[[str, str], Awaitable[str]]  # (会話の鍵, 発言) → 返答
+EnqueueSelf = Callable[[str, dict, str], Awaitable[None]]  # (パス, 本文, タスクの ID)
 FAILED_REPLY = "いま返答を作れませんでした。少し待って、もう一度送ってください。"
 
 
@@ -112,11 +117,13 @@ class DashboardService:
         reservation_reader: ReservationModel | None = None,
         retro: RetroOps | None = None,
         venues: VenueFinder | None = None,
+        enqueue_chat: EnqueueSelf | None = None,
         now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
     ) -> None:
         self._personas, self._policy, self._retro = personas, policy, retro
         self._reservation_reader = reservation_reader
         self._venues = venues
+        self._enqueue_chat = enqueue_chat  # 無ければ（ローカル・テスト）、返答をその場で待つ
         self._store, self._chat, self._signer = store, chat, signer
         self._dispatcher, self._ttl, self._now = dispatcher, upload_ttl_seconds, now
         self._ocr = ocr
@@ -177,7 +184,7 @@ class DashboardService:
                 for p in people
             ],
             "uploads": [u.model_dump(mode="json") for u in self._store.list_uploads(event_id)],
-            "messages": [m.model_dump(mode="json") for m in self._store.list_messages(event_id)],
+            "messages": [m.model_dump(mode="json") for m in self._messages(event_id)],
             "waiting_for": waiting_for(e, people, retro_ready=retro_ready),
             "split": self._split_view(event_id),
             "budget_overrun": _budget_view(e),
@@ -359,6 +366,8 @@ class DashboardService:
             event = self._create_event(actor, now, mode)
         else:
             event = self._own(actor, event_id)
+            if any(m.status is MessageStatus.PENDING for m in self._messages(event.event_id)):
+                raise DashboardError("reply_pending", 409)  # 返答が出るまで、次は受けない
         if actor.role is Role.GUEST:
             sent = sum(
                 1 for m in self._store.list_messages(event.event_id) if m.role == "organizer"
@@ -369,19 +378,74 @@ class DashboardService:
             Message(message_id=_id("m"), event_id=event.event_id, role="organizer", text=text,
                     created_at=now)
         )  # fmt: skip
+        if self._enqueue_chat is None:
+            answer = await self._answer(event, actor.uid, text, None)
+            return {"event_id": event.event_id, "reply": answer.model_dump(mode="json")}
+        # 返答は待たない（Hosting の応答は60秒で切られる。SPEC 7.5）。「考え中」を保存して返し、
+        # 返答の生成は Cloud Tasks で行う
+        pending = Message(
+            message_id=_id("m"), event_id=event.event_id, role="kuroko", text="",
+            status=MessageStatus.PENDING, created_at=self._now(),
+        )  # fmt: skip
+        self._store.save_message(pending)
+        try:
+            await self._enqueue_chat(
+                "/tasks/internal/chat-replies",
+                {"event_id": event.event_id, "message_id": pending.message_id, "uid": actor.uid,
+                 "text": text},
+                f"chat-{pending.message_id}",
+            )  # fmt: skip
+        except Exception:  # 投入できない。待たせずに、失敗として返す
+            logger.exception("could not enqueue the chat reply: event=%s", event.event_id)
+            pending = pending.model_copy(
+                update={"status": MessageStatus.FAILED, "text": FAILED_REPLY}
+            )
+            self._store.save_message(pending)
+        return {"event_id": event.event_id, "reply": pending.model_dump(mode="json")}
+
+    async def _answer(
+        self, event: Event, uid: str, text: str, pending: Message | None
+    ) -> Message:
+        """エージェントの返答を作り、KUROKO のメッセージとして保存する（失敗は固定の文面）。"""
         status, reply = MessageStatus.DONE, ""
         try:
             # いま開いているイベントを、コードが伝える（ID を聞き返さない。SPEC 7.5）
             asked = with_context(text, event, "幹事")
-            reply = await self._chat(f"web:{event.event_id}:{actor.uid}", asked)
+            reply = await self._chat(f"web:{event.event_id}:{uid}", asked)
         except Exception:  # Gateway のブロックも含む。理由・本文はログに出さない
             status, reply = MessageStatus.FAILED, FAILED_REPLY
         answer = Message(
-            message_id=_id("m"), event_id=event.event_id, role="kuroko", text=reply[:2000],
-            status=status, created_at=self._now(),
+            message_id=pending.message_id if pending else _id("m"), event_id=event.event_id,
+            role="kuroko", text=reply[:2000], status=status,
+            created_at=pending.created_at if pending else self._now(),
         )  # fmt: skip
         self._store.save_message(answer)
-        return {"event_id": event.event_id, "reply": answer.model_dump(mode="json")}
+        return answer
+
+    async def run_chat_reply(self, event_id: str, message_id: str, uid: str, text: str) -> str:
+        """Cloud Tasks から呼ばれ、返答待ちのメッセージを返答に更新する。例外は出さない。"""
+        pending = self._store.get_message(event_id, message_id)
+        if pending is None:
+            return "gone"  # クリアされた（イベントごと消えた）
+        if pending.status is not MessageStatus.PENDING:
+            return "skipped"  # 再配信・重複。すでに処理した
+        event = self._store.get_event(event_id)
+        if event is None:
+            return "gone"  # 孤児のメッセージを残さない
+        await self._answer(event, uid, text, pending)
+        return "done"
+
+    def _messages(self, event_id: str) -> list[Message]:
+        """メッセージの一覧。長く返答待ちのままのものは、失敗として返す（入力を塞がない）。"""
+        now = self._now()
+        out = []
+        for m in self._store.list_messages(event_id):
+            if m.status is MessageStatus.PENDING and (
+                (now - m.created_at).total_seconds() > PENDING_REPLY_TTL_SECONDS
+            ):
+                m = m.model_copy(update={"status": MessageStatus.FAILED, "text": FAILED_REPLY})
+            out.append(m)
+        return out
 
     def _create_event(self, actor: Actor, now: dt.datetime, mode: str = "experience") -> Event:
         guest = actor.role is Role.GUEST
@@ -671,6 +735,20 @@ class DashboardService:
             notification_id=_id("nt"), uid=uid, event_id=event_id, kind=kind, text=text[:200],
             created_at=self._now(),
         ))  # fmt: skip
+
+    # ------------------------------------------------------------ クリア（画面から。SPEC 7.7）
+    def reset_scenario(self, actor: Actor, mode: str) -> dict[str, int]:
+        """この画面（mode）で自分が作ったイベントと通知を削除し、シナリオを最初から始められる
+        ようにする。他の利用者・もう一方の画面のイベントは触れない。"""
+        if mode not in ("experience", "live"):
+            raise DashboardError("invalid_mode")
+        if mode == "live" and not self._live_allowed(actor):
+            raise DashboardError("live_not_allowed", 403)
+        ids = {e["event_id"] for e in self.list_events(actor, mode)}
+        for event_id in ids:
+            self._store.delete_event(event_id)
+        self._store.delete_notifications(actor.uid, ids)
+        return {"deleted": len(ids)}
 
     # ------------------------------------------------------------ 削除（Cloud Scheduler）
     def purge_expired_sandbox(self) -> int:

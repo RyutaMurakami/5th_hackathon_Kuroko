@@ -106,6 +106,8 @@ GUEST_MAX_EVENTS = 2  # 1ゲストあたり
 LIVE_MAX_EVENTS = 50  # 実演用に登録したアカウント（開発者）は、リハーサルを繰り返せる
 GUEST_MAX_MESSAGES_PER_EVENT = 30
 SANDBOX_DAYS = 7  # ゲストのイベントは、作成から7日で削除する
+# 返答待ち（pending）のまま、この秒数を過ぎたら、失敗として扱う（タスクが動かなかったとき）
+PENDING_REPLY_TTL_SECONDS = 180
 
 
 class PersonaCard(BaseModel):

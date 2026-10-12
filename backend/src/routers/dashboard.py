@@ -73,6 +73,10 @@ class RetroIn(BaseModel):
     decision: Literal["save", "skip"]
 
 
+class ResetIn(BaseModel):
+    mode: Literal["experience", "live"]
+
+
 class VenueIn(BaseModel):
     place_id: str
     name: str
@@ -103,6 +107,15 @@ def get_event(event_id: str, actor: Who, s: Svc) -> dict[str, Any]:
 async def send_message(body: MessageIn, actor: Who, s: Svc) -> dict[str, Any]:
     try:
         return await s.send_message(actor, body.event_id, body.text, body.mode)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
+@router.post("/reset")
+def reset_scenario(body: ResetIn, actor: Who, s: Svc) -> dict[str, int]:
+    """この画面で自分が作ったイベントと通知を削除し、シナリオを最初から始める（SPEC 7.7）。"""
+    try:
+        return s.reset_scenario(actor, body.mode)
     except DashboardError as e:
         raise _raise(e) from None
 

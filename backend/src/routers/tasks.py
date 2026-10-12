@@ -39,6 +39,27 @@ class EventRef(BaseModel):
     event_id: str
 
 
+class ChatReplyRef(BaseModel):
+    event_id: str
+    message_id: str
+    uid: str
+    text: str
+
+
+@router.post("/internal/chat-replies", dependencies=[Depends(require_self)])
+async def chat_reply(ref: ChatReplyRef) -> dict[str, str]:
+    """Web のチャットの返答を作る（エージェントの実行は60秒を超えうるので、画面の応答と分ける。
+    SPEC 7.5）。失敗はメッセージに残して成功を返す（Cloud Tasks に、再実行させない）。"""
+    try:
+        status = await get_dashboard().run_chat_reply(
+            ref.event_id, ref.message_id, ref.uid, ref.text
+        )
+    except Exception:
+        logger.exception("chat reply failed: event=%s", ref.event_id)
+        status = "error"
+    return {"status": status}
+
+
 @router.post("/internal/checkouts", dependencies=[Depends(require_self)])
 async def create_checkouts(ref: EventRef) -> dict:
     """按分の承認後、Policy Gate 6.2 を通った請求を `payment-api` に渡す（自分自身が投入）。"""

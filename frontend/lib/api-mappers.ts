@@ -135,6 +135,7 @@ export function toEventDetail(e: ApiEventDetail): EventDetail {
       role: m.role,
       text: m.text,
       createdAt: m.created_at,
+      status: m.status,
     })),
     activity: [],
     decisionLog: e.decision_log.map((d) => ({

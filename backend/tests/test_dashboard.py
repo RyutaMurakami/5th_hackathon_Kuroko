@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from src.config import get_settings
 from src.db.events import MemoryEventStore
 from src.main import app
-from src.models.dashboard import Actor, Role, UploadKind
+from src.models.dashboard import Actor, NotificationKind, Role, UploadKind
 from src.models.event import EventStatus
 from src.routers import dashboard as router
 from src.services import dashboard_auth
@@ -349,7 +349,7 @@ async def test_notifications_are_private_to_the_recipient():
     svc.notify(
         "u-org",
         "ev",
-        __import__("src.models.dashboard", fromlist=["x"]).NotificationKind.COMPLETED,
+        NotificationKind.COMPLETED,
         "完了",
     )
     (n,) = svc.list_notifications(ORG)
@@ -577,3 +577,114 @@ async def test_the_roster_has_a_verified_station_for_everyone_so_venue_search_ca
     codes = [p.preferences.nearest_station_code for p in people]
     assert len(people) == 10 and all(c and c.isdigit() for c in codes)
     assert len(set(codes)) >= 6  # 全員が同じ駅ではない（帰りやすさの計算に意味がある）
+
+
+# ---------------- 返答は非同期（Hosting の60秒制限。SPEC 7.5） ----------------
+def make_async(chat=None):
+    svc, store, signer, disp = make(chat=chat)
+    queued: list[tuple[str, dict, str]] = []
+
+    async def enqueue(path, payload, task_id):
+        queued.append((path, payload, task_id))
+
+    svc._enqueue_chat = enqueue
+    return svc, store, queued
+
+
+async def test_message_returns_pending_at_once_and_the_task_fills_in_the_reply():
+    calls = []
+
+    async def chat(key, text):
+        calls.append(text)
+        return "お店を探します"
+
+    svc, store, queued = make_async(chat=chat)
+    out = await svc.send_message(ORG, None, "来週金曜に飲み会")
+    assert out["reply"]["status"] == "pending" and out["reply"]["text"] == "" and calls == []
+    path, payload, task_id = queued[0]
+    assert path == "/tasks/internal/chat-replies"
+    assert task_id == f"chat-{out['reply']['message_id']}"
+
+    assert await svc.run_chat_reply(**payload) == "done"
+    got = store.get_message(out["event_id"], out["reply"]["message_id"])
+    assert got.status.value == "done" and got.text == "お店を探します"
+    assert await svc.run_chat_reply(**payload) == "skipped" and len(calls) == 1  # 再配信は無視
+
+
+async def test_pending_reply_blocks_the_next_message_but_a_stale_one_does_not():
+    svc, store, queued = make_async()
+    out = await svc.send_message(ORG, None, "来週金曜に飲み会")
+    eid = out["event_id"]
+    with pytest.raises(DashboardError) as err:
+        await svc.send_message(ORG, eid, "続き")
+    assert err.value.code == "reply_pending" and err.value.status == 409
+
+    later = NOW + dt.timedelta(minutes=4)
+    svc._now = lambda: later
+    assert svc.get_event(ORG, eid)["messages"][-1]["status"] == "failed"
+    await svc.send_message(ORG, eid, "続き")  # 返答待ちのまま止まっていても、入力は塞がない
+
+
+async def test_task_failure_is_kept_in_the_message_and_never_raised():
+    async def broken(key, text):
+        raise RuntimeError("secret internal detail")
+
+    svc, store, queued = make_async(chat=broken)
+    out = await svc.send_message(ORG, None, "こんにちは")
+    await svc.run_chat_reply(**queued[0][1])
+    got = store.get_message(out["event_id"], out["reply"]["message_id"])
+    assert got.status.value == "failed" and "secret" not in got.text
+
+
+async def test_reply_is_dropped_when_the_event_was_cleared_meanwhile():
+    svc, store, queued = make_async()
+    out = await svc.send_message(G1, None, "こんにちは")
+    svc.reset_scenario(G1, "experience")
+    assert await svc.run_chat_reply(**queued[0][1]) == "gone"
+    assert store.list_messages(out["event_id"]) == []
+
+
+async def test_enqueue_failure_returns_a_failed_reply_instead_of_hanging():
+    svc, store, queued = make_async()
+
+    async def down(path, payload, task_id):
+        raise RuntimeError("queue down")
+
+    svc._enqueue_chat = down
+    out = await svc.send_message(ORG, None, "こんにちは")
+    assert out["reply"]["status"] == "failed"
+
+
+# ---------------- クリア（SPEC 7.7） ----------------
+async def test_reset_deletes_only_my_events_of_that_screen_and_their_notifications():
+    svc, store, *_ = make()
+    mine = await new_event(svc, G1)
+    live = (await svc.send_message(G1, None, "別の画面", "experience"))["event_id"]
+    store.save_event(store.get_event(live).model_copy(update={"ui_mode": "live"}))
+    other = await new_event(svc, G2)
+    svc.notify("g1", mine, NotificationKind.COMPLETED, "x")
+    svc.notify("g2", other, NotificationKind.COMPLETED, "y")
+
+    assert svc.reset_scenario(G1, "experience") == {"deleted": 1}
+    assert store.get_event(mine) is None and store.list_messages(mine) == []
+    assert store.get_event(live) is not None and store.get_event(other) is not None
+    assert svc.list_notifications(G1) == [] and len(svc.list_notifications(G2)) == 1
+
+
+async def test_reset_frees_the_guest_event_limit():
+    svc, *_ = make()
+    await new_event(svc, G1)
+    await new_event(svc, G1)
+    with pytest.raises(DashboardError):
+        await new_event(svc, G1)
+    svc.reset_scenario(G1, "experience")
+    await new_event(svc, G1)
+
+
+async def test_reset_of_the_live_screen_needs_a_registered_account():
+    svc, *_ = make()
+    with pytest.raises(DashboardError) as err:
+        svc.reset_scenario(ORG, "live")
+    assert err.value.status == 403
+    with pytest.raises(DashboardError):
+        svc.reset_scenario(ORG, "other")
