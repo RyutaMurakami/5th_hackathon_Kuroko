@@ -146,6 +146,8 @@ class PaymentService:
                 payee_user_id=req.payee_user_id,
                 amount_yen=req.amount_yen,
                 idempotency_key=f"{pid}:{attempt}",
+                # 体験用のイベントでは、銀行での承認を Web のカードで行う（SPEC 7.7）
+                demo_hold=self._store.web_bank_approval(req.event_id),
             )
         except BankAdapterError:
             self._store.update_payment(

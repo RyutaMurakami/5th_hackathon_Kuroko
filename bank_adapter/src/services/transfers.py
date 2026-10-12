@@ -12,6 +12,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
 from src.clients.bank import BankClient, BankError
+from src.clients.demo_bank import DemoBank
 from src.db.store import Store
 from src.models.schemas import (
     StatementEntry,
@@ -80,7 +81,9 @@ class BankService:
         approval_ttl_seconds: int,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         is_simulated: Callable[[str], bool] = lambda _label: False,
+        demo: DemoBank | None = None,
     ) -> None:
+        self._demo = demo  # 体験用の「承認待ち」の代行（SPEC 7.7）。デモの設定が無ければ None
         self._store = store
         self._bank = bank
         self._is_simulated = is_simulated  # デモで代行する振込元か（SPEC 8.10）
@@ -98,7 +101,13 @@ class BankService:
 
     # --- 振込 ---
     def create_transfer(
-        self, *, payer_user_id: str, payee_user_id: str, amount_yen: int, idempotency_key: str
+        self,
+        *,
+        payer_user_id: str,
+        payee_user_id: str,
+        amount_yen: int,
+        idempotency_key: str,
+        demo_hold: bool = False,
     ) -> TransferResponse:
         if payer_user_id == payee_user_id:
             raise InvalidTransfer
@@ -122,6 +131,10 @@ class BankService:
             "created_at": self._now(),
             "simulated": self._is_simulated(payer_label),
         }
+        # 体験用: 実機に通すはずの人の振込も、銀行を呼ばずに「承認待ち」で持つ（SPEC 7.7）
+        held = demo_hold and self._demo is not None and not record["simulated"]
+        if held:
+            record |= {"simulated": True, "held": True}
         existing, created = self._store.create_transfer_if_absent(transfer_id, record)
         if not created:
             if existing["fingerprint"] != fingerprint:
@@ -131,13 +144,22 @@ class BankService:
             return self._refresh(existing)
 
         try:
-            apply_no = self._bank.create_transfer(
-                payer_label=payer_label,
-                payee_label=payee_label,
-                amount_yen=amount_yen,
-                request_key=transfer_id.upper(),  # sunabar の transferRequestKey（UUID）
-                idempotency_key=idempotency_key,
-            )
+            if held:
+                assert self._demo is not None
+                apply_no = self._demo.create_held(
+                    payer_label=payer_label,
+                    payee_label=payee_label,
+                    amount_yen=amount_yen,
+                    request_key=transfer_id.upper(),
+                )
+            else:
+                apply_no = self._bank.create_transfer(
+                    payer_label=payer_label,
+                    payee_label=payee_label,
+                    amount_yen=amount_yen,
+                    request_key=transfer_id.upper(),  # sunabar の transferRequestKey（UUID）
+                    idempotency_key=idempotency_key,
+                )
         except BankError as e:
             self._store.update_transfer(
                 transfer_id, {"status": TransferStatus.FAILED.value, "error_code": e.code}
@@ -148,6 +170,20 @@ class BankService:
             {"status": TransferStatus.AWAITING_APPROVAL.value, "apply_no": apply_no},
         )
         return self._response(updated)
+
+    def demo_approve(self, transfer_id: str) -> TransferResponse:
+        """体験用の「銀行で承認する」（SPEC 7.7）。承認待ちの代行の振込だけを、承認済みにする。"""
+        record = self._store.get_transfer(transfer_id)
+        if record is None:
+            raise UnknownTransfer
+        if (
+            self._demo is None
+            or not record.get("held")
+            or record["status"] != TransferStatus.AWAITING_APPROVAL.value
+            or not self._demo.approve(record["apply_no"])
+        ):
+            raise InvalidTransfer  # 本物の銀行の振込・もう承認待ちでない振込には効かない
+        return self._refresh(record)
 
     def get_transfer(self, transfer_id: str) -> TransferResponse:
         record = self._store.get_transfer(transfer_id)
@@ -171,7 +207,8 @@ class BankService:
                 record = self._store.update_transfer(
                     record["transfer_id"], {"status": TransferStatus.PROCESSED.value}
                 )
-            elif self._now() >= record["created_at"] + self._ttl:
+            elif not record.get("held") and self._now() >= record["created_at"] + self._ttl:
+                # 体験用の「承認待ち」は、期限で失効させない（審査員が読む時間を取れるように）
                 record = self._store.update_transfer(
                     record["transfer_id"], {"status": TransferStatus.EXPIRED.value}
                 )

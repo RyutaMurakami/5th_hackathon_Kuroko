@@ -52,7 +52,7 @@ class Lifecycle:
         )
 
     # ---- 計画の確定: 規程の写しと参加者を用意する ----
-    def prepare_event(self, event: Event) -> Event:
+    def prepare_event(self, event: Event, *, owner_email: str = "") -> Event:
         """規程の写し（以後の計算はこれだけを使う。9.7）と、参加者（サンプル商事の名簿）を用意する。
 
         Slack ユーザーは `config/slack_users`（登場人物 → Slack ID）から入れる。
@@ -70,8 +70,12 @@ class Lifecycle:
                     update={"slack_user_id": slack.get(p.user_id), "attendance_confirmed": True}
                 ),
             )
+        # 体験用のイベントでは、登場人物の振込を Web のカードで承認する。実演用に登録した
+        # アカウントのイベントだけ、本物の銀行（sunabar）で承認する（SPEC 7.7）
+        live = owner_email.lower() in self._store.live_bank_emails()
         return event.model_copy(
             update={
+                "bank_approval": "web" if event.sandbox and not live else "bank",
                 "policy_snapshot": snap,
                 "policy_id": snap.policy_id,
                 "policy_version": snap.version,

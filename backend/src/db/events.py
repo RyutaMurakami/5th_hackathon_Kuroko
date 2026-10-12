@@ -6,11 +6,12 @@
 - events/{event_id}/receipts/current       Receipt（幹事が確定した領収書の金額）
 - events/{event_id}/splits/current         SplitResult（承認の対象の金額表。上書きは承認前だけ）
 - events/{event_id}/approvals/current      Approval
+- events/{event_id}/cards/{card_id}        PersonaCard（登場人物に届いたカード。SPEC 7.7）
 """
 
 from typing import Protocol
 
-from src.models.dashboard import DecisionEntry, Message, Notification, Upload
+from src.models.dashboard import DecisionEntry, Message, Notification, PersonaCard, Upload
 from src.models.event import Event, Participant, Receipt
 from src.models.feedback import Feedback, Retrospective
 from src.models.split import Approval, ApprovalStatus, SplitResult
@@ -68,6 +69,15 @@ class EventStore(Protocol):
 
     def list_events_by_status(self, status: str) -> list[Event]: ...
 
+    def live_bank_emails(self) -> set[str]:
+        """本物の銀行で承認する実演用の Google アカウント（`config/demo`。SPEC 7.7）。"""
+
+    def save_card(self, card: PersonaCard) -> None: ...
+
+    def get_card(self, event_id: str, card_id: str) -> PersonaCard | None: ...
+
+    def list_cards(self, event_id: str) -> list[PersonaCard]: ...
+
     def save_feedback(self, feedback: Feedback) -> None: ...
 
     def get_feedback(self, event_id: str, user_id: str) -> Feedback | None: ...
@@ -124,6 +134,22 @@ class MemoryEventStore:
         self.retros: dict[str, Retrospective] = {}
         self.splits: dict[str, SplitResult] = {}
         self.approvals: dict[str, Approval] = {}
+        self.cards: dict[str, dict[str, PersonaCard]] = {}
+        self.live_emails: set[str] = set()
+
+    def live_bank_emails(self):
+        return set(self.live_emails)
+
+    def save_card(self, card):
+        self.cards.setdefault(card.event_id, {})[card.card_id] = card.model_copy(deep=True)
+
+    def get_card(self, event_id, card_id):
+        c = self.cards.get(event_id, {}).get(card_id)
+        return c.model_copy(deep=True) if c else None
+
+    def list_cards(self, event_id):
+        rows = self.cards.get(event_id, {}).values()
+        return [c.model_copy(deep=True) for c in sorted(rows, key=lambda c: c.created_at)]
 
     def save_event(self, event: Event) -> None:
         self.events[event.event_id] = event.model_copy(deep=True)
@@ -156,7 +182,7 @@ class MemoryEventStore:
 
     def delete_event(self, event_id):
         self.events.pop(event_id, None)
-        for table in (self.participants, self.messages, self.uploads, self.decisions):
+        for table in (self.participants, self.messages, self.uploads, self.decisions, self.cards):
             table.pop(event_id, None)
         for table in (self.receipts, self.splits, self.approvals, self.retros):
             table.pop(event_id, None)
@@ -418,6 +444,26 @@ class FirestoreEventStore:
     def list_retros_by_status(self, status):
         docs = self._db.collection_group("retros").where("status", "==", status).stream()
         return [Retrospective.model_validate(d.to_dict()) for d in docs]
+
+    def live_bank_emails(self):
+        snap = self._db.collection("config").document("demo").get()
+        emails = (snap.to_dict() or {}).get("live_bank_emails") or [] if snap.exists else []
+        return {str(e).lower() for e in emails}
+
+    def save_card(self, card):
+        self._event(card.event_id).collection("cards").document(card.card_id).set(
+            card.model_dump(mode="json")
+        )
+
+    def get_card(self, event_id, card_id):
+        snap = self._event(event_id).collection("cards").document(card_id).get()
+        return PersonaCard.model_validate(snap.to_dict()) if snap.exists else None
+
+    def list_cards(self, event_id):
+        docs = self._event(event_id).collection("cards").stream()
+        return sorted(
+            (PersonaCard.model_validate(d.to_dict()) for d in docs), key=lambda c: c.created_at
+        )
 
     def find_by_slack_user(self, slack_user_id):
         found = []

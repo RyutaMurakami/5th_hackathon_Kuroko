@@ -22,7 +22,13 @@ class FakeBankAdapter:
         return self.authorized is None or user_id in self.authorized
 
     def create_transfer(
-        self, *, payer_user_id: str, payee_user_id: str, amount_yen: int, idempotency_key: str
+        self,
+        *,
+        payer_user_id: str,
+        payee_user_id: str,
+        amount_yen: int,
+        idempotency_key: str,
+        demo_hold: bool = False,
     ) -> TransferInfo:
         if self.fail_next:
             self.fail_next = False
@@ -33,13 +39,14 @@ class FakeBankAdapter:
                 "payee": payee_user_id,
                 "amount": amount_yen,
                 "key": idempotency_key,
+                "demo_hold": demo_hold,
             }
         )
         return TransferInfo(
             transfer_id=f"tr-{len(self.transfers)}",
             status="awaiting_approval",
             approval_expires_at=datetime.now(UTC) + timedelta(minutes=10),
-            simulated=payer_user_id in self.simulated_payers,
+            simulated=demo_hold or payer_user_id in self.simulated_payers,
         )
 
     def get_transfer(self, transfer_id: str) -> TransferInfo:

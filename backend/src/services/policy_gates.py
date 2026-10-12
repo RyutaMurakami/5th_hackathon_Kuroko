@@ -164,13 +164,24 @@ def check_before_checkout(
         # 承認したのが、規程で決まった承認者本人（署名検証済みの Slack 操作から取った ID）
         approver = next((p for p in participants if p.user_id == split.approver_user_id), None)
         slack_id = approval.approved_by_slack_user_id
-        if (
-            approver is None
-            or not approver.slack_user_id
-            or not slack_id
-            or approval.approver_user_id != split.approver_user_id
-            or slack_id != approver.slack_user_id
-        ):
+        if approval.approved_via == "web_demo":
+            # 体験用のイベントで、イベントを作った本人が、Web のカードから承認者として押した
+            # （SPEC 7.7）。体験用でないイベントでは、この経路の承認を認めない
+            by_approver = (
+                event.sandbox
+                and approver is not None
+                and approver.demo_persona
+                and bool(approval.approved_by_web_uid)
+                and approval.approved_by_web_uid == event.guest_owner_uid
+            )
+        else:
+            by_approver = (
+                approver is not None
+                and bool(approver.slack_user_id)
+                and bool(slack_id)
+                and slack_id == approver.slack_user_id
+            )
+        if not by_approver or approval.approver_user_id != split.approver_user_id:
             failures.append(Gate.APPROVER_MISMATCH)
         # 承認された金額表と、いま保存されている金額表が同じ
         if approval.split_hash != split.hash:

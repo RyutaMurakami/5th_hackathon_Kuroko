@@ -37,8 +37,15 @@ class BankAdapter(Protocol):
         """この参加者の銀行の利用の認可が有効か。"""
 
     def create_transfer(
-        self, *, payer_user_id: str, payee_user_id: str, amount_yen: int, idempotency_key: str
-    ) -> TransferInfo: ...
+        self,
+        *,
+        payer_user_id: str,
+        payee_user_id: str,
+        amount_yen: int,
+        idempotency_key: str,
+        demo_hold: bool = False,
+    ) -> TransferInfo:
+        """`demo_hold`: 体験用のイベント。銀行を呼ばず、Web のカードでの承認を待つ（SPEC 7.7）。"""
 
     def get_transfer(self, transfer_id: str) -> TransferInfo:
         """振込依頼の状況（awaiting_approval / processed / expired / failed）。"""
@@ -74,7 +81,13 @@ class HttpBankAdapter:
         return bool(res.json().get("authorized"))
 
     def create_transfer(
-        self, *, payer_user_id: str, payee_user_id: str, amount_yen: int, idempotency_key: str
+        self,
+        *,
+        payer_user_id: str,
+        payee_user_id: str,
+        amount_yen: int,
+        idempotency_key: str,
+        demo_hold: bool = False,
     ) -> TransferInfo:
         res = self._post(
             "/transfers",
@@ -83,6 +96,7 @@ class HttpBankAdapter:
                 "payee_user_id": payee_user_id,
                 "amount_yen": amount_yen,
                 "idempotency_key": idempotency_key,
+                "demo_hold": demo_hold,
             },
         )
         if res.status_code != 201:

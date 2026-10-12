@@ -3,6 +3,7 @@
 すべて仮名の user_id で受け、口座番号を引数にも応答にも出さない。
 
 - POST /authorizations・POST /transfers・GET /transfers/{id}: sa-payment-api だけ
+- POST /transfers/{id}/demo-approval: sa-api だけ（体験用の「承認待ち」の代行の振込だけ。SPEC 7.7）
 - GET /statements・POST /redactions: sa-api（幹事の入金だけ）と sa-payment-api
 """
 
@@ -19,7 +20,12 @@ from src.models.schemas import (
     StatementResponse,
     TransferResponse,
 )
-from src.services.caller_auth import Caller, require_api_or_payment, require_payment
+from src.services.caller_auth import (
+    Caller,
+    require_api,
+    require_api_or_payment,
+    require_payment,
+)
 from src.services.container import get_service
 from src.services.transfers import (
     BankFailure,
@@ -35,6 +41,7 @@ router = APIRouter()
 
 PaymentCaller = Annotated[Caller, Depends(require_payment)]
 AnyCaller = Annotated[Caller, Depends(require_api_or_payment)]
+ApiCaller = Annotated[Caller, Depends(require_api)]
 Service = Annotated[BankService, Depends(get_service)]
 
 
@@ -84,6 +91,17 @@ def get_transfer(
         return service.get_transfer(transfer_id)
     except UnknownTransfer:
         raise HTTPException(status_code=404, detail="unknown_transfer") from None
+
+
+@router.post("/transfers/{transfer_id}/demo-approval", response_model=TransferResponse)
+def demo_approve(transfer_id: str, _: ApiCaller, service: Service) -> TransferResponse:
+    """体験用の「銀行で承認する」（SPEC 7.7）。承認待ちの代行の振込だけ。本物の振込には効かない。"""
+    try:
+        return service.demo_approve(transfer_id)
+    except UnknownTransfer:
+        raise HTTPException(status_code=404, detail="unknown_transfer") from None
+    except InvalidTransfer:
+        raise HTTPException(status_code=409, detail="not_a_held_transfer") from None
 
 
 @router.get("/statements", response_model=StatementResponse)

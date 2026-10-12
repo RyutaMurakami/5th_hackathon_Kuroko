@@ -29,6 +29,10 @@ class SlackInteraction(BaseModel):
     message_ts: str | None = None
     response_url: str | None = None
     value: dict[str, Any]  # DM を作ったときに入れた値
+    # Web のカードから押したとき（SPEC 7.7）だけ入る。**kuroko-api の中でだけ**設定する
+    # （ゲートウェイから届いた値は捨てる）。だれとして押したか（参加者の user_id）と、押した人
+    acting_for: str | None = None
+    web_uid: str | None = None
 
 
 class SlackHomeOpened(BaseModel):

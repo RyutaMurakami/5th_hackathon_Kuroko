@@ -20,6 +20,8 @@ async def slack_message(message: SlackDirectMessage) -> dict[str, str]:
 @router.post("/slack/interaction", dependencies=[Depends(require_gateway)])
 async def slack_interaction(interaction: SlackInteraction) -> dict[str, str]:
     """署名検証済みのボタン操作（出欠・委任・承認・予算超過の確認）。sa-gateway だけ。"""
+    # Web のカード用の欄（だれとして押したか）は、kuroko-api の中でだけ設定する（SPEC 7.7）
+    interaction = interaction.model_copy(update={"acting_for": None, "web_uid": None})
     await get_slack_actions().handle(interaction)
     return {"status": "ok"}
 

@@ -6,14 +6,16 @@
 - 押された操作は、LLM・エージェントを通さない（決定論的なコード）
 """
 
+import json
 import logging
+import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from src.db.events import ApprovedSplitIsFinal, EventStore
 from src.db.mandates import MandateReader
-from src.models.dashboard import NotificationKind
+from src.models.dashboard import NotificationKind, PersonaCard
 from src.models.event import Event, EventStatus, Participant, ParticipantRole, RsvpStatus
 from src.models.slack import Action, SlackHomeOpened, SlackInteraction
 from src.models.split import Approval, ApprovalStatus
@@ -35,6 +37,14 @@ DEMO_RUNNER = "demo-runner"  # 代行で署名した委任状の `signed_via`（
 
 
 Enqueue = Callable[[str, dict, str], Awaitable[None]]  # (path, payload, task_id)
+
+# Web のカードから押せる操作（SPEC 7.7）。取り消し・振り返りは Slack だけ
+WEB_ACTIONS = {Action.CONSENT, Action.DECLINE, Action.APPROVE, Action.BUDGET}
+
+
+class CardError(Exception):
+    """Web のカードの操作を受け付けられない。message は画面に返すコード。"""
+
 
 
 class SlackActions:
@@ -73,6 +83,88 @@ class SlackActions:
         if i.response_url:
             await self._slack.respond(i.response_url, text, msg.resolved(text))
 
+    async def _done(
+        self, i: SlackInteraction, event_id: str, kind: str, user_id: str, text: str
+    ) -> None:
+        """操作が成立した。押されたメッセージを結果に置き換え、Web のカードも回答済みにする。"""
+        self._close_cards(event_id, kind, user_id, text)
+        await self._reply(i, text)
+
+    def _close_cards(self, event_id: str, kind: str, user_id: str, text: str) -> None:
+        for card in self._store.list_cards(event_id):
+            if card.kind == kind and card.user_id == user_id and card.resolved_text is None:
+                self._store.save_card(card.model_copy(update={"resolved_text": text}))
+
+    def _acts_as(self, i: SlackInteraction, event: Event, person: Participant | None) -> bool:
+        """この操作を、記録上の本人のものとして扱ってよいか。
+
+        Slack: 署名検証済みの Slack ユーザーが、記録上の本人と一致する。
+        Web（SPEC 7.7）: 体験用のイベントを作った本人が、デモの登場人物として押した。
+        """
+        if person is None:
+            return False
+        if i.acting_for is not None:
+            return (
+                event.sandbox
+                and person.demo_persona
+                and i.acting_for == person.user_id
+                and bool(i.web_uid)
+                and i.web_uid == event.guest_owner_uid
+            )
+        return bool(person.slack_user_id) and person.slack_user_id == i.user_id
+
+    async def _deliver(
+        self, event: Event, person: Participant, kind: str, text: str, blocks: list[dict]
+    ) -> bool:
+        """カードを届ける。Slack の DM と、体験用のイベントでは Web のチャット画面にも。"""
+        delivered = False
+        if event.sandbox and person.demo_persona:
+            # 作り直したカード（按分のやり直しなど）は、古いほうを閉じる
+            replaced = "新しい依頼に置き換わりました。"
+            self._close_cards(event.event_id, kind, person.user_id, replaced)
+            self._store.save_card(
+                PersonaCard(
+                    card_id=f"cd_{uuid.uuid4().hex[:16]}", event_id=event.event_id,
+                    user_id=person.user_id, kind=kind, text=text, blocks=blocks,  # type: ignore[arg-type]
+                    created_at=self._now(),
+                )
+            )  # fmt: skip
+            delivered = True
+        if person.slack_user_id:
+            await self._slack.post_dm(person.slack_user_id, text, blocks)
+            delivered = True
+        return delivered
+
+    # ------------------------------------------------------------------ Web のカード（SPEC 7.7）
+    async def press_card(self, event: Event, card_id: str, index: int, web_uid: str) -> None:
+        """Web のチャット画面のカードのボタン。値は、保存したカードから取る（画面の値は使わない）。
+
+        呼び出し側（DashboardService）が、イベントの持ち主であることを確かめてから呼ぶ。
+        """
+        card = self._store.get_card(event.event_id, card_id)
+        if not event.sandbox or card is None:
+            raise CardError("card_not_found")
+        if card.resolved_text is not None:
+            raise CardError("card_already_answered")
+        buttons = [
+            el for b in card.blocks if b.get("type") == "actions" for el in b.get("elements", [])
+        ]
+        if not 0 <= index < len(buttons):
+            raise CardError("invalid_action")
+        try:
+            action = Action(buttons[index].get("action_id", ""))
+            value = json.loads(buttons[index].get("value") or "{}")
+        except ValueError:
+            raise CardError("invalid_action") from None
+        if action not in WEB_ACTIONS or not isinstance(value, dict):
+            raise CardError("invalid_action")
+        await self.handle(
+            SlackInteraction(
+                interaction_id=f"web-{card_id}-{index}", action=action, team_id="web",
+                user_id="", value=value, acting_for=card.user_id, web_uid=web_uid,
+            )
+        )  # fmt: skip
+
     def _event_and_person(self, i: SlackInteraction) -> tuple[Event, Participant] | None:
         event = self._store.get_event(str(i.value.get("e", "")))
         if event is None:
@@ -88,7 +180,7 @@ class SlackActions:
             return await self._reply(i, "この飲み会の情報が見つかりませんでした。")
         event, person = found
         # 記録上の本人でなければ受け付けない（ゲートウェイの確認に加えて、記録でも確かめる）
-        if person.slack_user_id != i.user_id or person.role in (
+        if not self._acts_as(i, event, person) or person.role in (
             ParticipantRole.ORGANIZER, ParticipantRole.GUEST_OF_HONOR,
         ):  # fmt: skip
             logger.warning("rsvp rejected: event=%s", event.event_id)
@@ -99,21 +191,35 @@ class SlackActions:
             self._store.save_participant(
                 event.event_id, person.model_copy(update={"rsvp_status": RsvpStatus.DECLINING})
             )
-            await self._reply(i, "欠席で回答しました。")
+            await self._done(i, event.event_id, "consent", person.user_id, "欠席で回答しました。")
             return self._after_rsvp(event.event_id)
         cap = int(i.value["c"])
         mandate_id = f"{event.event_id}:{person.user_id}"
+        if i.acting_for is not None:
+            # Slack では、ゲートウェイが payment-api に署名を依頼する。Web では、同じ内容を
+            # デモ用の代行の経路で依頼する（署名するのは、どちらも payment-api）
+            if self._proxy_sign is None:
+                return await self._reply(i, "この操作はできません。")
+            await self._proxy_sign(
+                "/mandates",
+                {
+                    "user_id": person.user_id, "event_id": event.event_id,
+                    "payee_user_id": i.value["p"], "cap_yen": cap,
+                    "expires_at": i.value["x"], "signed_via": DEMO_RUNNER,
+                },
+                f"web-sign-{event.event_id}-{person.user_id}",
+            )  # fmt: skip
         self._store.save_participant(
             event.event_id,
             person.model_copy(
                 update={"rsvp_status": RsvpStatus.ATTENDING, "mandate_id": mandate_id}
             ),
         )
-        await self._reply(
-            i,
+        await self._done(
+            i, event.event_id, "consent", person.user_id,
             f"参加で回答し、支払いの委任に同意しました（上限 {msg.yen(cap)}・幹事のみ）。"
             "按分の承認のあと、銀行での承認をお願いします。取り消しは App Home からできます。",
-        )
+        )  # fmt: skip
         self._after_rsvp(event.event_id)
 
     def _after_rsvp(self, event_id: str) -> None:
@@ -143,23 +249,29 @@ class SlackActions:
             )
         approver = next((p for p in self._store.list_participants(event_id)
                          if p.user_id == split.approver_user_id), None)  # fmt: skip
-        # **規程で決まった承認者本人**の操作だけ（署名検証済みの Slack ユーザーで判定する）
-        if approver is None or not approver.slack_user_id or approver.slack_user_id != i.user_id:
+        # **規程で決まった承認者本人**の操作だけ（署名検証済みの Slack ユーザーで判定する。
+        # 体験用のイベントでは、イベントを作った本人が Web のカードから押せる。SPEC 7.7）
+        if not self._acts_as(i, event, approver):
             logger.warning("approval rejected: not the approver event=%s", event_id)
             return await self._reply(i, "この按分を承認できるのは、規程で決まった承認者だけです。")
+        web = i.acting_for is not None
         approved = Approval(
             event_id=event_id,
             approver_user_id=split.approver_user_id,
             split_hash=split.hash,
             status=ApprovalStatus.APPROVED,
             approved_at=self._now(),
-            approved_by_slack_user_id=i.user_id,
+            approved_by_slack_user_id=None if web else i.user_id,
+            approved_via="web_demo" if web else "slack",
+            approved_by_web_uid=i.web_uid if web else None,
         )
         self._store.save_approval(approved)
         event.status = EventStatus.PAYMENT
         self._store.save_event(event)
         if self._life:
-            self._life.log(event.event_id, "human", "署名", "承認者が按分を承認しました（Slack）")
+            where = "Web・体験用" if web else "Slack"
+            done = f"承認者が按分を承認しました（{where}）"
+            self._life.log(event.event_id, "human", "署名", done)
             self._life.notify(
                 event, NotificationKind.SLACK_WAITING, "参加者の銀行での承認を待っています"
             )
@@ -169,7 +281,10 @@ class SlackActions:
             {"event_id": event_id},
             f"checkout-{event_id}-{split.hash[:16]}",
         )
-        await self._reply(i, "按分を承認しました。請求を作成し、各自の支払いを開始します。")
+        await self._done(
+            i, event_id, "approval", split.approver_user_id,
+            "按分を承認しました。請求を作成し、各自の支払いを開始します。",
+        )  # fmt: skip
 
     async def _rate(self, i: SlackInteraction) -> None:
         """振り返りの満足度（1タップ）。記録上の本人だけ。1人1回。"""
@@ -200,14 +315,17 @@ class SlackActions:
             return await self._reply(i, "確認する内容が見つかりませんでした。")
         approver = next((p for p in self._store.list_participants(event.event_id)
                          if p.user_id == esc.escalated_to), None)  # fmt: skip
-        if approver is None or not approver.slack_user_id or approver.slack_user_id != i.user_id:
+        if not self._acts_as(i, event, approver):
             return await self._reply(i, "この確認ができるのは、承認者だけです。")
+        assert approver is not None
         if esc.final_confirmed_at is None:
             event.budget_escalation = esc.model_copy(update={"final_confirmed_at": self._now()})
             self._store.save_event(event)
             if self._life:
                 self._life.after_budget_final(event.event_id)
-        await self._reply(i, "予算超過での続行を承認しました。")
+        await self._done(
+            i, event.event_id, "budget", approver.user_id, "予算超過での続行を承認しました。"
+        )
 
     # ------------------------------------------------------------------ 依頼の送信
     async def send_consent_requests(self, event_id: str) -> dict[str, Any]:
@@ -223,12 +341,15 @@ class SlackActions:
         sent, skipped, proxied = [], [], []
         # 代行は sandbox のイベントで、Slack のアカウントを持たない人だけ（SPEC 7.6）
         can_proxy = event.sandbox and self._proxy_sign is not None
+
+        def on_web(p: Participant) -> bool:  # Web のチャット画面で、人が答える（SPEC 7.7）
+            return event.sandbox and p.demo_persona
         for p in people:
             if (
                 p.user_id == event.organizer_user_id
                 or p.user_id in event.guests_of_honor
                 or p.rsvp_status is not RsvpStatus.PENDING
-                or (not p.slack_user_id and not can_proxy)
+                or (not p.slack_user_id and not can_proxy and not on_web(p))
             ):
                 skipped.append(p.user_id)
                 continue
@@ -237,14 +358,15 @@ class SlackActions:
             except SplitInputError:
                 skipped.append(p.user_id)
                 continue
-            if not p.slack_user_id:
+            if not p.slack_user_id and not on_web(p):
                 await self._proxy_consent(event, p, organizer, cap, expires)
                 proxied.append(p.user_id)
                 continue
             text, blocks = msg.consent_request(
-                event, p, organizer, cap_yen=cap, expires_at=expires, slack_user_id=p.slack_user_id
-            )
-            await self._slack.post_dm(p.slack_user_id, text, blocks)
+                event, p, organizer, cap_yen=cap, expires_at=_aware(expires),
+                slack_user_id=p.slack_user_id or "",
+            )  # fmt: skip
+            await self._deliver(event, p, "consent", text, blocks)
             sent.append(p.user_id)
         if proxied:
             if self._life:
@@ -265,8 +387,7 @@ class SlackActions:
         委任状の署名は、本人の Slack 操作のときと同じく `payment-api` が行う（内容も同じ）。
         """
         assert self._proxy_sign is not None
-        if expires.tzinfo is None:
-            expires = expires.replace(tzinfo=UTC)
+        expires = _aware(expires)
         await self._proxy_sign(
             "/mandates",
             {
@@ -313,12 +434,11 @@ class SlackActions:
         )
         by_id = {p.user_id: p for p in people}
         approver = by_id[split.approver_user_id]
-        if not approver.slack_user_id:
-            return {"ok": False, "failures": ["approver_has_no_slack_user"]}
         text, blocks = msg.split_approval_request(
-            event, split, by_id, approver_slack_user_id=approver.slack_user_id
+            event, split, by_id, approver_slack_user_id=approver.slack_user_id or ""
         )
-        await self._slack.post_dm(approver.slack_user_id, text, blocks)
+        if not await self._deliver(event, approver, "approval", text, blocks):
+            return {"ok": False, "failures": ["approver_has_no_slack_user"]}
         event.status = EventStatus.APPROVAL
         self._store.save_event(event)
         if self._life:
@@ -348,7 +468,8 @@ class SlackActions:
         except SplitInputError:
             return {"ok": False, "failures": ["no_approver"]}
         approver = next(p for p in people if p.user_id == approver_id)
-        if not approver.slack_user_id or event.total_amount_yen is None:
+        reachable = approver.slack_user_id or (event.sandbox and approver.demo_persona)
+        if not reachable or event.total_amount_yen is None:
             return {"ok": False, "failures": ["approver_has_no_slack_user"]}
         event.budget_escalation = esc.model_copy(
             update={"escalated_to": approver_id, "escalated_at": self._now()}
@@ -358,9 +479,9 @@ class SlackActions:
             event,
             per_person_yen=-(-event.total_amount_yen // len(attendees)),
             limit_yen=event.policy_snapshot.hard_limit_per_person_yen,
-            approver_slack_user_id=approver.slack_user_id,
+            approver_slack_user_id=approver.slack_user_id or "",
         )
-        await self._slack.post_dm(approver.slack_user_id, text, blocks)
+        await self._deliver(event, approver, "budget", text, blocks)
         return {"ok": True, "failures": [], "approver": approver_id}
 
     # ------------------------------------------------------------------ App Home
@@ -398,3 +519,8 @@ class SlackActions:
 
 def _jst_label(event: Event) -> str:
     return f"{event.datetime.month}/{event.datetime.day} {event.datetime:%H:%M}"
+
+
+def _aware(value: datetime) -> datetime:
+    """委任状の期限は、時差つきで渡す（payment-api は、時差の無い期限を受け付けない）。"""
+    return value if value.tzinfo else value.replace(tzinfo=UTC)

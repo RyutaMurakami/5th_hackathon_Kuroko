@@ -176,6 +176,8 @@ def get_dashboard():
         dispatcher=_TasksDispatcher(),
         lifecycle=get_lifecycle(),
         payments=_payment_reader(),
+        personas=get_slack_actions(),
+        bank=HttpBankAdapter(base_url=s.bank_adapter_url),
         upload_ttl_seconds=s.upload_url_ttl_seconds,
         ocr=GeminiReceiptModel(project=s.google_cloud_project) if s.google_cloud_project else None,
     )

@@ -30,6 +30,9 @@ class CreateTransferRequest(BaseModel):
     payee_user_id: str = Field(min_length=1, max_length=64)
     amount_yen: int = Field(gt=0, le=1_000_000)
     idempotency_key: str = Field(min_length=1, max_length=128)
+    # 体験用（SPEC 7.7）: 銀行を呼ばず、「承認待ち」の代行の振込として持つ。Web のカードの
+    # 「銀行で承認する（体験用）」で承認されるまで、手続済にならない（デモの設定が無ければ無視する）
+    demo_hold: bool = False
 
 
 class TransferResponse(BaseModel):
