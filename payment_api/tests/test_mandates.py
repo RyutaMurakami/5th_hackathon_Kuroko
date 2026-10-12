@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from tests.conftest import API, GATEWAY, T0, make_client, pay_body, sign_body
+from tests.conftest import API, DEMO, GATEWAY, T0, make_client, pay_body, sign_body
 
 
 def test_sign_mandate_creates_active_signed_open_mandate(client, env):
@@ -61,3 +61,31 @@ def test_mandate_routes_accept_only_gateway(client):
         assert client.post("/mandates", json=sign_body(), headers=headers).status_code == 403
         assert client.post("/mandates/x/revoke", headers=headers).status_code == 403
     assert make_client  # 他の呼び出し元（エージェントなど）も同じ検査で 403 になる
+
+
+# ---------------- デモ用の代行（SPEC 7.6） ----------------
+def test_the_demo_runner_signs_only_for_people_it_may_act_for(client, env):
+    body = sign_body(signed_via="demo-runner")
+    # sandbox のイベントの、Slack を持たない参加者として記録されていなければ、署名しない
+    assert client.post("/mandates", json=body, headers=DEMO).status_code == 403
+    assert env.store.get_mandate("ev1:member") is None
+    env.store.demo_proxy.add(("ev1", "member"))
+    res = client.post("/mandates", json=body, headers=DEMO)
+    assert res.status_code == 201 and res.json()["status"] == "active"
+    assert env.store.get_mandate("ev1:member")["signed_via"] == "demo-runner"
+
+
+def test_the_demo_mark_and_the_demo_identity_always_go_together(client, env):
+    env.store.demo_proxy.add(("ev1", "member"))
+    # 代行の身元が、Slack 操作のふりをすることはできない
+    assert client.post("/mandates", json=sign_body(), headers=DEMO).status_code == 403
+    # Slack の経路（sa-gateway）が、代行の印を付けることもできない
+    marked = sign_body(signed_via="demo-runner")
+    assert client.post("/mandates", json=marked, headers=GATEWAY).status_code == 403
+    assert env.store.get_mandate("ev1:member") is None
+
+
+def test_the_demo_runner_cannot_revoke_or_start_payments(client, env):
+    client.post("/mandates", json=sign_body(), headers=GATEWAY)
+    assert client.post("/mandates/ev1:member/revoke", headers=DEMO).status_code == 403
+    assert client.post("/payments", json=pay_body(), headers=DEMO).status_code == 403

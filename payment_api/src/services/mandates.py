@@ -26,6 +26,7 @@ from src.models.schemas import MandateResponse, MandateStatus, SignMandateReques
 CURRENCY = "JPY"
 INSTRUMENT_TYPE = "bank_transfer"
 AGENT_KID = "payment-agent"
+DEMO_RUNNER = "demo-runner"  # デモ用の代行で署名した委任状の `signed_via`（SPEC 7.6）
 
 
 class MandateConflict(Exception):
@@ -76,6 +77,10 @@ class MandateService:
         self._agent = agent_signer
         self._now = now
         self._client = MandateClient()
+
+    def demo_proxy_allowed(self, event_id: str, user_id: str) -> bool:
+        """デモ用の代行で署名してよい相手か（sandbox のイベントの、Slack を持たない参加者だけ）。"""
+        return self._store.demo_proxy_allowed(event_id, user_id)
 
     def sign(self, req: SignMandateRequest) -> MandateResponse:
         now = self._now()

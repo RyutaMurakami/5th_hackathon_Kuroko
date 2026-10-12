@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 FINISHED = {"approval", "payment", "completed", "retro", "closed"}
+DEMO_RUNNER = "demo-runner"  # 代行で署名した委任状の `signed_via`（SPEC 7.6）
 
 
 Enqueue = Callable[[str, dict, str], Awaitable[None]]  # (path, payload, task_id)
@@ -46,8 +47,11 @@ class SlackActions:
         mandates: MandateReader,
         retro: "Retrospectives | None" = None,
         lifecycle: "Lifecycle | None" = None,
+        proxy_sign: Enqueue | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
+        # デモ用の代行（SPEC 7.6）: Slack のアカウントを持たない参加者の、委任状の署名の依頼先
+        self._proxy_sign = proxy_sign
         self._retro = retro
         self._life = lifecycle
         self._store, self._slack, self._enqueue = store, slack, enqueue_self
@@ -216,13 +220,15 @@ class SlackActions:
         if organizer is None:
             return {"sent": [], "skipped": ["organizer_missing"]}
         expires = event.datetime + timedelta(days=policy.mandate_valid_days_after_event)
-        sent, skipped = [], []
+        sent, skipped, proxied = [], [], []
+        # 代行は sandbox のイベントで、Slack のアカウントを持たない人だけ（SPEC 7.6）
+        can_proxy = event.sandbox and self._proxy_sign is not None
         for p in people:
             if (
                 p.user_id == event.organizer_user_id
                 or p.user_id in event.guests_of_honor
                 or p.rsvp_status is not RsvpStatus.PENDING
-                or not p.slack_user_id
+                or (not p.slack_user_id and not can_proxy)
             ):
                 skipped.append(p.user_id)
                 continue
@@ -231,12 +237,57 @@ class SlackActions:
             except SplitInputError:
                 skipped.append(p.user_id)
                 continue
+            if not p.slack_user_id:
+                await self._proxy_consent(event, p, organizer, cap, expires)
+                proxied.append(p.user_id)
+                continue
             text, blocks = msg.consent_request(
                 event, p, organizer, cap_yen=cap, expires_at=expires, slack_user_id=p.slack_user_id
             )
             await self._slack.post_dm(p.slack_user_id, text, blocks)
             sent.append(p.user_id)
-        return {"sent": sent, "skipped": skipped}
+        if proxied:
+            if self._life:
+                self._life.log(
+                    event_id,
+                    "kuroko",
+                    "記録",
+                    f"デモ用の代行: Slack を使わない {len(proxied)}名の出欠と委任を代行しました",
+                )
+            self._after_rsvp(event_id)
+        return {"sent": sent, "skipped": skipped, "proxied": proxied}
+
+    async def _proxy_consent(
+        self, event: Event, p: Participant, organizer: Participant, cap: int, expires: datetime
+    ) -> None:
+        """Slack のアカウントを持たない参加者の、出欠（参加）と委任の同意を代行する。
+
+        委任状の署名は、本人の Slack 操作のときと同じく `payment-api` が行う（内容も同じ）。
+        """
+        assert self._proxy_sign is not None
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=UTC)
+        await self._proxy_sign(
+            "/mandates",
+            {
+                "user_id": p.user_id,
+                "event_id": event.event_id,
+                "payee_user_id": organizer.user_id,
+                "cap_yen": cap,
+                "expires_at": expires.isoformat(),
+                "signed_via": DEMO_RUNNER,
+            },
+            f"demo-sign-{event.event_id}-{p.user_id}",
+        )
+        self._store.save_participant(
+            event.event_id,
+            p.model_copy(
+                update={
+                    "rsvp_status": RsvpStatus.ATTENDING,
+                    "mandate_id": f"{event.event_id}:{p.user_id}",
+                }
+            ),
+        )
 
     async def request_split_approval(self, event_id: str) -> dict[str, Any]:
         """Policy Gate 6.1 を通ったら按分を計算し、承認者に承認依頼を送る。"""

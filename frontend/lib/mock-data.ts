@@ -35,10 +35,10 @@ type Person = {
 };
 
 const PEOPLE: Person[] = [
-  { userId: "u-yamada", name: "山田 健一", role: "approver", memberClass: "director", weight: 2.0, shareYen: 7200, capYen: 12000 },
+  { userId: "u-yamada", name: "赤くら 花子", role: "approver", memberClass: "director", weight: 2.0, shareYen: 7200, capYen: 12000 },
   { userId: "u-sasaki", name: "佐々木 真理", role: "participant", memberClass: "manager", weight: 1.5, shareYen: 5000, capYen: 9000 },
-  { userId: "u-takahashi", name: "高橋 翔", role: "organizer", memberClass: "staff", weight: 1.0, shareYen: 3300, capYen: null },
-  { userId: "u-ito", name: "伊藤 彩", role: "participant", memberClass: "staff", weight: 1.0, shareYen: 3300, capYen: 6000 },
+  { userId: "u-takahashi", name: "幹事（あなた）", role: "organizer", memberClass: "staff", weight: 1.0, shareYen: 3300, capYen: null },
+  { userId: "u-ito", name: "赤坂 くらお", role: "participant", memberClass: "staff", weight: 1.0, shareYen: 3300, capYen: 6000 },
   { userId: "u-watanabe", name: "渡辺 大輔", role: "participant", memberClass: "staff", weight: 1.0, shareYen: 3300, capYen: 6000 },
   { userId: "u-nakamura", name: "中村 美咲", role: "participant", memberClass: "staff", weight: 1.0, shareYen: 3300, capYen: 6000 },
   { userId: "u-kobayashi", name: "小林 蓮", role: "participant", memberClass: "staff", weight: 1.0, shareYen: 3300, capYen: 6000 },

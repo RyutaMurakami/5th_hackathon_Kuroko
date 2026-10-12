@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     gateway_service_account: str = ""  # sa-gateway: 委任状の署名・取り消し
     api_service_account: str = ""  # sa-api: 支払いの開始・参照
     scheduler_service_account: str = ""  # sa-scheduler: ポーリング（B10）
+    # sa-demo-runner: デモ用の代行での委任状の署名（sandbox のイベントだけ。SPEC 7.6）
+    demo_runner_service_account: str = ""
 
     # 委任状を1回の支払いに絞るときの Closed Mandate の有効期間
     closed_mandate_ttl_seconds: int = 3600

@@ -21,15 +21,15 @@ def set_rsvp(store, eid, answers: dict[str, RsvpStatus]):
 # ---------------- 計画の確定: 規程と参加者 ----------------
 async def test_confirming_the_plan_attaches_the_policy_copy_and_the_roster_with_slack_ids():
     svc, store, _, disp = make()
-    store.slack_users = {"ito": "U-ITO", "takahashi": "U-TAKA"}
+    store.slack_users = {"kurao": "U-KURAO", "kanji": "U-TAKA"}
     eid = await new_event(svc)
     await svc.confirm_event_plan(ORG, eid, PLAN)
     e = store.get_event(eid)
     assert e.policy_snapshot is not None and e.policy_id and e.policy_version
-    assert e.organizer_user_id == "takahashi"  # 銀行の口座の対応づけに使う名簿の幹事
+    assert e.organizer_user_id == "kanji"  # 銀行の口座の対応づけに使う名簿の幹事
     assert e.organizer_web_uid == "u-org" and set(e.guests_of_honor) == {"matsumoto", "inoue"}
     people = {p.user_id: p for p in store.list_participants(eid)}
-    assert len(people) == 10 and people["ito"].slack_user_id == "U-ITO"
+    assert len(people) == 10 and people["kurao"].slack_user_id == "U-KURAO"
     assert people["kato"].slack_user_id is None  # 対応が無い人には DM を送れない
     assert disp.started == [eid]
 

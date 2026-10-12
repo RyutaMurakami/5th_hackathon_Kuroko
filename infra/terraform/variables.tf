@@ -71,5 +71,5 @@ variable "time_zone" {
 variable "demo_live_payer_labels" {
   description = "デモで、実際に銀行（sunabar）で承認する振込元の口座ラベル（カンマ区切り）。それ以外の人の振込は bank-adapter が代行する（SPEC 8.10）。空にすると全員が実機になる"
   type        = string
-  default     = "acct08" # 加藤（guides/h25_sunabar_setup.md 1章）
+  default     = "acct02,acct03" # 赤坂 くらお・赤くら 花子（SPEC 8.10。1番目の acct01 は幹事）
 }

@@ -12,8 +12,15 @@ def _client() -> AsyncWebClient:
     return AsyncWebClient(token=get_settings().slack_bot_token)
 
 
-async def post_message(channel_id: str, text: str) -> None:
-    await _client().chat_postMessage(channel=channel_id, text=text)
+async def post_message(channel_id: str, text: str) -> str | None:
+    """送ったメッセージの ts（あとで書き換えるときに使う）。"""
+    res = await _client().chat_postMessage(channel=channel_id, text=text)
+    return res.get("ts")
+
+
+async def update_message(channel_id: str, ts: str, text: str) -> None:
+    """自分が送ったメッセージを書き換える（「考え中」を返答に差し替える）。"""
+    await _client().chat_update(channel=channel_id, ts=ts, text=text)
 
 
 async def post_dm(slack_user_id: str, text: str, blocks: list[dict]) -> None:

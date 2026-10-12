@@ -13,9 +13,9 @@ from src.routers import slack as slack_router
 from src.services.slack_interactions import extract_interaction, plan_tasks
 from tests.conftest import SIGNING_SECRET
 
-SLACK_USER = "U_ITO"
+SLACK_USER = "U_KURAO"
 CONSENT = {
-    "k": "consent", "e": "ev1", "u": "ito", "s": SLACK_USER, "p": "takahashi",
+    "k": "consent", "e": "ev1", "u": "kurao", "s": SLACK_USER, "p": "kanji",
     "c": 6000, "x": "2026-11-06T00:00:00+00:00",
 }  # fmt: skip
 
@@ -74,7 +74,7 @@ async def test_consent_signs_the_mandate_at_payment_api_directly_and_records_the
     (t1, p1, b1, id1), (t2, p2, b2, _) = enqueued
     assert (t1, p1) == ("payment-api", "/mandates")  # kuroko-api を経由しない
     assert b1 == {
-        "user_id": "ito", "event_id": "ev1", "payee_user_id": "takahashi", "cap_yen": 6000,
+        "user_id": "kurao", "event_id": "ev1", "payee_user_id": "kanji", "cap_yen": 6000,
         "expires_at": "2026-11-06T00:00:00+00:00", "signed_via": b2["interaction_id"],
     }  # fmt: skip
     assert (t2, p2) == ("kuroko-api", "/tasks/slack/interaction")
@@ -91,10 +91,10 @@ async def test_someone_else_pressing_the_button_does_nothing(gateway_client, enq
 
 async def test_revoke_goes_to_payment_api_and_approve_goes_to_kuroko_api(gateway_client, enqueued):
     raw, headers = signed_form(
-        payload(Action.REVOKE, {"k": "revoke", "m": "ev1:ito", "s": SLACK_USER})
+        payload(Action.REVOKE, {"k": "revoke", "m": "ev1:kurao", "s": SLACK_USER})
     )
     await gateway_client.post("/slack/interactivity", content=raw, headers=headers)
-    assert enqueued[0][:2] == ("payment-api", "/mandates/ev1:ito/revoke")
+    assert enqueued[0][:2] == ("payment-api", "/mandates/ev1:kurao/revoke")
     enqueued.clear()
     approve = {"k": "approve", "e": "ev1", "h": "hash", "s": SLACK_USER}
     raw, headers = signed_form(payload(Action.APPROVE, approve))

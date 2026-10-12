@@ -8,9 +8,9 @@
       [--event-id demo-1] [--date 2026-10-09]
 
 `slack_users.local.json`（コミット禁止。`*.local.json`）: 登場人物の user_id → Slack ユーザーID。
-同じ Slack ユーザーが、複数の登場人物を演じてよい。
-  {"yamada": "U0123", "sasaki": "U0123", "takahashi": "U0123", ... }
-幹事の `takahashi`・主役の `matsumoto`・`inoue` にも書く（承認者の本人確認と DM に使う）。
+Slack に実在する2人（`kurao`・`hanako`）だけを書く（SPEC 7.6）。書かなかった人には DM を送らない
+（このスクリプトで作るイベントは sandbox ではないので、その人の出欠・委任は代行されない）。
+  {"kurao": "U0123", "hanako": "U0456"}
 """
 
 import argparse
@@ -37,9 +37,9 @@ def main() -> None:
 
     mapping = json.load(open(args.slack_map, encoding="utf-8"))
     people = demo_participants()
-    missing = [p.user_id for p in people if p.user_id not in mapping]
-    if missing:
-        raise SystemExit(f"Slack ユーザーIDが無い登場人物: {missing}")
+    unknown = sorted(set(mapping) - {p.user_id for p in people})
+    if unknown:
+        raise SystemExit(f"名簿に無い登場人物: {unknown}")
 
     s = get_settings()
     store = FirestoreEventStore(project=s.google_cloud_project, database=s.firestore_database_id)
@@ -60,7 +60,7 @@ def main() -> None:
         store.save_participant(
             event.event_id,
             p.model_copy(
-                update={"slack_user_id": mapping[p.user_id], "attendance_confirmed": True}
+                update={"slack_user_id": mapping.get(p.user_id), "attendance_confirmed": True}
             ),
         )
     store.save_receipt(

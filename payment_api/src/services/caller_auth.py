@@ -12,7 +12,7 @@ from google.auth import jwt
 
 from src.config import get_settings
 
-Caller = Literal["gateway", "api", "scheduler"]
+Caller = Literal["gateway", "api", "scheduler", "demo"]
 
 
 def _email(authorization: str | None) -> str | None:
@@ -34,6 +34,7 @@ def _caller(authorization: str | None, allowed: set[Caller]) -> Caller:
         (s.gateway_service_account, "gateway"),
         (s.api_service_account, "api"),
         (s.scheduler_service_account, "scheduler"),
+        (s.demo_runner_service_account, "demo"),
     ):
         if sa:
             mapping[sa] = who  # type: ignore[assignment]
@@ -46,6 +47,11 @@ def _caller(authorization: str | None, allowed: set[Caller]) -> Caller:
 def require_gateway(authorization: str | None = Header(default=None)) -> Caller:
     """委任状の署名・取り消しは sa-gateway（署名検証済みの Slack 操作）だけ。"""
     return _caller(authorization, {"gateway"})
+
+
+def require_signer(authorization: str | None = Header(default=None)) -> Caller:
+    """委任状の署名: sa-gateway（Slack 操作）か、デモ用の代行（sa-demo-runner。SPEC 7.6）。"""
+    return _caller(authorization, {"gateway", "demo"})
 
 
 def require_api(authorization: str | None = Header(default=None)) -> Caller:

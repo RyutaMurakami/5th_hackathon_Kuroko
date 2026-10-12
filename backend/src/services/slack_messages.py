@@ -38,6 +38,12 @@ def _section(text: str) -> dict:
     return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
 
 
+def _organizer_label(organizer: Participant) -> str:
+    """幹事の呼び方。デモの幹事は Web にログインした人で、名前を持たない（SPEC 7.6）。"""
+    name = organizer.display_name
+    return "幹事" if not name or name == "幹事" else f"幹事の {name} さん"
+
+
 def consent_request(
     event: Event,
     participant: Participant,
@@ -52,11 +58,11 @@ def consent_request(
     text = f"「{title}」（{_when(event.datetime)}）への出欠と、支払いの委任のお願い"
     base = {"e": event.event_id, "u": participant.user_id, "s": slack_user_id}
     blocks: Blocks = [
-        _section(f"*{title}*\n日時: {_when(event.datetime)}\n幹事: {organizer.display_name}"),
+        _section(f"*{title}*\n日時: {_when(event.datetime)}"),
         _section(
             "*支払いの委任（同意の内容）*\n"
             f"• 上限: *{yen(cap_yen)}* まで\n"
-            f"• 支払先: 幹事の {organizer.display_name} さんだけ\n"
+            f"• 支払先: {_organizer_label(organizer)}だけ\n"
             f"• 期限: {expires_at:%Y/%m/%d} まで\n"
             "• 按分の承認のあと、あなたの支払いエージェントが、この範囲で振込を依頼します。"
             "実際の振込は、*銀行の承認ページで、あなたが承認したときだけ*実行されます。\n"

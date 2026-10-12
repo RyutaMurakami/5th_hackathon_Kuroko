@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     tasks_queue_mandates: str = "kuroko-mandates"
     # タスクの OIDC 主体（投入した側の SA）
     tasks_service_account: str = ""
+    # デモ用の代行（SPEC 7.6）の OIDC 主体（sa-demo-runner）。空なら代行しない
+    demo_runner_service_account: str = ""
     # /tasks/slack/* が受け付ける呼び出し元（sa-gateway）
     gateway_service_account: str = ""
 

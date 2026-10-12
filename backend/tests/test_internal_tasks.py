@@ -30,7 +30,7 @@ class FakeBilling:
             raise UnknownEvent
         if event_id == "blocked":
             return CheckoutRun(ok=False, failures=[Gate.APPROVAL_MISSING])
-        return CheckoutRun(ok=True, outcomes={"ito": "awaiting_bank_approval"})
+        return CheckoutRun(ok=True, outcomes={"kurao": "awaiting_bank_approval"})
 
     async def poll_collections(self):
         return {"checked": 1, "completed": 1}
@@ -38,7 +38,7 @@ class FakeBilling:
     async def confirm_incoming_payments(self, event_id):
         if event_id == "nope":
             raise UnknownEvent
-        return CollectionRun(received=["ito"], missing=["kato"], all_received=False)
+        return CollectionRun(received=["kurao"], missing=["kato"], all_received=False)
 
 
 @pytest.fixture(autouse=True)
@@ -71,7 +71,7 @@ async def test_checkouts_report_the_gate_failures_and_outcomes(client):
     h = {"Authorization": _token(API_SA)}
     res = await client.post("/tasks/internal/checkouts", json={"event_id": "ev1"}, headers=h)
     assert res.json() == {
-        "ok": True, "failures": [], "outcomes": {"ito": "awaiting_bank_approval"}, "errors": {},
+        "ok": True, "failures": [], "outcomes": {"kurao": "awaiting_bank_approval"}, "errors": {},
     }  # fmt: skip
     res = await client.post("/tasks/internal/checkouts", json={"event_id": "blocked"}, headers=h)
     assert res.json()["ok"] is False and res.json()["failures"] == ["approval_missing"]
@@ -83,7 +83,7 @@ async def test_collections_report_who_has_paid(client):
     h = {"Authorization": _token(API_SA)}
     res = await client.post("/tasks/internal/collections", json={"event_id": "ev1"}, headers=h)
     assert res.json() == {
-        "received": ["ito"], "missing": ["kato"], "amount_mismatch": [], "all_received": False,
+        "received": ["kurao"], "missing": ["kato"], "amount_mismatch": [], "all_received": False,
     }  # fmt: skip
     res = await client.post("/tasks/internal/collections", json={"event_id": "nope"}, headers=h)
     assert res.status_code == 404

@@ -17,7 +17,7 @@ from src.services.split import calculate_split
 from tests.sample_company import demo_event, demo_participants
 
 POLICY = load_snapshot()
-WEB_UID = "firebase-uid-takahashi"
+WEB_UID = "firebase-uid-kanji"
 NOW = dt.datetime(2026, 10, 31, 12, 0, tzinfo=dt.UTC)
 
 
@@ -52,7 +52,7 @@ def test_6_1_requires_a_policy_snapshot():
     "mutate",
     [
         lambda ps: [],  # 出席者がいない
-        lambda ps: [p for p in ps if p.user_id != "takahashi"],  # 幹事が出席していない
+        lambda ps: [p for p in ps if p.user_id != "kanji"],  # 幹事が出席していない
         lambda ps: [p for p in ps if p.user_id != "matsumoto"],  # 主役が出席していない
         lambda ps: ps + [ps[0]],  # 同じ人が2回
     ],
@@ -95,7 +95,7 @@ def test_6_1_unit_price_over_the_hard_limit_needs_both_confirmations():
     ev, rc = event(over), receipt(over)
     assert Gate.OVER_LIMIT_NOT_APPROVED in check_before_split(ev, people(), rc).failures
 
-    only_organizer = BudgetEscalation(organizer_confirmed_at=NOW, escalated_to="yamada")
+    only_organizer = BudgetEscalation(organizer_confirmed_at=NOW, escalated_to="hanako")
     ev1 = ev.model_copy(update={"budget_escalation": only_organizer})
     assert Gate.OVER_LIMIT_NOT_APPROVED in check_before_split(ev1, people(), rc).failures
 
@@ -141,12 +141,12 @@ def fixture():
         split_hash=split.hash,
         status=ApprovalStatus.APPROVED,
         approved_at=NOW,
-        approved_by_slack_user_id="U_YAMADA",
+        approved_by_slack_user_id="U_HANAKO",
     )
     lines = [
-        CheckoutLine(r.user_id, "takahashi", r.share_yen, split.hash)
+        CheckoutLine(r.user_id, "kanji", r.share_yen, split.hash)
         for r in split.rows
-        if r.share_yen > 0 and r.user_id != "takahashi"
+        if r.share_yen > 0 and r.user_id != "kanji"
     ]
     return ev, ps, split, approval, lines
 
@@ -173,11 +173,11 @@ def test_6_2_requires_an_approval():
 
 def test_6_2_the_approver_must_be_the_person_the_policy_chose():
     ev, ps, split, approval, lines = fixture()
-    for who in ("U_SASAKI", "U_TAKAHASHI", None, ""):
+    for who in ("U_SASAKI", "U_KANJI", None, ""):
         bad = approval.model_copy(update={"approved_by_slack_user_id": who})
         assert Gate.APPROVER_MISMATCH in gate(ev, ps, split, bad, lines).failures
     # 承認者の Slack ユーザーが未登録なら、誰が承認しても本人と確認できない
-    ps2 = [p.model_copy(update={"slack_user_id": None}) if p.user_id == "yamada" else p for p in ps]
+    ps2 = [p.model_copy(update={"slack_user_id": None}) if p.user_id == "hanako" else p for p in ps]
     assert Gate.APPROVER_MISMATCH in gate(ev, ps2, split, approval, lines).failures
     # 承認の記録の承認者が、按分の承認者と違う
     other = approval.model_copy(update={"approver_user_id": "sasaki"})
@@ -198,7 +198,7 @@ def test_6_2_a_split_edited_after_approval_is_detected_by_recomputing():
     ev, ps, split, approval, lines = fixture()
     # 金額表のデータだけを書き換えた（ハッシュも合わせた）場合でも、計算し直した結果と違えば止める
     tampered_rows = [
-        r.model_copy(update={"share_yen": r.share_yen - 100}) if r.user_id == "ito" else r
+        r.model_copy(update={"share_yen": r.share_yen - 100}) if r.user_id == "kurao" else r
         for r in split.rows
     ]
     tampered = split.model_copy(update={"rows": tampered_rows, "hash": "f" * 64})
@@ -216,7 +216,7 @@ def test_6_2_moving_money_between_rows_while_keeping_the_hash_is_detected():
         r.model_copy(
             update={"share_yen": r.share_yen + 100 * (1 if r.user_id == "watanabe" else -1)}
         )
-        if r.user_id in {"ito", "watanabe"}
+        if r.user_id in {"kurao", "watanabe"}
         else r
         for r in split.rows
     ]
@@ -227,7 +227,7 @@ def test_6_2_moving_money_between_rows_while_keeping_the_hash_is_detected():
             x.payer_user_id,
             x.payee_user_id,
             x.amount_yen
-            + (100 if x.payer_user_id == "watanabe" else -100 if x.payer_user_id == "ito" else 0),
+            + (100 if x.payer_user_id == "watanabe" else -100 if x.payer_user_id == "kurao" else 0),
             x.split_hash,
         )
         for x in lines
@@ -244,15 +244,15 @@ def test_6_2_the_payee_is_always_the_organizer():
     ]
     assert Gate.PAYEE_NOT_ORGANIZER in gate(ev, ps, split, approval, redirected).failures
     one = lines[:1] + [
-        CheckoutLine(x.payer_user_id, "yamada", x.amount_yen, x.split_hash) for x in lines[1:2]
+        CheckoutLine(x.payer_user_id, "hanako", x.amount_yen, x.split_hash) for x in lines[1:2]
     ]
     assert Gate.PAYEE_NOT_ORGANIZER in gate(ev, ps, split, approval, one).failures
 
 
-@pytest.mark.parametrize("payer", ["takahashi", "matsumoto", "inoue"])
+@pytest.mark.parametrize("payer", ["kanji", "matsumoto", "inoue"])
 def test_6_2_never_charges_the_organizer_or_guests_of_honor(payer):
     ev, ps, split, approval, lines = fixture()
-    extra = lines + [CheckoutLine(payer, "takahashi", 100, split.hash)]
+    extra = lines + [CheckoutLine(payer, "kanji", 100, split.hash)]
     assert Gate.ORGANIZER_OR_GUEST_CHARGED in gate(ev, ps, split, approval, extra).failures
 
 
@@ -262,13 +262,13 @@ def test_6_2_the_total_and_each_amount_must_match_the_split():
     assert Gate.TOTAL_MISMATCH in gate(ev, ps, split, approval, short).failures
     over = [
         CheckoutLine(x.payer_user_id, x.payee_user_id, x.amount_yen + 100, x.split_hash)
-        if x.payer_user_id == "ito"
+        if x.payer_user_id == "kurao"
         else x
         for x in lines
     ]
     r = gate(ev, ps, split, approval, over)
     assert Gate.CHECKOUT_NOT_IN_SPLIT in r.failures and Gate.TOTAL_MISMATCH in r.failures
-    stranger = lines + [CheckoutLine("stranger", "takahashi", 100, split.hash)]
+    stranger = lines + [CheckoutLine("stranger", "kanji", 100, split.hash)]
     assert Gate.CHECKOUT_NOT_IN_SPLIT in gate(ev, ps, split, approval, stranger).failures
     twice = lines + lines[:1]
     assert Gate.CHECKOUT_NOT_IN_SPLIT in gate(ev, ps, split, approval, twice).failures

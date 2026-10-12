@@ -121,14 +121,14 @@ def intake(result, stations):
     return PreferenceIntake(store=store, runner=Runner(result), stations=stations), store
 
 
-def prefs_of(store, uid="ito"):
+def prefs_of(store, uid="kurao"):
     return next(p for p in store.list_participants("ev-demo") if p.user_id == uid).preferences
 
 
 async def test_free_text_becomes_vocabulary_and_the_station_becomes_a_code():
     result = {"dislikes": ["そば"], "preferences": ["個室", "焼き鳥"], "nearest_station": "渋谷"}
     svc, store = intake(result, Stations(StationCheck(True, "渋谷", 22715)))
-    out = await svc.record("ev-demo", "ito", free_text="…", field="dietary_must")
+    out = await svc.record("ev-demo", "kurao", free_text="…", field="dietary_must")
     assert out.saved and out.station_status == "verified"
     assert prefs_of(store) == Preferences(
         nearest_station_code="22715", dietary_must=["そば"], request_tags=["個室", "焼き鳥"]
@@ -137,7 +137,7 @@ async def test_free_text_becomes_vocabulary_and_the_station_becomes_a_code():
 
 async def test_the_input_field_decides_hard_or_soft_not_the_model():
     svc, store = intake({"dislikes": ["豚"]}, Stations())
-    await svc.record("ev-demo", "ito", free_text="…", field="dietary_avoid")  # 苦手欄
+    await svc.record("ev-demo", "kurao", free_text="…", field="dietary_avoid")  # 苦手欄
     p = prefs_of(store)
     assert p.dietary_avoid == ["豚"] and p.dietary_must == []  # ハード制約にならない
 
@@ -145,7 +145,7 @@ async def test_the_input_field_decides_hard_or_soft_not_the_model():
 async def test_an_ambiguous_station_is_not_adopted_and_candidates_are_returned():
     check = StationCheck(False, candidates=("大宮(埼玉県)", "大宮(京都府)"))
     svc, store = intake({"nearest_station": "大宮"}, Stations(check))
-    out = await svc.record("ev-demo", "ito", free_text="…", field="dietary_must")
+    out = await svc.record("ev-demo", "kurao", free_text="…", field="dietary_must")
     assert (out.station_status, out.candidates) == ("ambiguous", ("大宮(埼玉県)", "大宮(京都府)"))
     assert prefs_of(store).nearest_station_code is None  # 推測で採用しない
 
@@ -153,10 +153,10 @@ async def test_an_ambiguous_station_is_not_adopted_and_candidates_are_returned()
 async def test_station_not_found_and_api_error_do_not_break_the_intake():
     svc, store = intake({"nearest_station": "ほげほげ"}, Stations(StationCheck(False)))
     assert (
-        await svc.record("ev-demo", "ito", free_text="…", field="dietary_must")
+        await svc.record("ev-demo", "kurao", free_text="…", field="dietary_must")
     ).station_status == ("not_found")
     svc, store = intake({"nearest_station": "渋谷"}, Stations(error=True))
-    out = await svc.record("ev-demo", "ito", free_text="…", field="dietary_must")
+    out = await svc.record("ev-demo", "kurao", free_text="…", field="dietary_must")
     assert out.saved and out.station_status == "error"
 
 
@@ -165,5 +165,5 @@ async def test_unknown_participant_and_attack_text_change_nothing():
     assert (
         await svc.record("ev-demo", "nobody", free_text="…", field="dietary_must")
     ).saved is False
-    await svc.record("ev-demo", "ito", free_text="…", field="dietary_must")
+    await svc.record("ev-demo", "kurao", free_text="…", field="dietary_must")
     assert prefs_of(store) == Preferences()  # 語彙にない値は、何も残らない

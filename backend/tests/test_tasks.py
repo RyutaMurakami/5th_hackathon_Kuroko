@@ -35,9 +35,15 @@ def slack_io(monkeypatch):
 
     async def fake_post(channel_id, text):
         posted.append((channel_id, text))
+        return f"ts{len(posted)}"
+
+    async def fake_update(channel_id, ts, text):
+        # 画面に見えている文面を、そのメッセージの位置で書き換える
+        posted[int(ts.removeprefix("ts")) - 1] = (channel_id, text)
 
     monkeypatch.setattr(slack_conversation.kuroko_chat, "reply", fake_reply)
     monkeypatch.setattr(slack_conversation.slack, "post_message", fake_post)
+    monkeypatch.setattr(slack_conversation.slack, "update_message", fake_update)
     return posted
 
 
@@ -74,3 +80,33 @@ async def test_agent_failure_posts_fixed_text(client, slack_io, monkeypatch):
     )
     assert response.status_code == 200
     assert slack_io == [("D1", slack_conversation.FALLBACK_TEXT)]
+
+
+async def test_a_thinking_message_is_shown_first_and_then_replaced_by_the_reply(
+    client, slack_io, monkeypatch
+):
+    seen_while_thinking = []
+
+    async def slow_reply(user_key, text):
+        seen_while_thinking.extend(slack_io)  # 返答を作っているあいだに見えているもの
+        return "できました"
+
+    monkeypatch.setattr(slack_conversation.kuroko_chat, "reply", slow_reply)
+    await client.post(
+        "/tasks/slack/message", json=MESSAGE, headers={"Authorization": _token(GATEWAY_SA)}
+    )
+    assert seen_while_thinking == [("D1", slack_conversation.THINKING_TEXT)]
+    assert slack_io == [("D1", "できました")]  # 「考え中」は残らない（返答に置き換わる）
+
+
+async def test_the_reply_still_arrives_when_the_thinking_message_cannot_be_shown_or_replaced(
+    client, slack_io, monkeypatch
+):
+    async def broken_update(channel_id, ts, text):
+        raise RuntimeError("cannot update")
+
+    monkeypatch.setattr(slack_conversation.slack, "update_message", broken_update)
+    await client.post(
+        "/tasks/slack/message", json=MESSAGE, headers={"Authorization": _token(GATEWAY_SA)}
+    )
+    assert slack_io[-1] == ("D1", "echo:slack:T1:U1:hi")  # 書き換えられなくても、返答は届く
