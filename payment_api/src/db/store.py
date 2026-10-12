@@ -15,6 +15,9 @@ class Store(Protocol):
 
     def update_mandate(self, mandate_id: str, fields: dict[str, Any]) -> dict[str, Any]: ...
 
+    def demo_proxy_allowed(self, event_id: str, user_id: str) -> bool:
+        """`sandbox` のイベントの、Slack のアカウントを持たない参加者か（SPEC 7.6）。"""
+
     def claim_nonce(self, key: str) -> bool:
         """未使用なら使用済みにして True（原子的）。使用済みなら False。"""
 
@@ -48,6 +51,10 @@ class MemoryStore:
         self.payments: dict[str, dict[str, Any]] = {}
         self.nonces: set[str] = set()
         self.settlements: dict[str, str] = {}
+        self.demo_proxy: set[tuple[str, str]] = set()  # 代行できる (event_id, user_id)
+
+    def demo_proxy_allowed(self, event_id, user_id):
+        return (event_id, user_id) in self.demo_proxy
 
     def put_mandate(self, mandate_id, record):
         self.mandates[mandate_id] = deepcopy(record)
@@ -121,6 +128,13 @@ class FirestoreStore:
         ref = self._db.collection("mandates").document(mandate_id)
         ref.update(fields)
         return ref.get().to_dict()
+
+    def demo_proxy_allowed(self, event_id, user_id):
+        event = self._db.collection("events").document(event_id)
+        if (event.get().to_dict() or {}).get("sandbox") is not True:
+            return False
+        person = event.collection("participants").document(user_id).get()
+        return person.exists and not (person.to_dict() or {}).get("slack_user_id")
 
     def claim_nonce(self, key):
         from google.api_core.exceptions import AlreadyExists

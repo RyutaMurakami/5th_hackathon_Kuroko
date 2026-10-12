@@ -23,10 +23,11 @@ def hint_for(event: Event, people: list[Participant], *, has_receipt: bool) -> d
     if s is EventStatus.PLANNING:
         return _hint(
             1, "web", "幹事", "KUROKO に依頼して、計画を確定する",
-            "チャットで依頼し、条件（日時・人数・エリア・予算）を整えたら「計画を確定」を"
-            "押します。確定すると、参加者に Slack で出欠依頼が届きます。",
-            {"chat": "来週金曜の19時、チーム8人で渋谷で軽く飲みたい。予算は1人5,000円くらい。",
-             "plan": {"title": "チーム飲み会", "area": "渋谷", "party_size": 8,
+            "あなたが幹事です。チャットで依頼し、条件（日時・人数・エリア・予算）を整えたら"
+            "「計画を確定」を押します。確定すると、参加者に Slack で出欠依頼が届きます。"
+            "開催日は今日にしてください（入金の確認が、開催日からの明細を見るため）。",
+            {"chat": "今日の19時から、チーム10人の歓送迎会を渋谷でやりたい。予算は1人5,000円くらい",
+             "plan": {"title": "営業1課 歓送迎会", "area": "渋谷", "party_size": 10,
                       "budget_per_person_yen": 5000}},
         )  # fmt: skip
     if s is EventStatus.RSVP:
@@ -36,8 +37,9 @@ def hint_for(event: Event, people: list[Participant], *, has_receipt: bool) -> d
             "slack",
             "参加者",
             "出欠と委任を Slack で回答する",
-            "参加者が Slack の DM のボタンで出欠に答え、出席の人は送金の委任（上限つき）に"
-            "同意します。全員が回答すると、店の候補に進みます。",
+            "Slack にいる2人（赤坂 くらお・赤くら 花子）が、DM のボタンで出欠に答え、"
+            "送金の委任（上限つき）に同意します。ほかの参加者のぶんは、デモ用の代行が済ませます。"
+            "2人が回答すると、店の候補に進みます。",
             {"waiting": pending},
         )
     if s is EventStatus.VENUE:
@@ -47,8 +49,8 @@ def hint_for(event: Event, people: list[Participant], *, has_receipt: bool) -> d
             "店で予約したあと、予約の内容を確定します。コース単価が規程の上限を超えると、"
             "予算超過の確認（幹事 → 承認者）に進みます。",
             {"chat": "お店を探して",
-             "reservation": {"venue_name": "炭火酒場 渋谷店", "party_size": 8,
-                             "datetime": "2026-10-23T19:00:00+09:00", "course_price_yen": 4500}},
+             "reservation": {"venue_name": "炭火酒場 渋谷店", "party_size": 10,
+                             "datetime": event.datetime.isoformat(), "course_price_yen": 4500}},
         )  # fmt: skip
     if s is EventStatus.BOOKED:
         return _hint(
@@ -69,15 +71,13 @@ def hint_for(event: Event, people: list[Participant], *, has_receipt: bool) -> d
             {"receipt": {"total_amount_yen": 49500}, "confirmed": has_receipt},
         )
     if s in (EventStatus.SPLIT, EventStatus.APPROVAL):
-        approvers = [p.display_name or p.user_id for p in people if p.role.value == "approver"]
         return _hint(
             6,
             "slack",
             "承認者",
             "按分を Slack で承認する",
-            "承認者に、按分の内訳つきの承認依頼が Slack で届きます。"
-            "承認者が承認すると請求に進みます。",
-            {"approvers": approvers},
+            "承認者（規程で決まる。部長の赤くら 花子）に、按分の内訳つきの承認依頼が Slack で"
+            "届きます。承認すると請求に進みます。",
         )
     if s is EventStatus.PAYMENT:
         return _hint(
@@ -85,9 +85,9 @@ def hint_for(event: Event, people: list[Participant], *, has_receipt: bool) -> d
             "bank",
             "参加者",
             "銀行（sunabar）で振込を承認する",
-            "デモで実際に承認するのは、指定した1人（既定は加藤）の振込だけです。"
-            "その口座で sunabar のサービスサイトに入り、10分以内に承認してください。"
-            "ほかの人の振込は代行され、自動で入金の確認に進みます。",
+            "赤坂 くらお・赤くら 花子の2人に、振込の承認の依頼が Slack で届きます。"
+            "それぞれの口座で sunabar のサービスサイトに入り、10分以内に承認してください。"
+            "ほかの人の振込は代行され、全員ぶんの入金を確認できると、自動で完了になります。",
         )
     if s is EventStatus.COMPLETED:
         return _hint(

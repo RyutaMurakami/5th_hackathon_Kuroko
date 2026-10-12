@@ -85,7 +85,7 @@ async def test_review_text_never_leaves_the_search_and_conditions_come_from_stor
 
 async def test_dietary_and_organizer_conditions_are_applied_from_the_stored_event():
     people = prefs_all("100")
-    people["ito"] = Preferences(nearest_station_code="100", dietary_must=["そば"])
+    people["kurao"] = Preferences(nearest_station_code="100", dietary_must=["そば"])
     store = setup(people, plan_required_tags=["個室"])
     maps = FakeMaps(
         {"*": [v("a", "蕎麦 個室 山"), v("b", "個室居酒屋 黒"), v("c", "大衆酒場 ひろば")]}
@@ -98,7 +98,7 @@ async def test_dietary_and_organizer_conditions_are_applied_from_the_stored_even
     ]  # 蕎麦 → 食べられない／ひろば → 個室でない
     assert out.excluded_count == 2
     # 除外の理由は種類だけで、店名・個人は返さない
-    assert all("ito" not in r for r in out.excluded_reasons)
+    assert all("kurao" not in r for r in out.excluded_reasons)
 
 
 async def test_vocabulary_filter_drops_unknown_preference_values():

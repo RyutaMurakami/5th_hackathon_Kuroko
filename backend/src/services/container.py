@@ -96,7 +96,7 @@ def _feedback_extractor():
 
 @lru_cache
 def get_slack_actions():
-    from src.clients.cloud_tasks import enqueue_kuroko_api
+    from src.clients.cloud_tasks import enqueue_demo_mandate, enqueue_kuroko_api
     from src.db.mandates import FirestoreMandateReader, MemoryMandateReader
     from src.services.slack_actions import SlackActions
 
@@ -113,6 +113,7 @@ def get_slack_actions():
         mandates=mandates,
         retro=get_retro(),
         lifecycle=get_lifecycle(),
+        proxy_sign=enqueue_demo_mandate if s.demo_runner_service_account else None,
     )
 
 

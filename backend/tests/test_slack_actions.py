@@ -78,18 +78,18 @@ async def test_consent_requests_go_to_payers_only_with_class_caps():
     actions, store, slack, *_ = build()
     out = await actions.send_consent_requests("ev-demo")
     sent_to = {uid for uid in out["sent"]}
-    assert sent_to == {"yamada", "sasaki", "ito", "watanabe", "nakamura", "kobayashi", "kato"}
-    assert {"takahashi", "matsumoto", "inoue"} <= set(out["skipped"])  # 幹事・主役には送らない
+    assert sent_to == {"hanako", "sasaki", "kurao", "watanabe", "nakamura", "kobayashi", "kato"}
+    assert {"kanji", "matsumoto", "inoue"} <= set(out["skipped"])  # 幹事・主役には送らない
     by_slack = {dm[0]: dm for dm in slack.dms}
-    yamada_text = blocks_text(by_slack[SLACK["yamada"]][2])
+    yamada_text = blocks_text(by_slack[SLACK["hanako"]][2])
     assert "12,000円" in yamada_text  # 部長の上限（規程の consent_cap_yen）
-    assert "takahashi さんだけ" in yamada_text  # 支払先は幹事だけ（フィクスチャの表示名）
+    assert "支払先: 幹事だけ" in yamada_text  # 支払先は幹事だけ
     kato_text = blocks_text(by_slack[SLACK["kato"]][2])
     assert "3,000円" in kato_text  # 入社1年未満の上限（規程の consent_cap_yen）
     # ボタンの値: 押した本人・支払先（幹事）・上限・期限（開催日 + 7日）
     button = by_slack[SLACK["kato"]][2][-1]["elements"][0]
     value = json.loads(button["value"])
-    assert value["s"] == SLACK["kato"] and value["p"] == "takahashi" and value["c"] == 3000
+    assert value["s"] == SLACK["kato"] and value["p"] == "kanji" and value["c"] == 3000
     assert value["x"].startswith("2026-11-06T19:00")
 
 
@@ -97,43 +97,115 @@ async def test_consent_request_is_not_resent_after_an_answer():
     actions, store, slack, *_ = build()
     store.save_participant(
         "ev-demo",
-        next(p for p in store.list_participants("ev-demo") if p.user_id == "ito").model_copy(
+        next(p for p in store.list_participants("ev-demo") if p.user_id == "kurao").model_copy(
             update={"rsvp_status": RsvpStatus.ATTENDING}
         ),
     )
     out = await actions.send_consent_requests("ev-demo")
-    assert "ito" not in out["sent"] and "ito" in out["skipped"]
+    assert "kurao" not in out["sent"] and "kurao" in out["skipped"]
+
+
+# ---------------- デモ用の代行（SPEC 7.6） ----------------
+ON_SLACK = {"hanako", "kurao"}  # Slack に実在する2人。ほかの人はアカウントを持たない
+
+
+def build_demo(sandbox=True, with_proxy=True):
+    from src.services.lifecycle import Lifecycle
+
+    actions, store, slack, queued, mandates = build(sandbox=sandbox)
+    for p in store.list_participants("ev-demo"):
+        if p.user_id not in ON_SLACK:
+            store.save_participant("ev-demo", p.model_copy(update={"slack_user_id": None}))
+    store.save_event(store.get_event("ev-demo").model_copy(update={"status": EventStatus.RSVP}))
+    signed: list[tuple] = []
+
+    async def proxy_sign(path, payload, task_id):
+        signed.append((path, payload, task_id))
+
+    actions._proxy_sign = proxy_sign if with_proxy else None
+    actions._life = Lifecycle(store=store, now=lambda: NOW)
+    return actions, store, slack, signed
+
+
+async def test_people_without_slack_are_answered_by_the_demo_runner_and_get_no_message():
+    actions, store, slack, signed = build_demo()
+    out = await actions.send_consent_requests("ev-demo")
+    assert set(out["sent"]) == ON_SLACK  # DM が届くのは、Slack に実在する2人だけ
+    assert {dm[0] for dm in slack.dms} == {SLACK["hanako"], SLACK["kurao"]}
+    assert set(out["proxied"]) == {"sasaki", "watanabe", "nakamura", "kobayashi", "kato"}
+    people = {p.user_id: p for p in store.list_participants("ev-demo")}
+    assert people["kato"].rsvp_status is RsvpStatus.ATTENDING
+    assert people["kato"].mandate_id == "ev-demo:kato"
+    # 委任状の中身は、本人が Slack で同意するときと同じ（上限は規程の区分・支払先は幹事だけ）
+    by_user = {payload["user_id"]: (path, payload, tid) for path, payload, tid in signed}
+    path, payload, tid = by_user["kato"]
+    assert path == "/mandates" and tid == "demo-sign-ev-demo-kato"
+    assert payload["cap_yen"] == 3000 and payload["payee_user_id"] == "kanji"
+    assert payload["signed_via"] == "demo-runner" and payload["expires_at"].startswith("2026-11-06")
+    assert by_user["sasaki"][1]["cap_yen"] == 9000
+    # 幹事・主役・Slack の2人のぶんは代行しない
+    assert not set(by_user) & {"kanji", "matsumoto", "inoue", "hanako", "kurao"}
+    assert people["hanako"].rsvp_status is RsvpStatus.PENDING
+    assert any("デモ用の代行" in d.summary for d in store.list_decisions("ev-demo"))
+    assert store.get_event("ev-demo").status is EventStatus.RSVP  # 2人の回答を待つ
+
+
+async def test_the_event_moves_on_once_the_two_people_on_slack_answer():
+    actions, store, slack, signed = build_demo()
+    await actions.send_consent_requests("ev-demo")
+    await actions.handle(press(Action.CONSENT, consent_value("hanako", 12000), SLACK["hanako"]))
+    assert store.get_event("ev-demo").status is EventStatus.RSVP
+    await actions.handle(press(Action.CONSENT, consent_value("kurao"), SLACK["kurao"]))
+    assert store.get_event("ev-demo").status is EventStatus.VENUE
+
+
+async def test_the_demo_runner_answers_nobody_twice():
+    actions, store, slack, signed = build_demo()
+    await actions.send_consent_requests("ev-demo")
+    again = await actions.send_consent_requests("ev-demo")
+    assert again["proxied"] == [] and len(signed) == 5
+
+
+async def test_nothing_is_proxied_outside_a_sandbox_event_or_without_the_demo_identity():
+    for kw in ({"sandbox": False}, {"with_proxy": False}):
+        actions, store, slack, signed = build_demo(**kw)
+        out = await actions.send_consent_requests("ev-demo")
+        assert out["proxied"] == [] and signed == []
+        assert "kato" in out["skipped"]
+        people = {p.user_id: p for p in store.list_participants("ev-demo")}
+        assert people["kato"].rsvp_status is RsvpStatus.PENDING
+        assert people["kato"].mandate_id is None
 
 
 # ---------------- 出欠・委任 ----------------
-def consent_value(uid="ito", cap=6000, slack=None):
-    return {"k": "consent", "e": "ev-demo", "u": uid, "s": slack or SLACK[uid], "p": "takahashi",
+def consent_value(uid="kurao", cap=6000, slack=None):
+    return {"k": "consent", "e": "ev-demo", "u": uid, "s": slack or SLACK[uid], "p": "kanji",
             "c": cap, "x": "2026-11-06T19:00:00"}  # fmt: skip
 
 
 async def test_consent_records_attending_and_replies():
     actions, store, slack, *_ = build()
-    await actions.handle(press(Action.CONSENT, consent_value(), SLACK["ito"]))
-    ito = next(p for p in store.list_participants("ev-demo") if p.user_id == "ito")
-    assert ito.rsvp_status is RsvpStatus.ATTENDING and ito.mandate_id == "ev-demo:ito"
+    await actions.handle(press(Action.CONSENT, consent_value(), SLACK["kurao"]))
+    kurao = next(p for p in store.list_participants("ev-demo") if p.user_id == "kurao")
+    assert kurao.rsvp_status is RsvpStatus.ATTENDING and kurao.mandate_id == "ev-demo:kurao"
     assert "委任に同意" in slack.responses[0][1] and "6,000円" in slack.responses[0][1]
 
 
 async def test_decline_records_declining():
     actions, store, slack, *_ = build()
-    await actions.handle(press(Action.DECLINE, consent_value(), SLACK["ito"]))
-    ito = next(p for p in store.list_participants("ev-demo") if p.user_id == "ito")
-    assert ito.rsvp_status is RsvpStatus.DECLINING and ito.mandate_id is None
+    await actions.handle(press(Action.DECLINE, consent_value(), SLACK["kurao"]))
+    kurao = next(p for p in store.list_participants("ev-demo") if p.user_id == "kurao")
+    assert kurao.rsvp_status is RsvpStatus.DECLINING and kurao.mandate_id is None
 
 
 async def test_someone_else_cannot_answer_for_a_participant():
     actions, store, slack, *_ = build()
     await actions.handle(press(Action.CONSENT, consent_value(), "U_ATTACKER"))
-    ito = next(p for p in store.list_participants("ev-demo") if p.user_id == "ito")
-    assert ito.rsvp_status is RsvpStatus.PENDING and ito.mandate_id is None
+    kurao = next(p for p in store.list_participants("ev-demo") if p.user_id == "kurao")
+    assert kurao.rsvp_status is RsvpStatus.PENDING and kurao.mandate_id is None
 
 
-@pytest.mark.parametrize("uid", ["takahashi", "matsumoto"])
+@pytest.mark.parametrize("uid", ["kanji", "matsumoto"])
 async def test_organizer_and_guests_of_honor_cannot_delegate_payment(uid):
     actions, store, slack, *_ = build()
     await actions.handle(press(Action.CONSENT, consent_value(uid), SLACK[uid]))
@@ -143,9 +215,9 @@ async def test_organizer_and_guests_of_honor_cannot_delegate_payment(uid):
 
 async def test_no_answers_after_the_split_has_been_approved():
     actions, store, slack, *_ = build(status=EventStatus.PAYMENT)
-    await actions.handle(press(Action.CONSENT, consent_value(), SLACK["ito"]))
-    ito = next(p for p in store.list_participants("ev-demo") if p.user_id == "ito")
-    assert ito.rsvp_status is RsvpStatus.PENDING
+    await actions.handle(press(Action.CONSENT, consent_value(), SLACK["kurao"]))
+    kurao = next(p for p in store.list_participants("ev-demo") if p.user_id == "kurao")
+    assert kurao.rsvp_status is RsvpStatus.PENDING
 
 
 # ---------------- 按分の承認 ----------------
@@ -157,14 +229,14 @@ async def requested(total=60_300):
 
 async def test_approval_request_goes_to_the_approver_with_the_split_summary():
     actions, store, slack, queued, out = await requested()
-    assert out["ok"] and out["approver"] == "yamada"
+    assert out["ok"] and out["approver"] == "hanako"
     ((slack_id, text, blocks),) = slack.dms
-    assert slack_id == SLACK["yamada"]
+    assert slack_id == SLACK["hanako"]
     body = blocks_text(blocks)
     assert "7,200円" in body and "22.22%" in body and "按分の対象額 30,300円" in body
     assert "承認すると、7名の請求が作られ" in body  # 承認が請求の起点になることを明記
     value = json.loads(blocks[-1]["elements"][0]["value"])
-    assert value["h"] == out["hash"] and value["s"] == SLACK["yamada"]
+    assert value["h"] == out["hash"] and value["s"] == SLACK["hanako"]
     approval = store.get_approval("ev-demo")
     assert approval.status is ApprovalStatus.PENDING and approval.split_hash == out["hash"]
     assert store.get_event("ev-demo").status.value == "approval"
@@ -180,15 +252,15 @@ async def test_approval_request_is_blocked_by_policy_gate_6_1():
 
 async def test_only_the_approver_can_approve_and_it_starts_billing():
     actions, store, slack, queued, out = await requested()
-    value = {"k": "approve", "e": "ev-demo", "h": out["hash"], "s": SLACK["yamada"]}
+    value = {"k": "approve", "e": "ev-demo", "h": out["hash"], "s": SLACK["hanako"]}
     # 承認者以外（幹事・別の参加者）は承認できない
-    for who in (SLACK["takahashi"], SLACK["sasaki"], "U_ATTACKER"):
+    for who in (SLACK["kanji"], SLACK["sasaki"], "U_ATTACKER"):
         await actions.handle(press(Action.APPROVE, value, who))
     assert store.get_approval("ev-demo").status is ApprovalStatus.PENDING and queued == []
-    await actions.handle(press(Action.APPROVE, value, SLACK["yamada"]))
+    await actions.handle(press(Action.APPROVE, value, SLACK["hanako"]))
     approval = store.get_approval("ev-demo")
     assert approval.status is ApprovalStatus.APPROVED
-    assert approval.approved_by_slack_user_id == SLACK["yamada"] and approval.approved_at == NOW
+    assert approval.approved_by_slack_user_id == SLACK["hanako"] and approval.approved_at == NOW
     # 承認が請求の起点（kuroko-api 自身のタスク）
     assert queued == [
         (
@@ -203,16 +275,16 @@ async def test_only_the_approver_can_approve_and_it_starts_billing():
 
 async def test_approving_twice_does_not_queue_billing_twice():
     actions, store, slack, queued, out = await requested()
-    value = {"k": "approve", "e": "ev-demo", "h": out["hash"], "s": SLACK["yamada"]}
-    await actions.handle(press(Action.APPROVE, value, SLACK["yamada"]))
-    await actions.handle(press(Action.APPROVE, value, SLACK["yamada"]))
+    value = {"k": "approve", "e": "ev-demo", "h": out["hash"], "s": SLACK["hanako"]}
+    await actions.handle(press(Action.APPROVE, value, SLACK["hanako"]))
+    await actions.handle(press(Action.APPROVE, value, SLACK["hanako"]))
     assert len(queued) == 1 and "すでに承認" in slack.responses[-1][1]
 
 
 async def test_a_stale_approval_card_cannot_approve_a_recomputed_split():
     actions, store, slack, queued, out = await requested()
-    old = {"k": "approve", "e": "ev-demo", "h": "0" * 64, "s": SLACK["yamada"]}
-    await actions.handle(press(Action.APPROVE, old, SLACK["yamada"]))
+    old = {"k": "approve", "e": "ev-demo", "h": "0" * 64, "s": SLACK["hanako"]}
+    await actions.handle(press(Action.APPROVE, old, SLACK["hanako"]))
     assert store.get_approval("ev-demo").status is ApprovalStatus.PENDING and queued == []
     assert "更新されました" in slack.responses[-1][1]
 
@@ -220,8 +292,8 @@ async def test_a_stale_approval_card_cannot_approve_a_recomputed_split():
 async def test_a_rewritten_split_after_approval_stops_at_gate_6_2():
     """承認後に金額表を書き換えても、請求のゲート（6.2）が止める。承認の操作自体は通る。"""
     actions, store, slack, queued, out = await requested()
-    value = {"k": "approve", "e": "ev-demo", "h": out["hash"], "s": SLACK["yamada"]}
-    await actions.handle(press(Action.APPROVE, value, SLACK["yamada"]))
+    value = {"k": "approve", "e": "ev-demo", "h": out["hash"], "s": SLACK["hanako"]}
+    await actions.handle(press(Action.APPROVE, value, SLACK["hanako"]))
     from src.db.events import ApprovedSplitIsFinal
 
     with pytest.raises(ApprovedSplitIsFinal):
@@ -230,8 +302,8 @@ async def test_a_rewritten_split_after_approval_stops_at_gate_6_2():
 
 async def test_approve_without_a_pending_request_is_a_noop():
     actions, store, slack, queued, mandates = build()
-    value = {"k": "approve", "e": "ev-demo", "h": "x", "s": SLACK["yamada"]}
-    await actions.handle(press(Action.APPROVE, value, SLACK["yamada"]))
+    value = {"k": "approve", "e": "ev-demo", "h": "x", "s": SLACK["hanako"]}
+    await actions.handle(press(Action.APPROVE, value, SLACK["hanako"]))
     assert queued == [] and "見つかりません" in slack.responses[-1][1]
 
 
@@ -247,33 +319,33 @@ async def test_budget_confirmation_flow():
     event.budget_escalation = BudgetEscalation(organizer_confirmed_at=NOW)
     store.save_event(event)
     out = await actions.request_budget_confirmation("ev-demo")
-    assert out == {"ok": True, "failures": [], "approver": "yamada"}
+    assert out == {"ok": True, "failures": [], "approver": "hanako"}
     ((slack_id, _, blocks),) = slack.dms
-    assert slack_id == SLACK["yamada"] and "7,010円" in blocks_text(blocks)
+    assert slack_id == SLACK["hanako"] and "7,010円" in blocks_text(blocks)
     esc = store.get_event("ev-demo").budget_escalation
-    assert esc.escalated_to == "yamada" and esc.final_confirmed_at is None
-    value = {"k": "budget", "e": "ev-demo", "s": SLACK["yamada"]}
+    assert esc.escalated_to == "hanako" and esc.final_confirmed_at is None
+    value = {"k": "budget", "e": "ev-demo", "s": SLACK["hanako"]}
     await actions.handle(press(Action.BUDGET, value, SLACK["sasaki"]))  # 承認者以外
     assert store.get_event("ev-demo").budget_escalation.final_confirmed_at is None
-    await actions.handle(press(Action.BUDGET, value, SLACK["yamada"]))
+    await actions.handle(press(Action.BUDGET, value, SLACK["hanako"]))
     assert store.get_event("ev-demo").budget_escalation.final_confirmed_at == NOW
 
 
 # ---------------- App Home ----------------
 async def test_home_shows_mandate_status_and_pending_approval():
     actions, store, slack, queued, mandates = build()
-    mandates.items["ev-demo:ito"] = MandateInfo("ev-demo:ito", "active", 6000, NOW)
-    await actions.refresh_home(SlackHomeOpened(event_id="E1", team_id="T", user_id=SLACK["ito"]))
-    home = blocks_text(slack.homes[SLACK["ito"]]["blocks"])
+    mandates.items["ev-demo:kurao"] = MandateInfo("ev-demo:kurao", "active", 6000, NOW)
+    await actions.refresh_home(SlackHomeOpened(event_id="E1", team_id="T", user_id=SLACK["kurao"]))
+    home = blocks_text(slack.homes[SLACK["kurao"]]["blocks"])
     assert "委任中" in home and "6,000円" in home and "委任を取り消す" in home
     revoke = next(
-        b for blk in slack.homes[SLACK["ito"]]["blocks"] if blk.get("type") == "actions"
+        b for blk in slack.homes[SLACK["kurao"]]["blocks"] if blk.get("type") == "actions"
         for b in blk["elements"]
     )  # fmt: skip
-    assert json.loads(revoke["value"]) == {"k": "revoke", "m": "ev-demo:ito", "s": SLACK["ito"]}
+    assert json.loads(revoke["value"]) == {"k": "revoke", "m": "ev-demo:kurao", "s": SLACK["kurao"]}
     await actions.request_split_approval("ev-demo")
-    await actions.refresh_home(SlackHomeOpened(event_id="E2", team_id="T", user_id=SLACK["yamada"]))
-    assert "按分の承認待ち" in blocks_text(slack.homes[SLACK["yamada"]]["blocks"])
+    await actions.refresh_home(SlackHomeOpened(event_id="E2", team_id="T", user_id=SLACK["hanako"]))
+    assert "按分の承認待ち" in blocks_text(slack.homes[SLACK["hanako"]]["blocks"])
     await actions.refresh_home(SlackHomeOpened(event_id="E3", team_id="T", user_id="U_NOBODY"))
     assert "関わっている飲み会はありません" in blocks_text(slack.homes["U_NOBODY"]["blocks"])
 
@@ -309,6 +381,6 @@ async def test_every_card_respects_slack_block_kit_limits():
     for _, text, blocks in slack.dms:
         assert text and len(text) <= 3000
         _check_limits(blocks)
-    mandates.items["ev-demo:ito"] = MandateInfo("ev-demo:ito", "active", 6000, NOW)
-    await actions.refresh_home(SlackHomeOpened(event_id="E", team_id="T", user_id=SLACK["ito"]))
-    _check_limits(slack.homes[SLACK["ito"]]["blocks"])
+    mandates.items["ev-demo:kurao"] = MandateInfo("ev-demo:kurao", "active", 6000, NOW)
+    await actions.refresh_home(SlackHomeOpened(event_id="E", team_id="T", user_id=SLACK["kurao"]))
+    _check_limits(slack.homes[SLACK["kurao"]]["blocks"])

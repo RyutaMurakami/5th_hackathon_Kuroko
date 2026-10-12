@@ -35,8 +35,8 @@ def claims(**kw) -> dict:
         "aud": "payment-api",
         "iat": int(NOW.timestamp()),
         "exp": int((NOW + timedelta(days=3)).timestamp()),
-        "sub": "ito",
-        "payee": "takahashi",
+        "sub": "kurao",
+        "payee": "kanji",
         "event_id": "ev1",
         "payment_reference": "ev1",
         "amount_yen": 3300,
@@ -52,7 +52,7 @@ class Approved:
             approved
             if approved is not None
             else ApprovedSplit(
-                "split-hash-1", {"ito": 3300, "yamada": 7200, "takahashi": 3300}, "takahashi"
+                "split-hash-1", {"kurao": 3300, "hanako": 7200, "kanji": 3300}, "kanji"
             )
         )
 
@@ -71,8 +71,8 @@ def call(v, token=None, **kw):
         "checkout_jwt": token,
         "checkout_hash": hashlib.sha256(token.encode()).hexdigest(),
         "event_id": "ev1",
-        "payer_user_id": "ito",
-        "payee_user_id": "takahashi",
+        "payer_user_id": "kurao",
+        "payee_user_id": "kanji",
         "amount_yen": 3300,
     } | kw
     return v.verify(**args)
@@ -139,20 +139,20 @@ def test_must_match_the_approved_split():
         now=lambda: NOW,
     )
     assert not call(v)  # 承認されていない・金額表がない
-    stale = ApprovedSplit("other-hash", {"ito": 3300}, "takahashi")
+    stale = ApprovedSplit("other-hash", {"kurao": 3300}, "kanji")
     assert not call(verifier(approved=stale))  # 承認された按分表のハッシュと違う
-    other_amount = ApprovedSplit("split-hash-1", {"ito": 3200}, "takahashi")
+    other_amount = ApprovedSplit("split-hash-1", {"kurao": 3200}, "kanji")
     assert not call(verifier(approved=other_amount))  # 金額表の本人の負担額と違う
-    other_organizer = ApprovedSplit("split-hash-1", {"ito": 3300}, "somebody")
+    other_organizer = ApprovedSplit("split-hash-1", {"kurao": 3300}, "somebody")
     assert not call(verifier(approved=other_organizer))  # 支払先が幹事でない
-    no_row = ApprovedSplit("split-hash-1", {}, "takahashi")
+    no_row = ApprovedSplit("split-hash-1", {}, "kanji")
     assert not call(verifier(approved=no_row))  # 金額表に載っていない人
 
 
 def test_organizer_can_never_be_a_payer():
-    token = sign(claims(sub="takahashi", payee="takahashi"))
-    v = verifier(approved=ApprovedSplit("split-hash-1", {"takahashi": 3300}, "takahashi"))
-    assert not call(v, token=token, payer_user_id="takahashi")
+    token = sign(claims(sub="kanji", payee="kanji"))
+    v = verifier(approved=ApprovedSplit("split-hash-1", {"kanji": 3300}, "kanji"))
+    assert not call(v, token=token, payer_user_id="kanji")
 
 
 def test_reject_all_is_the_fail_closed_default():

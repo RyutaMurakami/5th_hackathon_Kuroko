@@ -22,10 +22,10 @@ def test_review04_numbers():
     assert (r.total_amount_yen, r.subsidy_yen, r.base_amount_yen) == (60_300, 30_000, 30_300)
     assert r.weight_sum == 9.0 and r.per_weight_yen == 3366
     assert shares(r) == {
-        "yamada": 7_200,  # 部長 6,700 + 端数の不足分 500
+        "hanako": 7_200,  # 部長 6,700 + 端数の不足分 500
         "sasaki": 5_000,
-        "takahashi": 3_300,
-        "ito": 3_300,
+        "kanji": 3_300,
+        "kurao": 3_300,
         "watanabe": 3_300,
         "nakamura": 3_300,
         "kobayashi": 3_300,
@@ -33,9 +33,9 @@ def test_review04_numbers():
         "matsumoto": 0,
         "inoue": 0,
     }
-    assert (r.shortfall_yen, r.shortfall_to, r.approver_user_id) == (500, "yamada", "yamada")
+    assert (r.shortfall_yen, r.shortfall_to, r.approver_user_id) == (500, "hanako", "hanako")
     # 振込で回収する額 = 按分の対象額 − 幹事本人の負担（review 04: 27,000円・7件）
-    transfers = [s for u, s in shares(r).items() if u != "takahashi" and s > 0]
+    transfers = [s for u, s in shares(r).items() if u != "kanji" and s > 0]
     assert len(transfers) == 7  # 山田・佐々木・伊藤・渡辺・中村・小林・加藤
     assert sum(transfers) == 30_300 - 3_300 == 27_000
 
@@ -71,12 +71,12 @@ def test_non_approver_shares_are_multiples_of_the_unit():
 
 def test_subsidy_excludes_ineligible_employment_types_but_they_still_pay():
     people = demo_participants()
-    people[3] = person("ito", "一般", "2020-04-01", "E102", employment_type="業務委託")
+    people[3] = person("kurao", "一般", "2020-04-01", "E102", employment_type="業務委託")
     r = calculate_split(demo_event(), people, POLICY)
     assert r.subsidy_yen == 27_000  # 対象は9名
     assert r.base_amount_yen == 33_300
-    ito = next(x for x in r.rows if x.user_id == "ito")
-    assert ito.subsidy_eligible is False and ito.share_yen > 0
+    kurao = next(x for x in r.rows if x.user_id == "kurao")
+    assert kurao.subsidy_eligible is False and kurao.share_yen > 0
     assert sum(x.share_yen for x in r.rows) == 33_300
 
 
@@ -145,7 +145,7 @@ def test_inputs_that_cannot_be_split_are_rejected(mutate, code):
 
 def test_unknown_job_title_is_rejected_not_guessed():
     people = demo_participants()
-    people[2] = person("takahashi", "常務", "2019-04-01", "E101", role=ParticipantRole.ORGANIZER)
+    people[2] = person("kanji", "常務", "2019-04-01", "E101", role=ParticipantRole.ORGANIZER)
     with pytest.raises(SplitInputError):
         calculate_split(demo_event(), people, POLICY)
 
@@ -192,9 +192,9 @@ def test_each_person_has_a_burden_ratio_from_the_weights():
     """負担割合（％）= 係数 ÷ 係数の合計。review 04: 部長 2.0 / 9.0 など。"""
     r = calculate_split(demo_event(), demo_participants(), POLICY)
     ratio = {x.user_id: x.ratio_percent for x in r.rows}
-    assert ratio["yamada"] == 22.22  # 2.0 / 9.0
+    assert ratio["hanako"] == 22.22  # 2.0 / 9.0
     assert ratio["sasaki"] == 16.67  # 1.5 / 9.0
-    assert ratio["takahashi"] == ratio["ito"] == ratio["kobayashi"] == 11.11  # 1.0 / 9.0
+    assert ratio["kanji"] == ratio["kurao"] == ratio["kobayashi"] == 11.11  # 1.0 / 9.0
     assert ratio["kato"] == 5.56  # 0.5 / 9.0
     assert ratio["matsumoto"] == ratio["inoue"] == 0.0  # 主役は負担なし
     assert abs(sum(ratio.values()) - 100) < 0.05 * len(ratio)  # 丸めの誤差だけ
@@ -207,16 +207,16 @@ def test_amounts_follow_the_exact_ratio_not_the_rounded_percent():
     people = demo_participants()
     r = calculate_split(demo_event(), people, POLICY)
     exact = {
-        "yamada": Fraction(2) * 30_300 / 9,
+        "hanako": Fraction(2) * 30_300 / 9,
         "kato": Fraction(1, 2) * 30_300 / 9,
     }
     # 承認者以外は、正確な負担額を100円単位で切り捨てた値
     assert shares(r)["kato"] == int(exact["kato"] // 100) * 100
-    assert shares(r)["yamada"] - r.shortfall_yen == int(exact["yamada"] // 100) * 100
+    assert shares(r)["hanako"] - r.shortfall_yen == int(exact["hanako"] // 100) * 100
 
 
 def test_ratio_is_part_of_the_hash():
     base = calculate_split(demo_event(), demo_participants(), POLICY)
     other = demo_participants()
-    other[2] = person("takahashi", "課長", "2019-04-01", "E101", role=ParticipantRole.ORGANIZER)
+    other[2] = person("kanji", "課長", "2019-04-01", "E101", role=ParticipantRole.ORGANIZER)
     assert calculate_split(demo_event(), other, POLICY).hash != base.hash

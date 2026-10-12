@@ -35,9 +35,11 @@ def token(email: str, aud: str = URL, verified: bool = True) -> dict[str, str]:
 
 
 SCHEDULER_SA = "sa-scheduler@kuroko.iam.gserviceaccount.com"
+DEMO_SA = "sa-demo-runner@kuroko.iam.gserviceaccount.com"
 GATEWAY = token(GATEWAY_SA)
 API = token(API_SA)
 SCHEDULER = token(SCHEDULER_SA)
+DEMO = token(DEMO_SA)
 
 
 class Clock:
@@ -93,6 +95,7 @@ def make_client(env: Env) -> TestClient:
         gateway_service_account=GATEWAY_SA,
         api_service_account=API_SA,
         scheduler_service_account=SCHEDULER_SA,
+        demo_runner_service_account=DEMO_SA,
     )
     caller_auth.get_settings = lambda: settings
     app = create_app()

@@ -98,3 +98,9 @@ def purge_sandbox() -> dict[str, int]:
 async def scheduled_retrospectives() -> dict[str, int]:
     """1日1回: 完了の翌日の依頼・2日後のリマインド（1回だけ）・3日後の締切。件数だけを返す。"""
     return await get_retro().tick()
+
+
+@router.post("/scheduled/collections", dependencies=[Depends(require_scheduler)])
+async def scheduled_collections() -> dict[str, int]:
+    """1分ごと: 支払いが完了したイベントの、幹事口座の入金を確認する（SPEC 8.6）。件数だけ。"""
+    return await get_billing().poll_collections()

@@ -76,10 +76,17 @@ type FormProps = {
   run: (fn: () => Promise<unknown>, done?: string) => Promise<boolean>;
 };
 
+/** 今日の19時（`datetime-local` の形）。入金の確認は開催日からの明細を見るので、通しの確認は今日で行う */
+function todayAt19(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T19:00`;
+}
+
 function PlanForm({ id, example, onDone, run }: FormProps & { example?: Record<string, unknown> }) {
   const [v, setV] = useState({
     title: String(example?.title ?? ""),
-    datetime: "",
+    datetime: todayAt19(),
     area: String(example?.area ?? ""),
     party: String(example?.party_size ?? ""),
     budget: String(example?.budget_per_person_yen ?? ""),

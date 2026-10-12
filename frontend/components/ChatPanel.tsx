@@ -13,6 +13,7 @@ const PLACEHOLDER = "来週金曜、チーム8人で軽く飲みに行きたい"
 /**
  * 依頼と対話（DESIGN.md「Chat Panel」、SPEC 7.5）。表示だけを持ち、状態は呼び出し側（KUROKO Panel）が持つ。
  * KUROKOの返事は「考えています…」のあと文字が順に流れる。提案はボタンで確認する（チャットの中の確認カード）。
+ * 返事を待つあいだは、送った発言をすぐに出し、経過の秒数を見せる（動いていることが分かるように。SPEC 7.5）。
  */
 export function ChatPanel({
   messages,
@@ -41,6 +42,11 @@ export function ChatPanel({
   initialDraft?: string;
 }) {
   const [draft, setDraft] = useState("");
+  // 送った直後の発言。返事が届いて一覧が更新されるまで、手元の表示として出す
+  // （呼び出し側がすぐ一覧に足す場合は、二重に出さない）
+  const [pending, setPending] = useState<string | null>(null);
+  const last = messages[messages.length - 1];
+  const showPending = thinking && !!pending && !(last?.role === "organizer" && last.text === pending);
   useEffect(() => {
     if (initialDraft) setDraft(initialDraft);
   }, [initialDraft]);
@@ -59,13 +65,14 @@ export function ChatPanel({
   const send = () => {
     const text = draft.trim();
     if (!text || thinking || streamingId) return;
+    setPending(text);
     onSend(text);
     setDraft("");
   };
 
   const body = (
     <div className={styles.chat}>
-      {messages.length > 0 && (
+      {(messages.length > 0 || thinking) && (
         <div className={styles.messages} ref={listRef} aria-live="polite">
           <AnimatePresence initial={false}>
             {messages.map((m) => (
@@ -77,6 +84,19 @@ export function ChatPanel({
                 onConfirmPlan={onConfirmPlan}
               />
             ))}
+            {showPending && (
+              <motion.div
+                key="pending"
+                className={`${styles.message} ${styles.fromOrganizer}`}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={FADE_UP}
+              >
+                <span className="visually-hidden">幹事：</span>
+                {pending}
+                <span className={styles.messageMeta}>幹事・送信中</span>
+              </motion.div>
+            )}
             {thinking && (
               <motion.div
                 key="thinking"
@@ -93,6 +113,7 @@ export function ChatPanel({
                   <span />
                 </span>
                 KUROKOが考えています…
+                <ThinkingElapsed />
               </motion.div>
             )}
           </AnimatePresence>
@@ -132,6 +153,24 @@ export function ChatPanel({
     <Card eyebrow="チャット" title={title}>
       {body}
     </Card>
+  );
+}
+
+const SLOW_AFTER_SEC = 8;
+
+/** 待っている秒数。長くなったら、時間がかかる理由を添える（読み上げは最初の一文だけ） */
+function ThinkingElapsed() {
+  const [sec, setSec] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setSec((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  if (sec < 3) return null;
+  return (
+    <span aria-hidden>
+      （{sec}秒）
+      {sec >= SLOW_AFTER_SEC && " お店の検索や規程の確認があると、30秒ほどかかることがあります"}
+    </span>
   );
 }
 

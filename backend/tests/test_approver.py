@@ -19,7 +19,7 @@ def pick(people, guests=()):
 
 
 def test_unique_highest_weight_wins():
-    assert pick(demo_participants(), ["matsumoto", "inoue"]) == "yamada"
+    assert pick(demo_participants(), ["matsumoto", "inoue"]) == "hanako"
 
 
 def test_ties_are_broken_by_rank_then_hire_date_then_employee_id():
@@ -51,12 +51,12 @@ def test_rank_is_used_when_weights_tie():
 def test_guests_of_honor_are_never_approvers_even_with_the_top_weight():
     people = demo_participants()
     people.append(person("vp", "部長", "2000-04-01", "E000", role=ParticipantRole.GUEST_OF_HONOR))
-    assert pick(people, ["matsumoto", "inoue", "vp"]) == "yamada"
+    assert pick(people, ["matsumoto", "inoue", "vp"]) == "hanako"
 
 
 def test_only_confirmed_attendees_can_approve():
     people = demo_participants()
-    people[0] = person("yamada", "部長", "2008-04-01", "E001", attending=False)
+    people[0] = person("hanako", "部長", "2008-04-01", "E001", attending=False)
     assert pick(people, ["matsumoto", "inoue"]) == "sasaki"
 
 
