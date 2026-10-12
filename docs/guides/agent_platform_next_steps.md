@@ -298,13 +298,14 @@ AI に返すもの: なし（名前が決まっている）。
 - **Memory Bank**: 統括エージェント（`kuroko-agent`）の Agent Runtime のインスタンスに付く Memory Bank を使う（`…/reasoningEngines/<ID>/memories`。別のリソースを作らない）。`kuroko-api` が、幹事が Web で確認した定型の文だけを書き込み、店の候補を探すときに読む（SPEC 9.8）。設定は Terraform の `memory_bank_engine`（空なら `kuroko_agent_engine` と同じ）
   - **エンジンを作り直すと、記憶は新しいエンジンに引き継がれない**（ID が変わるため）。作り直したら、seed を入れ直す
   - 確かめ方（🖱）: Console の Agent Platform → Agent Runtime → `kuroko-agent` → Memories に、保存した文が出る
-- **RAG Engine**: 使っていない。規程は、文書（`policies/company_rules.md`）の全文を Gemini に渡して値を読み取り、コードが検証する（SPEC 9.7）。コーパスを作るのは、文書が増えて検索が要るようになってから
+- **RAG Engine**: まだ使っていない。規程は、`kuroko-api` のツール `retrieve_policy` が文書を条ごとに検索し、エージェントが自分の判断で呼ぶ（SPEC 9.7）。RAG Engine のコーパスは、既定の構成（Spanner）に常時の費用がかかるため、作っていない。作る場合は、検索の部分だけを差し替える
 
 **あなたの作業（任意）**
 
 - [ ] **過去の会の記憶（seed）を入れる**（human_task H27。入れると、最初の企画でも、店の候補に「前回の実績」が出る）。店名は、実際に候補に出る店の名前と同じにする。`backend/` で、まず `--dry-run` で文面を確かめる:
   `MEMORY_BANK_ENGINE=<kuroko-agent のエンジン名> uv run python scripts/seed_memory.py "<店名>" --year 2026 --month 6 --per-person 5200 --rating 4.3 --reuse yes --dry-run`
-- [ ] **統括エージェントの再デプロイ**（指示文に、発言の先頭の「システム情報」の読み方を足した。`kuroko_agent/app/agent.py`。再デプロイしなくても動くが、したほうが、イベントの ID を聞き返しにくい）
+- [ ] **統括エージェントの再デプロイ（要）**。ツール `retrieve_policy`（規程の文書を調べる）を、許可リスト（`kuroko_agent/app/callbacks.py`）と指示文に足した。**再デプロイするまで、エージェントは規程を調べられない**（ほかの機能は動く）。あわせて、Agent Registry の MCP サーバーのツールの一覧を、`backend/mcp_toolspec.json`（4件）に貼り直す
+- 過去の会の記憶（seed）は、1組（実績と評価）を投入済み（2026-10-12。スコープ `team:sample-co:dev1`）
 
 ---
 

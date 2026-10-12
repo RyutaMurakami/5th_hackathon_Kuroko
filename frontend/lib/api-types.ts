@@ -3,12 +3,41 @@
 
 export type ApiRole = "organizer" | "guest";
 
+/** 画面の種類。experience: 審査員の体験用（Web だけで進める）。live: 開発者の実演用（Slack と本物の銀行） */
+export type ApiUiMode = "experience" | "live";
+
+export type ApiMe = {
+  role: ApiRole;
+  /** 実演用の画面（本物の銀行に振込を依頼する）を使えるアカウントか */
+  live_allowed: boolean;
+  /** イベントを作る前の進行ヒント */
+  start_hints: Record<ApiUiMode, ApiHint>;
+};
+
+export type ApiVenueCandidate = {
+  place_id: string;
+  name: string;
+  address: string;
+  nearest_station: string;
+  max_travel_minutes: number;
+  avg_travel_minutes: number;
+  price_min_yen: number | null;
+  price_max_yen: number | null;
+  features: string[];
+  rating: number | null;
+  /** 選んだ理由（コードが作った事実からの定型の文） */
+  selection_reason: string;
+  /** 記憶に基づく理由（同じ店の過去の実績。無ければ null） */
+  memory_note: string | null;
+};
+
 export type ApiEventSummary = {
   event_id: string;
   title: string;
   datetime: string;
   status: string;
   sandbox: boolean;
+  ui_mode: ApiUiMode;
 };
 
 export type ApiMessage = {
@@ -58,6 +87,9 @@ export type ApiEventDetail = {
   datetime: string;
   status: string;
   sandbox: boolean;
+  ui_mode: ApiUiMode;
+  /** 店の候補（「店の候補を出す」で作る。順位はコードが決める） */
+  venue_candidates: ApiVenueCandidate[];
   plan: Record<string, unknown>;
   venue: Record<string, unknown> | null;
   total_amount_yen: number | null;

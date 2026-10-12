@@ -1,7 +1,7 @@
 "use client";
 
 import type { ApiHint } from "@/lib/api-types";
-import { Button, Card, Pill } from "./ui";
+import { Pill } from "./ui";
 import styles from "./verify.module.css";
 
 const WHERE: Record<ApiHint["where"], { label: string; tone: "navy" | "sun" | "lagoon" }> = {
@@ -12,44 +12,34 @@ const WHERE: Record<ApiHint["where"], { label: string; tone: "navy" | "sun" | "l
 };
 
 /**
- * シナリオの進行ヒント（SPEC 7.5）。いまの段階で次に何を・どこで・誰がするかと、入力例を示す。
- * 案内だけで、操作の代行ではない（Slack・銀行で人が行う操作は、そこで行うことを示すだけ）。
+ * シナリオの進行ヒント（SPEC 7.5）。チャットの列の先頭に、**いつも**出す。
+ * いまの段階で次に何を・どこで・誰がするかを示す。案内だけで、操作の代行ではない。
+ * チャットの入力の候補は、入力欄のすぐ上に出す（ChatPanel の `suggestions`）。
  */
-export function ScenarioHint({
-  hint,
-  onUseChat,
-}: {
-  hint: ApiHint;
-  /** チャットの入力例を、入力欄に入れる */
-  onUseChat?: (text: string) => void;
-}) {
+export function ScenarioHint({ hint }: { hint: ApiHint }) {
   const where = WHERE[hint.where];
-  const chat = typeof hint.example?.chat === "string" ? hint.example.chat : null;
   return (
-    <Card
-      eyebrow={`シナリオの進行 ${hint.step} / ${hint.total}`}
-      title={hint.title}
-      description={hint.do}
-      actions={
+    <aside className={styles.hint} aria-label="次にすること">
+      <div className={styles.hintHead}>
+        <span className={styles.hintStep}>
+          次にすること（{hint.step} / {hint.total}）
+        </span>
+        <span>{hint.title}</span>
         <Pill tone={where.tone}>
           {where.label}・{hint.who}
         </Pill>
-      }
-    >
-      <div className={styles.hintBar} role="progressbar" aria-valuemin={1} aria-valuemax={hint.total} aria-valuenow={hint.step}>
+      </div>
+      <div
+        className={styles.hintBar}
+        role="progressbar"
+        aria-label="シナリオの進み具合"
+        aria-valuemin={1}
+        aria-valuemax={hint.total}
+        aria-valuenow={hint.step}
+      >
         <span className={styles.hintFill} style={{ width: `${(hint.step / hint.total) * 100}%` }} />
       </div>
-      {chat && (
-        <div className={styles.example}>
-          <span className={styles.exampleLabel}>入力例</span>
-          <span className={styles.exampleText}>{chat}</span>
-          {onUseChat && (
-            <Button variant="secondary" onClick={() => onUseChat(chat)}>
-              入力欄に入れる
-            </Button>
-          )}
-        </div>
-      )}
-    </Card>
+      <p className={styles.hintText}>{hint.do}</p>
+    </aside>
   );
 }

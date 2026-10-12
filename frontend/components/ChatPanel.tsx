@@ -26,6 +26,11 @@ export function ChatPanel({
   title = "KUROKOに依頼する",
   autoFocus = false,
   initialDraft = "",
+  inline,
+  inlineKey,
+  suggestions = [],
+  placeholder = PLACEHOLDER,
+  tall = false,
 }: {
   messages: ChatMessage[];
   onSend: (text: string) => void;
@@ -40,6 +45,15 @@ export function ChatPanel({
   autoFocus?: boolean;
   /** 外から入れる入力欄の文（進行ヒントの入力例） */
   initialDraft?: string;
+  /** チャットの流れの最後に出す、KUROKO からの操作のカード（いまの段階の入力。SPEC 7.5） */
+  inline?: React.ReactNode;
+  /** `inline` の中身が変わったことを知らせる鍵（変わったら、最後まで送る） */
+  inlineKey?: string;
+  /** 入力の候補。押すと、入力欄に入る（送るのは、利用者が「送る」を押したとき） */
+  suggestions?: string[];
+  placeholder?: string;
+  /** チャットの流れを、縦に長く取る（操作のカードを中に出す画面） */
+  tall?: boolean;
 }) {
   const [draft, setDraft] = useState("");
   // 送った直後の発言。返事が届いて一覧が更新されるまで、手元の表示として出す
@@ -60,7 +74,7 @@ export function ChatPanel({
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages.length, thinking, streamingId]);
+  }, [messages.length, thinking, streamingId, inlineKey]);
 
   const send = () => {
     const text = draft.trim();
@@ -72,8 +86,8 @@ export function ChatPanel({
 
   const body = (
     <div className={styles.chat}>
-      {(messages.length > 0 || thinking) && (
-        <div className={styles.messages} ref={listRef} aria-live="polite">
+      {(messages.length > 0 || thinking || inline) && (
+        <div className={`${styles.messages} ${tall ? styles.messagesTall : ""}`} ref={listRef} aria-live="polite">
           <AnimatePresence initial={false}>
             {messages.map((m) => (
               <MessageBubble
@@ -117,9 +131,27 @@ export function ChatPanel({
               </motion.div>
             )}
           </AnimatePresence>
+          {inline && <div className={styles.inlineCard}>{inline}</div>}
         </div>
       )}
       <div className={styles.composer}>
+        {suggestions.length > 0 && (
+          <div className={styles.suggestions} role="group" aria-label="入力の候補">
+            {suggestions.map((text) => (
+              <button
+                key={text}
+                type="button"
+                className={styles.suggestion}
+                onClick={() => {
+                  setDraft(text);
+                  inputRef.current?.focus();
+                }}
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+        )}
         <label htmlFor={inputId} className="visually-hidden">
           依頼の内容
         </label>
@@ -128,7 +160,7 @@ export function ChatPanel({
           ref={inputRef}
           className={styles.textarea}
           value={draft}
-          placeholder={`例: ${PLACEHOLDER}`}
+          placeholder={`例: ${placeholder}`}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             // Enter は改行、Ctrl/⌘+Enter で送信

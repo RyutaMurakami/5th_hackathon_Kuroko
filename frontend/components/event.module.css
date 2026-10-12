@@ -1156,3 +1156,43 @@
   flex-direction: column;
   gap: var(--spacing-16);
 }
+
+/* チャットの流れの中の、操作のカード（いまの段階の入力）と、入力の候補 */
+.inlineCard {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-16);
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-8);
+}
+
+.suggestion {
+  max-width: 100%;
+  padding: var(--spacing-4) calc(var(--spacing-8) + var(--spacing-4));
+  background: var(--color-pure-white);
+  border: var(--border-width) solid var(--color-input-border);
+  border-radius: var(--radius-buttons);
+  color: var(--color-navy-text);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.suggestion:hover {
+  background: var(--color-navy-tint);
+}
+
+.suggestion:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.messagesTall {
+  max-height: calc(var(--spacing-80) * 9);
+}

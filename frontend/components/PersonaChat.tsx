@@ -133,6 +133,7 @@ export function PersonaChat({
   onPress,
   onApproveBank,
   bankAmountYen = null,
+  readOnly = false,
 }: {
   persona: ApiPersona;
   /** 列の見出しに添える役割（例: 参加者／承認者） */
@@ -143,6 +144,8 @@ export function PersonaChat({
   onApproveBank?: () => Promise<boolean>;
   /** 銀行の承認ページに出す金額（この人の支払い） */
   bankAmountYen?: number | null;
+  /** 実演用の画面: 届いたカードを見せるだけ（操作は、本人が Slack と銀行で行う） */
+  readOnly?: boolean;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [bankOpen, setBankOpen] = useState(false);
@@ -171,12 +174,23 @@ export function PersonaChat({
         </div>
         {open.length > 0 ? <Pill tone="sun">{WAITING[open[0].kind]}</Pill> : <Pill tone="navy">対応なし</Pill>}
       </header>
+      {/* この人が次にすること（いつも出す） */}
+      <p className={`${styles.personaHint} ${open.length > 0 ? "" : styles.personaHintIdle}`}>
+        {open.length === 0
+          ? "いまは、対応することはありません。KUROKO から依頼が届くと、ここに出ます。"
+          : readOnly
+            ? `次にすること：${persona.display_name} が、${open[0].kind === "bank" ? "銀行（sunabar のサービスサイト）" : "Slack の DM "}で対応します（${WAITING[open[0].kind]}）。`
+            : `次にすること：下のカードのボタンを押します（${WAITING[open[0].kind]}）。`}
+      </p>
       <div className={styles.columnBody} aria-live="polite">
-        {persona.cards.length === 0 && (
-          <Caption>
-            まだ、KUROKO からの連絡はありません。幹事が計画を確定すると、ここに出欠と委任の依頼が届きます。
-          </Caption>
-        )}
+        <div className={`${event.message} ${event.fromKuroko} ${styles.personaCard}`}>
+          <span className="visually-hidden">KUROKO：</span>
+          <p className={styles.personaText}>
+            {persona.display_name} さん、KUROKO です。飲み会の出欠・支払いの委任・承認などのお願いを、ここ（Slack の DM
+            と同じ内容）にお送りします。
+          </p>
+          <span className={event.messageMeta}>KUROKO</span>
+        </div>
         {persona.cards.map((card) => (
           <div key={card.card_id} className={`${event.message} ${event.fromKuroko} ${styles.personaCard}`}>
             <span className="visually-hidden">KUROKO：</span>
@@ -185,7 +199,7 @@ export function PersonaChat({
                 <Mrkdwn text={s} />
               </p>
             ))}
-            {card.buttons.length > 0 && (
+            {card.buttons.length > 0 && !readOnly && (
               <div className={styles.formActions}>
                 {card.buttons.map((b) => (
                   <Button
@@ -208,7 +222,11 @@ export function PersonaChat({
           </div>
         ))}
       </div>
-      <Caption>Slack にも同じカードが届きます。どちらで押しても、同じ処理になります。</Caption>
+      <Caption>
+        {readOnly
+          ? "実演用の画面です。Slack に届いたカードを映しています。操作は、本人が Slack と銀行で行います。"
+          : "Slack にも同じカードが届きます。どちらで押しても、同じ処理になります。"}
+      </Caption>
       {bankOpen && onApproveBank && (
         <BankApprovalDialog
           payer={persona.display_name}

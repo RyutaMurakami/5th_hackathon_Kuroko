@@ -30,25 +30,32 @@ export function AppHeader() {
         </Link>
         <nav className={styles.nav} aria-label="メイン">
           <Link
-            className={`${styles.navLink} ${onEvents ? styles.navLinkActive : ""}`}
-            href={href("/events")}
-            aria-current={onEvents ? "page" : undefined}
-          >
-            イベント
-          </Link>
-          <Link
             className={`${styles.navLink} ${pathname.startsWith("/verify") ? styles.navLinkActive : ""}`}
             href="/verify"
             aria-current={pathname.startsWith("/verify") ? "page" : undefined}
           >
-            検証
+            体験
+          </Link>
+          <Link
+            className={`${styles.navLink} ${pathname.startsWith("/demo") ? styles.navLinkActive : ""}`}
+            href="/demo"
+            aria-current={pathname.startsWith("/demo") ? "page" : undefined}
+          >
+            実演（開発者）
+          </Link>
+          <Link
+            className={`${styles.navLink} ${onEvents ? styles.navLinkActive : ""}`}
+            href={href("/events")}
+            aria-current={onEvents ? "page" : undefined}
+          >
+            状況の一覧
           </Link>
           <Link
             className={`${styles.navLink} ${onDev ? styles.navLinkActive : ""}`}
             href="/dev"
             aria-current={onDev ? "page" : undefined}
           >
-            開発者
+            開発資料
           </Link>
         </nav>
         {/* ログインの前は、役割と通知を出さない */}

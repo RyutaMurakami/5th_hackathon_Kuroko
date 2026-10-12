@@ -403,3 +403,95 @@ main.wide {
   font-size: var(--text-caption);
   line-height: var(--leading-caption);
 }
+
+/* 店の候補（チャットの中のカード） */
+.venueList {
+  list-style: none;
+  margin: 0 0 var(--spacing-16);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.venueList li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  padding: var(--spacing-16);
+  background: var(--color-cream-subtle);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-smallelements);
+}
+
+.venueList li.venueChosen {
+  border-color: var(--color-ink-navy);
+  background: var(--color-navy-tint);
+}
+
+.venueHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-8);
+}
+
+.memoryNote {
+  color: var(--color-sun-text);
+}
+
+button.sampleLink {
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* 進行ヒント（チャットの列の先頭に、いつも出す） */
+.hint {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  padding: var(--spacing-16);
+  background: var(--color-sun-soft);
+  border-radius: var(--radius-smallelements);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.hintHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-8);
+  font-weight: var(--font-weight-bold);
+}
+
+.hintStep {
+  color: var(--color-sun-text);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+}
+
+.hintText {
+  margin: 0;
+}
+
+.personaHint {
+  margin: 0;
+  padding: var(--spacing-8) var(--spacing-16);
+  background: var(--color-sun-soft);
+  border-radius: var(--radius-smallelements);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.personaHintIdle {
+  background: var(--color-pure-white);
+  border: var(--border-width) solid var(--color-hairline);
+  color: var(--color-steel-text);
+}

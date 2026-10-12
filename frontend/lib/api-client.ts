@@ -3,10 +3,12 @@
 import type {
   ApiEventDetail,
   ApiEventSummary,
+  ApiMe,
   ApiMessage,
   ApiNotification,
   ApiPlan,
-  ApiRole,
+  ApiUiMode,
+  ApiVenueCandidate,
 } from "./api-types";
 import { getFirebaseAuth } from "./auth";
 
@@ -46,13 +48,18 @@ const MESSAGES: Record<string, string> = {
   memory_already_saved: "この振り返りは、すでに保存済みです。",
   memory_unavailable: "いま記憶に保存できませんでした。少し待って、もう一度お試しください。",
   memory_not_configured: "記憶の保存先が設定されていません。",
+  live_not_allowed: "実演用の画面は、登録した開発者のアカウントだけが使えます。",
+  venue_search_failed: "いま店を探せませんでした。少し待って、もう一度お試しください。",
+  venue_search_no_stations: "参加者の最寄り駅が無いため、店を探せませんでした。",
+  venue_search_no_common_station: "全員が時間内に着ける駅が見つかりませんでした。",
+  venue_search_no_venues: "条件に合う店が見つかりませんでした。",
   not_configured: "サーバーの設定が済んでいません。",
   upstream_auth_failed: "サーバー間の認証に失敗しました。",
 };
 
 export function errorText(e: unknown): string {
   if (e instanceof ApiError) {
-    if (e.status === 403) return "この操作を行う権限がありません。";
+    if (e.status === 403) return MESSAGES[e.code] ?? "この操作を行う権限がありません。";
     if (e.status >= 500) return MESSAGES[e.code] ?? "うまく処理できませんでした。少し待って、もう一度お試しください。";
     return MESSAGES[e.code] ?? "操作を完了できませんでした。入力を確認してください。";
   }
@@ -75,13 +82,18 @@ async function call<T>(method: "GET" | "POST", path: string, body?: unknown): Pr
   return (await res.json()) as T;
 }
 
-export const getMe = () => call<{ role: ApiRole }>("GET", "me");
-export const listEvents = () => call<ApiEventSummary[]>("GET", "events");
+export const getMe = () => call<ApiMe>("GET", "me");
+export const listEvents = (mode?: ApiUiMode) =>
+  call<ApiEventSummary[]>("GET", mode ? `events?mode=${mode}` : "events");
 export const getEvent = (id: string) => call<ApiEventDetail>("GET", `events/${id}`);
 
 /** `eventId` が無ければ、最初の発言として planning のイベントが作られる */
-export const sendMessage = (text: string, eventId?: string) =>
-  call<{ event_id: string; reply: ApiMessage }>("POST", "messages", { event_id: eventId ?? null, text });
+export const sendMessage = (text: string, eventId?: string, mode: ApiUiMode = "experience") =>
+  call<{ event_id: string; reply: ApiMessage }>("POST", "messages", { event_id: eventId ?? null, text, mode });
+
+/** 店の候補を出す（順位はサーバーのコードが決める。数秒〜30秒ほどかかる） */
+export const findVenues = (eventId: string) =>
+  call<{ event_id: string; venue_candidates: ApiVenueCandidate[] }>("POST", `events/${eventId}/venue-candidates`);
 
 export const confirmPlan = (eventId: string, plan: ApiPlan) =>
   call<{ event_id: string; status: string }>("POST", `events/${eventId}/confirm-plan`, { plan });

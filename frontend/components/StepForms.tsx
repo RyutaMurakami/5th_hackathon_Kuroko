@@ -1,7 +1,8 @@
 "use client";
 
-// 段階ごとの入力フォーム（計画・店・予約・領収書）。実 API につなぐ。検証用の画面とイベント詳細で共通。
-// 委任・承認・振込の操作は置かない（Slack・銀行で行う）。
+// 段階ごとの入力（計画・店・予約・領収書・振り返り）。チャットの流れの中に、KUROKO からの操作のカード
+// として出す（必要な入力は、チャットの中で完結する。SPEC 7.5）。入力欄には、デモ用の候補を入れておく。
+// 委任・承認・振込の操作は置かない（参加者・承認者の列、Slack、銀行で行う）。
 import { useState } from "react";
 import {
   closeRetro,
@@ -9,6 +10,7 @@ import {
   confirmExtraction,
   confirmPlan,
   confirmRetro,
+  findVenues,
   markHeld,
   selectVenue,
   uploadFile,
@@ -51,7 +53,7 @@ export function StepForms({
   return (
     <>
       {s === "planning" && <PlanForm id={id} example={ex.plan} onDone={onDone} run={run} />}
-      {(s === "rsvp" || s === "venue") && <VenueForm id={id} onDone={onDone} run={run} />}
+      {s === "venue" && <VenueForm id={id} detail={detail} onDone={onDone} run={run} />}
       {s === "venue" && (
         <ReservationForm id={id} example={ex.reservation} detail={detail} onDone={onDone} run={run} />
       )}
@@ -64,13 +66,6 @@ export function StepForms({
       )}
       {detail.split && <SplitCard split={detail.split} detail={detail} />}
       {detail.retro && <RetroCard id={id} retro={detail.retro} onDone={onDone} run={run} />}
-      {detail.waiting_for && detail.waiting_for.where !== "web" && (
-        <Caption>
-          {detail.sandbox
-            ? `いまは、参加者・承認者の対応待ちです（${detail.waiting_for.what}）。右の2人の列のカード、または Slack で対応します。`
-            : `いまは ${detail.waiting_for.where === "slack" ? "Slack" : "銀行"} での対応待ちです（${detail.waiting_for.what}）。この画面からは操作できません。`}
-        </Caption>
-      )}
     </>
   );
 }
@@ -129,27 +124,92 @@ function PlanForm({ id, example, onDone, run }: FormProps & { example?: Record<s
   );
 }
 
-function VenueForm({ id, onDone, run }: FormProps) {
+function VenueForm({ id, detail, onDone, run }: FormProps & { detail: ApiEventDetail }) {
+  const [searching, setSearching] = useState(false);
+  const [manual, setManual] = useState(false);
   const [name, setName] = useState("");
-  const [placeId, setPlaceId] = useState("");
+  const candidates = detail.venue_candidates;
+  const chosen = typeof detail.venue?.place_id === "string" ? detail.venue.place_id : null;
+  const yen = (n: number | null) => (n === null ? "—" : n.toLocaleString());
   return (
-    <Card title="店を選ぶ" description="チャットで「お店を探して」と頼み、出た候補から店の名前を入れます">
-      <div className={styles.form}>
-        <Field label="店の名前" value={name} onChange={setName} />
-        <Field label="Google の place ID（任意）" value={placeId} onChange={setPlaceId} />
+    <Card
+      title="店を選ぶ"
+      description="全員の最寄り駅からの帰りやすさと、希望、過去の実績（記憶）から、候補を出します。順位は、決まった手順のコードが決めます"
+      actions={chosen ? <Pill tone="lagoon">選択済み</Pill> : undefined}
+    >
+      {candidates.length === 0 ? (
         <div className={styles.formActions}>
           <Button
-            onClick={() =>
+            disabled={searching}
+            onClick={() => {
+              setSearching(true);
               void run(async () => {
-                await selectVenue(id, placeId || `manual-${name}`, name);
+                await findVenues(id);
                 await onDone();
-              }, "店を選びました。")
-            }
+              }).finally(() => setSearching(false));
+            }}
           >
-            この店にする
+            {searching ? "探しています…（30秒ほど）" : "店の候補を出す"}
           </Button>
         </div>
-      </div>
+      ) : (
+        <ul className={styles.venueList}>
+          {candidates.map((c, i) => (
+            <li key={c.place_id} className={c.place_id === chosen ? styles.venueChosen : undefined}>
+              <div className={styles.venueHead}>
+                <strong>
+                  {i + 1}. {c.name}
+                </strong>
+                <Button
+                  variant={c.place_id === chosen ? "secondary" : "primary"}
+                  disabled={c.place_id === chosen}
+                  onClick={() =>
+                    void run(async () => {
+                      await selectVenue(id, c.place_id, c.name);
+                      await onDone();
+                    }, `「${c.name}」を選びました。予約したら、予約の内容を確定してください。`)
+                  }
+                >
+                  {c.place_id === chosen ? "選択中" : "この店にする"}
+                </Button>
+              </div>
+              <span className={styles.splitMeta}>
+                {c.nearest_station}駅・最も遠い方で {c.max_travel_minutes}分（平均 {c.avg_travel_minutes}分）・1人{" "}
+                {yen(c.price_min_yen)}〜{yen(c.price_max_yen)}円
+              </span>
+              <span>{c.selection_reason}</span>
+              {c.memory_note && (
+                <span className={styles.memoryNote}>
+                  <Pill tone="sun">記憶</Pill> {c.memory_note}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {candidates.length > 0 && <Caption>アレルゲンは、店に確認してください。予約は、幹事が店で行います。</Caption>}
+      {manual ? (
+        <div className={styles.form}>
+          <Field label="店の名前（候補に無い店）" value={name} onChange={setName} />
+          <div className={styles.formActions}>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void run(async () => {
+                  await selectVenue(id, `manual-${name}`, name);
+                  await onDone();
+                }, "店を選びました。")
+              }
+            >
+              この店にする
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className={styles.sampleLink} onClick={() => setManual(true)}>
+          候補に無い店を、名前で入れる
+        </button>
+      )}
     </Card>
   );
 }
