@@ -75,6 +75,12 @@ class EventStore(Protocol):
     def live_bank_emails(self) -> set[str]:
         """本物の銀行で承認する実演用の Google アカウント（`config/demo`。SPEC 7.7）。"""
 
+    def live_slack_users(self) -> dict[str, str]:
+        """実演用に登録した Slack ユーザーID → Google アカウントのメール（`config/demo`）。"""
+
+    def list_events_by_organizer_email(self, email: str) -> list[Event]:
+        """Slack から始めた実演用のイベント（まだ Web の本人に引き継いでいないもの）を含む。"""
+
     def save_card(self, card: PersonaCard) -> None: ...
 
     def get_card(self, event_id: str, card_id: str) -> PersonaCard | None: ...
@@ -139,9 +145,17 @@ class MemoryEventStore:
         self.approvals: dict[str, Approval] = {}
         self.cards: dict[str, dict[str, PersonaCard]] = {}
         self.live_emails: set[str] = set()
+        self.live_slack: dict[str, str] = {}
 
     def live_bank_emails(self):
         return set(self.live_emails)
+
+    def live_slack_users(self):
+        return dict(self.live_slack)
+
+    def list_events_by_organizer_email(self, email):
+        rows = [e for e in self.events.values() if e.organizer_email == email.lower()]
+        return [e.model_copy(deep=True) for e in sorted(rows, key=lambda e: e.datetime)]
 
     def save_card(self, card):
         self.cards.setdefault(card.event_id, {})[card.card_id] = card.model_copy(deep=True)
@@ -465,6 +479,15 @@ class FirestoreEventStore:
         snap = self._db.collection("config").document("demo").get()
         emails = (snap.to_dict() or {}).get("live_bank_emails") or [] if snap.exists else []
         return {str(e).lower() for e in emails}
+
+    def live_slack_users(self):
+        snap = self._db.collection("config").document("demo").get()
+        users = (snap.to_dict() or {}).get("live_slack_users") or {} if snap.exists else {}
+        return {str(k): str(v).lower() for k, v in users.items()}
+
+    def list_events_by_organizer_email(self, email):
+        docs = self._db.collection("events").where("organizer_email", "==", email.lower()).stream()
+        return sorted((Event.model_validate(d.to_dict()) for d in docs), key=lambda e: e.datetime)
 
     def save_card(self, card):
         self._event(card.event_id).collection("cards").document(card.card_id).set(

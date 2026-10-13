@@ -39,6 +39,8 @@ DEMO_RUNNER = "demo-runner"  # 代行で署名した委任状の `signed_via`（
 Enqueue = Callable[[str, dict, str], Awaitable[None]]  # (path, payload, task_id)
 
 BankApprove = Callable[[str, str], Awaitable[bool]]  # (event_id, user_id) → 承認できたか
+# (event_id, 押した人の Slack ユーザーID) → 確定できたら、そのイベント（Slack から始めた依頼）
+PlanConfirm = Callable[[str, str], Awaitable["Event | None"]]
 
 # Web のカードから押せる操作（SPEC 7.7）。取り消しは Slack だけ
 WEB_ACTIONS = {
@@ -63,10 +65,12 @@ class SlackActions:
         lifecycle: "Lifecycle | None" = None,
         proxy_sign: Enqueue | None = None,
         bank_approve: BankApprove | None = None,
+        plan_confirm: PlanConfirm | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         # 体験用の「銀行で承認する」（体験用の承認待ちの振込だけに効く。SPEC 7.7）
         self._bank_approve = bank_approve
+        self._plan_confirm = plan_confirm
         # デモ用の代行（SPEC 7.6）: Slack のアカウントを持たない参加者の、委任状の署名の依頼先
         self._proxy_sign = proxy_sign
         self._retro = retro
@@ -84,6 +88,7 @@ class SlackActions:
             Action.BUDGET: self._budget,
             Action.RATE: self._rate,
             Action.BANK: self._bank,
+            Action.PLAN: self._plan,
         }[i.action]
         await handler(i)
 
@@ -400,6 +405,25 @@ class SlackActions:
         except Exception:
             logger.warning("could not start the settlement check: event=%s", event.event_id)
         return True
+
+    async def _plan(self, i: SlackInteraction) -> None:
+        """Slack から始めた依頼の計画を確定する（依頼した本人だけ。SPEC 7.8）。"""
+        confirm = self._plan_confirm
+        event = None
+        if confirm is not None:
+            try:
+                event = await confirm(str(i.value.get("e", "")), i.user_id)
+            except Exception:
+                logger.exception("could not confirm the plan from Slack")
+        if event is None:
+            return await self._reply(
+                i, "この計画は確定できません（すでに確定済みか、依頼した本人ではありません）。"
+            )
+        await self._reply(
+            i,
+            f"「{event.title}」の計画を確定しました。参加者に、出欠と委任の依頼を送りました。"
+            "続きは、Web の実演用の画面で進めてください（お店選び・予約・領収書・承認）。",
+        )
 
     async def _bank(self, i: SlackInteraction) -> None:
         found = self._event_and_person(i)

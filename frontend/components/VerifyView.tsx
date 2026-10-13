@@ -191,6 +191,24 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
     return () => clearInterval(t);
   }, [user, selected, refresh, waiting]);
 
+  // 実演用: Slack の DM から依頼が始まったとき（新しいイベントが現れたとき）、その画面を開く
+  const knownIds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!user || !live || selected) return;
+    const t = setInterval(() => void refresh(null).catch(() => undefined), POLL_MS);
+    return () => clearInterval(t);
+  }, [user, live, selected, refresh]);
+  useEffect(() => {
+    if (!live) return;
+    if (knownIds.current === null) {
+      if (events.length > 0 || me) knownIds.current = new Set(events.map((e) => e.event_id));
+      return;
+    }
+    const fresh = events.find((e) => !knownIds.current?.has(e.event_id));
+    events.forEach((e) => knownIds.current?.add(e.event_id));
+    if (fresh && !selected && !thinking) setSelected(fresh.event_id);
+  }, [events, live, me, selected, thinking]);
+
   // 按分の結果が出るまで、計算の途中経過を見せる（結果が出たら、内訳に置き換わる）
   useEffect(() => {
     if (!computing) return;

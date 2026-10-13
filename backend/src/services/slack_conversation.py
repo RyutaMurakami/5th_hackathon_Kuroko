@@ -5,8 +5,9 @@ import logging
 from src.clients import slack
 from src.models.schemas import SlackDirectMessage
 from src.services import kuroko_chat
+from src.services import slack_messages as msg
 from src.services.agent_context import event_for_slack_user, with_context
-from src.services.container import get_event_store, get_retro
+from src.services.container import get_dashboard, get_event_store, get_retro
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,9 @@ async def handle_direct_message(message: SlackDirectMessage) -> None:
     if captured:
         await slack.post_message(message.channel_id, captured)
         return
+    # 実演用に登録した幹事の企画の依頼は、イベントを作り、計画の案のカードを返す（SPEC 7.8）
+    if await _start_plan(message):
+        return
     thinking_ts = await _show_thinking(message.channel_id)
     try:
         # いま話しているイベントを、コードが伝える（利用者にイベントの ID を聞き返さない。SPEC 7.5）
@@ -55,3 +59,18 @@ async def handle_direct_message(message: SlackDirectMessage) -> None:
         logger.exception("agent failed: event_id=%s", message.event_id)
         text = ""
     await _answer(message.channel_id, thinking_ts, text or FALLBACK_TEXT)
+
+
+async def _start_plan(message: SlackDirectMessage) -> bool:
+    """登録した幹事の企画の依頼なら、計画の案のカードを返す（エージェントは通さない）。"""
+    try:
+        event = get_dashboard().start_from_slack(message.user_id, message.text)
+        if event is None:
+            return False
+        text, blocks = msg.plan_request(event, slack_user_id=message.user_id)
+        await slack.post_dm(message.user_id, text, blocks)
+    except Exception:
+        # 再試行すると、イベントが二重にできかねない。ふつうの会話として答える
+        logger.exception("could not start a plan from Slack: event_id=%s", message.event_id)
+        return False
+    return True

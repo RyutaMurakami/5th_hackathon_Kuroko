@@ -45,7 +45,7 @@ from src.services.lifecycle import Lifecycle
 from src.services.policy_extract import PolicyReader
 from src.services.receipt_ocr import ReceiptModel, ocr_receipt
 from src.services.reservation_read import ReservationModel, ingest_reservation
-from src.services.scenario_hint import hint_for, start_hint
+from src.services.scenario_hint import hint_for, plan_example, start_hint
 from src.services.vocab import REQUEST_TAGS, only_vocab
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,62 @@ def looks_like_plan_request(text: str) -> bool:
     if any(w in text for w in _PLAN_WORDS):
         return True
     return len(_PLAN_FACTS.findall(text)) >= 2
+
+
+_KINDS = "歓送迎会|歓迎会|送別会|飲み会|忘年会|新年会|懇親会|打ち上げ|ランチ会"
+_DATE = re.compile(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日|(\d{1,2})\s*/\s*(\d{1,2})")
+_TIME = re.compile(r"(\d{1,2})\s*時(?:\s*(\d{1,2})\s*分)?|(\d{1,2}):(\d{2})")
+_HEADS = re.compile(r"(\d{1,3})\s*(?:人|名)")
+_KIND_AT = re.compile(rf"([^\s、。,]*?)の?({_KINDS})")
+
+
+def plan_from_text(text: str, now: dt.datetime) -> dict[str, Any]:
+    """依頼文から、計画の案を読み取る（決まった書き方だけ。コードで決める）。
+
+    読み取れない項目は、デモの既定の値（`plan_example`）にする。幹事が確かめて確定する。
+    """
+    base = plan_example()
+    today = (now.astimezone(msg.JST) if now.tzinfo else now).date()
+    when: dt.datetime | None = None
+    m = _DATE.search(text)
+    if m:
+        month, day = int(m.group(1) or m.group(3)), int(m.group(2) or m.group(4))
+        hour, minute = 19, 0
+        t = _TIME.search(text[m.end():]) or _TIME.search(text)
+        if t:
+            hour, minute = int(t.group(1) or t.group(3)), int(t.group(2) or t.group(4) or 0)
+        try:
+            day_ = dt.date(today.year, month, day)
+            if day_ < today:
+                day_ = dt.date(today.year + 1, month, day)
+            when = dt.datetime.combine(day_, dt.time(hour, minute))
+        except ValueError:
+            when = None
+    party = None
+    h = _HEADS.search(text)
+    if h and 2 <= int(h.group(1)) <= 50:
+        party = int(h.group(1))
+    title = base["title"] if when is None and party is None else "飲み会"
+    for clause in re.split(r"[、。,\n]", _HEADS.sub("", text)):
+        k = _KIND_AT.search(clause)
+        if k:
+            lead = re.sub(r"^(?:に|で|を|は|が)+", "", k.group(1)).strip()
+            title = f"{lead} {k.group(2)}".strip()
+            break
+    deadline = base["rsvp_deadline"]
+    if when is not None:
+        due = when.date() - dt.timedelta(days=7)
+        deadline = max(due, today).isoformat()
+    return {
+        "title": title[:60],
+        "datetime": (when or dt.datetime.fromisoformat(base["datetime"])).strftime(
+            "%Y-%m-%dT%H:%M"
+        ),
+        "party_size": party or base["party_size"],
+        "budget_per_person_yen": base["budget_per_person_yen"],
+        "rsvp_deadline": deadline,
+        "guests_of_honor": [],
+    }
 
 
 class DashboardError(Exception):
@@ -170,6 +226,7 @@ class DashboardService:
         """自分のイベントだけ。それ以外は「存在しない」（404）。"""
         event = self._store.get_event(event_id)
         if event is not None:
+            event = self._adopt(actor, event)  # Slack から始めた、自分のイベント
             if actor.role is Role.ORGANIZER and event.organizer_web_uid == actor.uid:
                 if not event.sandbox:
                     return event
@@ -190,6 +247,7 @@ class DashboardService:
         return actor.email.lower() in self._store.live_bank_emails()
 
     def list_events(self, actor: Actor, mode: str | None = None) -> list[dict[str, Any]]:
+        self._adopt_all(actor)  # Slack から始めた実演用のイベントを、自分のものにする
         events = (
             self._store.list_events_for_organizer(actor.uid)
             if actor.role is Role.ORGANIZER
@@ -235,9 +293,12 @@ class DashboardService:
             "decision_log": [
                 d.model_dump(mode="json") for d in self._store.list_decisions(event_id)
             ],
-            "hint": hint_for(
-                e, people, has_receipt=self._store.get_receipt(event_id) is not None,
-                retro_ready=retro_ready, split_ready=split is not None, approved=approved,
+            "hint": _with_plan_draft(
+                hint_for(
+                    e, people, has_receipt=self._store.get_receipt(event_id) is not None,
+                    retro_ready=retro_ready, split_ready=split is not None, approved=approved,
+                ),
+                e,
             ),
         }  # fmt: skip
 
@@ -600,6 +661,13 @@ class DashboardService:
     ) -> dict[str, Any]:
         """幹事が確認した計画を確定し、出欠依頼（Slack）へ進める（planning のときだけ）。"""
         event = self._own(actor, event_id)
+        return await self._confirm_plan(event, actor.email, plan)
+
+    async def _confirm_plan(
+        self, event: Event, owner_email: str, plan: dict[str, Any]
+    ) -> dict[str, Any]:
+        """計画を確定し、出欠依頼へ進める（Web の確定と、Slack の確定で共通）。"""
+        event_id = event.event_id
         if event.status is not EventStatus.PLANNING:
             raise DashboardError("invalid_state", 409)
         clean = validate_plan(plan)
@@ -610,7 +678,7 @@ class DashboardService:
         # 規程の写し（文書から読み取り、コードが検証した値。SPEC 9.7）と、参加者を用意する
         reading = await self._policy.read() if self._policy else None
         event = self._life.prepare_event(
-            event, owner_email=actor.email, snapshot=reading.snapshot if reading else None,
+            event, owner_email=owner_email, snapshot=reading.snapshot if reading else None,
             honorees=clean["honorees"],
         )  # fmt: skip
         self._store.save_event(event)
@@ -630,6 +698,80 @@ class DashboardService:
         )
         await self._dispatcher.start_rsvp(event_id)
         return {"event_id": event_id, "status": event.status.value}
+
+    # ---------------------------------------- Slack から始める（実演用。SPEC 7.8）
+    def slack_organizer_email(self, slack_user_id: str) -> str | None:
+        """実演用に登録した Slack ユーザーなら、結びつけたアカウントのメール（登録なしは None）。"""
+        email = self._store.live_slack_users().get(slack_user_id)
+        if email and email.lower() in self._store.live_bank_emails():
+            return email.lower()
+        return None
+
+    def start_from_slack(self, slack_user_id: str, text: str) -> Event | None:
+        """登録した幹事の Slack DM が企画の依頼なら、計画の案つきでイベントを作る。
+
+        依頼でなければ None（ふつうの会話として答える）。Web の本人（UID）は、そのアカウントで
+        Web にログインしたときに引き継ぐ（`_adopt`）。
+        """
+        email = self.slack_organizer_email(slack_user_id)
+        text = text.strip()
+        if email is None or not text or len(text) > 2000 or not looks_like_plan_request(text):
+            return None
+        now = self._now()
+        sandbox = self._store.dashboard_role(email) is None
+        event = Event(
+            event_id=_id("ev"), datetime=now, organizer_user_id=slack_user_id, ui_mode="live",
+            status=EventStatus.PLANNING, sandbox=sandbox, organizer_email=email,
+            organizer_slack_user_id=slack_user_id, plan_draft=plan_from_text(text, now),
+            expires_at=now + dt.timedelta(days=SANDBOX_DAYS) if sandbox else None,
+        )  # fmt: skip
+        self._store.save_event(event)
+        self._store.save_message(
+            Message(message_id=_id("m"), event_id=event.event_id, role="organizer", text=text,
+                    created_at=now)
+        )  # fmt: skip
+        self._life.say(
+            event.event_id,
+            "Slack で依頼を受け取りました。計画の案を作ったので、内容を確かめて進めてください"
+            "（Slack のカードか、このカードのどちらからでも確定できます）。",
+            card="plan",
+        )
+        return event
+
+    async def confirm_slack_plan(self, event_id: str, slack_user_id: str) -> Event | None:
+        """Slack のカードの「この内容で進める」。依頼した本人だけが確定できる。"""
+        event = self._store.get_event(event_id)
+        if (
+            event is None
+            or event.status is not EventStatus.PLANNING
+            or not event.organizer_slack_user_id
+            or event.organizer_slack_user_id != slack_user_id
+            or self.slack_organizer_email(slack_user_id) != event.organizer_email
+        ):
+            return None
+        await self._confirm_plan(event, event.organizer_email, event.plan_draft)
+        return self._store.get_event(event_id)
+
+    def _adopt(self, actor: Actor, event: Event) -> Event:
+        """Slack から始めたイベントを、同じメールでログインした本人のものにする（1回だけ）。"""
+        if (
+            event.organizer_email != actor.email.lower()
+            or event.organizer_web_uid
+            or not self._live_allowed(actor)
+        ):
+            return event
+        update: dict[str, Any] = {"organizer_web_uid": actor.uid}
+        if event.sandbox:
+            update["guest_owner_uid"] = actor.uid
+        event = event.model_copy(update=update)
+        self._store.save_event(event)
+        return event
+
+    def _adopt_all(self, actor: Actor) -> None:
+        if not self._live_allowed(actor):
+            return
+        for e in self._store.list_events_by_organizer_email(actor.email):
+            self._adopt(actor, e)
 
     # ------------------------------------------------------------ アップロード
     def issue_upload_url(
@@ -1063,6 +1205,15 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
         "title": title, "datetime": when, "required_tags": tags, "plan": details,
         "honorees": [h for h in honorees if isinstance(h, str)],
     }  # fmt: skip
+
+
+def _with_plan_draft(hint: dict[str, Any], event: Event) -> dict[str, Any]:
+    """Slack の依頼文から読み取った計画の案があれば、計画のカードの初期値にする。"""
+    example = hint.get("example")
+    if event.plan_draft and event.status is EventStatus.PLANNING and isinstance(example, dict):
+        plan = {**(example.get("plan") or {}), **event.plan_draft}
+        hint = {**hint, "example": {**example, "plan": plan}}
+    return hint
 
 
 def now_after(now: dt.datetime) -> dt.datetime:

@@ -137,7 +137,13 @@ def get_slack_actions():
         lifecycle=get_lifecycle(),
         proxy_sign=enqueue_demo_mandate if s.demo_runner_service_account else None,
         bank_approve=_approve_demo_transfer,
+        plan_confirm=_confirm_slack_plan,
     )
+
+
+async def _confirm_slack_plan(event_id: str, slack_user_id: str):
+    """Slack から始めた依頼の計画を確定する（依頼した本人だけ。SPEC 7.8）。"""
+    return await get_dashboard().confirm_slack_plan(event_id, slack_user_id)
 
 
 async def _approve_demo_transfer(event_id: str, user_id: str) -> bool:
