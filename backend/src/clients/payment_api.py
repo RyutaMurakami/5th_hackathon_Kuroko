@@ -37,6 +37,8 @@ class PaymentApi(Protocol):
         checkout_hash: str,
     ) -> PaymentOutcome: ...
 
+    async def poll(self) -> None: ...
+
 
 async def _id_token(audience: str) -> str:
     import google.auth.transport.requests
@@ -70,3 +72,13 @@ class HttpPaymentApi:
             status=data["status"],
             block_reason=data.get("block_reason"),
         )
+
+    async def poll(self) -> None:
+        """銀行での承認待ちの支払いを、いますぐ確認させる（1分ごとの定期実行を待たない）。"""
+        try:
+            await self._http.post(
+                f"{self._base}/tasks/internal/payments/poll",
+                headers={"Authorization": f"Bearer {await self._token(self._base)}"},
+            )
+        except httpx.HTTPError as e:
+            raise PaymentApiError(f"unreachable:{type(e).__name__}") from None

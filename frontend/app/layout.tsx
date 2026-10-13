@@ -4,7 +4,6 @@ import { Suspense } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { AuthGate } from "@/components/AuthGate";
 import { DemoToolbar } from "@/components/DemoToolbar";
-import { GuestBanner } from "@/components/GuestBanner";
 import { Providers } from "@/components/Providers";
 import "./globals.css";
 
@@ -40,7 +39,6 @@ export default function RootLayout({
           {/* 役割・段階は URL のクエリで持つので、useSearchParams を使う部分を Suspense で包む */}
           <Suspense>
             <AppHeader />
-            <GuestBanner />
           </Suspense>
           <AuthGate>{children}</AuthGate>
           <Suspense>

@@ -192,9 +192,7 @@ def feedback_request(
         {
             "type": "actions",
             "elements": [
-                _button(
-                    f"{n}", Action.RATE, base | {"r": n}, "primary" if n >= 4 else None, mark=str(n)
-                )
+                _button(f"{n}", Action.RATE, base | {"r": n}, None, mark=str(n))
                 for n in range(1, 6)
             ],
         },

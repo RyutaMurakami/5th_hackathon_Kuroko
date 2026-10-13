@@ -385,6 +385,20 @@ class SlackActions:
                 event.event_id, "human", "確認",
                 f"{person.display_name} が銀行で振込を承認しました（体験用）",
             )  # fmt: skip
+            # 幹事の画面に、1人ごとに知らせる（承認のたびに、振込が実行されたことが分かるように）
+            self._life.say(
+                event.event_id,
+                f"{person.display_name}さんからの支払いが承認され、振り込みが実行されました。",
+            )
+        # 支払いと入金の確認を、定期実行（1分ごと）を待たずに始める。失敗しても、定期実行が拾う
+        try:
+            await self._enqueue(
+                "/tasks/internal/settle",
+                {"event_id": event.event_id},
+                f"settle-{event.event_id}-{person.user_id}",
+            )
+        except Exception:
+            logger.warning("could not start the settlement check: event=%s", event.event_id)
         return True
 
     async def _bank(self, i: SlackInteraction) -> None:

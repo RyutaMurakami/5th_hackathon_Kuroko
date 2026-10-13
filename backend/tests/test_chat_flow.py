@@ -192,7 +192,9 @@ async def test_the_breakdown_comes_first_then_the_approval_request_then_the_tran
     w = World()
     eid = await w.start()
     await w.to_approval(eid)  # 内訳が先。承認の依頼は、幹事の確認のあと
-    msgs = [m for m in w.store.list_messages(eid) if m.role == "kuroko" and m.card]
+    msgs = [
+        m for m in w.store.list_messages(eid) if m.role == "kuroko" and m.card and m.card != "plan"
+    ]
     assert [m.card for m in msgs] == ["split"] and "内訳" in msgs[0].text
     with pytest.raises(DashboardError):  # 承認されていないあいだは、振込の依頼を送れない
         await w.svc.approve_transfers(JUDGE, eid)
@@ -299,3 +301,15 @@ async def test_dislikes_written_with_vocabulary_words_do_not_wait_for_the_llm():
     card = w.cards(eid, "hanako")[0]
     await w.svc.press_persona_card(JUDGE, eid, card["card_id"], 0, {"dislikes": "甲殻類が苦手"})
     assert Runner.calls == 1 and w.person(eid, "hanako").preferences.dietary_avoid == ["かに"]
+
+
+# ---------------------------------------------------------------- 計画のカードは、企画の依頼にだけ
+def test_only_a_plan_request_gets_the_plan_card_not_a_greeting():
+    from src.services.dashboard import looks_like_plan_request as plan
+
+    assert plan("10月30日の19時から、第一開発チーム10人の歓送迎会を行いたい")
+    assert plan("来週、飲み会をやりたいです")
+    assert plan("11/5 19:00 8人でお願いします")
+    assert not plan("こんにちは")
+    assert not plan("ありがとう")
+    assert not plan("いくら払えばいい？")

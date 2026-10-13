@@ -11,6 +11,7 @@
 
 import datetime as dt
 import logging
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal, Protocol
@@ -52,6 +53,20 @@ logger = logging.getLogger(__name__)
 Chat = Callable[[str, str], Awaitable[str]]  # (会話の鍵, 発言) → 返答
 EnqueueSelf = Callable[[str, dict, str], Awaitable[None]]  # (パス, 本文, タスクの ID)
 FAILED_REPLY = "いま返答を作れませんでした。少し待って、もう一度送ってください。"
+
+
+_PLAN_WORDS = (
+    "歓迎会", "送別会", "歓送迎会", "飲み会", "宴会", "懇親会", "打ち上げ", "忘年会", "新年会",
+    "ランチ会", "お疲れ様会", "お祝い", "開催", "幹事", "企画", "予約", "店を", "お店",
+)  # fmt: skip
+_PLAN_FACTS = re.compile(r"\d+\s*(?:月|/)\s*\d+|\d+\s*(?:時|:)|\d+\s*(?:人|名)")
+
+
+def looks_like_plan_request(text: str) -> bool:
+    """幹事の発言が、飲み会の企画の依頼か（あいさつ・雑談ではないか）。コードで決める。"""
+    if any(w in text for w in _PLAN_WORDS):
+        return True
+    return len(_PLAN_FACTS.findall(text)) >= 2
 
 
 class DashboardError(Exception):
@@ -518,9 +533,17 @@ class DashboardService:
             reply = await self._chat(f"web:{event.event_id}:{uid}", asked)
         except Exception:  # Gateway のブロックも含む。理由・本文はログに出さない
             status, reply = MessageStatus.FAILED, FAILED_REPLY
+        # 計画のカードは、企画の依頼に答えた発言の位置に出す（あいさつ・雑談には出さない）
+        plan_card = (
+            "plan"
+            if status is MessageStatus.DONE
+            and event.status is EventStatus.PLANNING
+            and looks_like_plan_request(text)
+            else None
+        )
         answer = Message(
             message_id=pending.message_id if pending else _id("m"), event_id=event.event_id,
-            role="kuroko", text=reply[:2000], status=status,
+            role="kuroko", text=reply[:2000], status=status, card=plan_card,
             created_at=pending.created_at if pending else now_after(self._now()),
         )  # fmt: skip
         self._store.save_message(answer)

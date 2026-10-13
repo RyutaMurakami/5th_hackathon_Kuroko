@@ -34,6 +34,7 @@ import {
 } from "./ChatThread";
 import { Icon } from "./Icon";
 import { PersonaChat } from "./PersonaChat";
+import { PhaseStepper } from "./PhaseStepper";
 import { ScenarioHint } from "./ScenarioHint";
 import {
   type AnchorKind,
@@ -216,9 +217,6 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
     if (item.type === "text" && item.card && available.includes(item.card)) anchorAt.set(item.card, item.key);
   }
   const anchored = new Set(anchorAt.keys());
-  // 計画のカードは、KUROKO の返答を出したあとに出す（返答の前に、カードが出ないように）
-  const lastItem = items[items.length - 1];
-  const showPlan = !thinking && lastItem?.type === "text" && !lastItem.mine;
   const lastMine = [...items].reverse().find((i) => i.type === "text" && i.mine);
   const showOutgoing = !!outgoing && thinking && !(lastMine?.type === "text" && lastMine.text === outgoing);
   const imageKind = expectedImage(detail);
@@ -343,6 +341,8 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
       {error && <ErrorBanner>{error}</ErrorBanner>}
       {notice && <InfoBanner>{notice}</InfoBanner>}
 
+      <PhaseStepper detail={detail} />
+
       {/* 幹事・参加者・承認者の3人ぶんの「KUROKO との DM」。最初から、3つとも開いておく */}
       <div className={styles.columns}>
         <section className={styles.dm} aria-label="幹事と KUROKO のチャット">
@@ -413,7 +413,6 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
                 computing={computing}
                 onSplitStarted={() => setComputing(true)}
                 onRestart={() => void clear()}
-                showPlan={showPlan}
                 anchored={anchored}
               />
             )}

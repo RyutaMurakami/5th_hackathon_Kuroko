@@ -33,7 +33,7 @@ class Message(BaseModel):
     role: Literal["organizer", "kuroko", "system"]
     text: str = Field(max_length=2000)
     attachments: list[str] = []
-    # この発言の位置に出す、状態つきのカードの種類（venues / split / transfer / retro。
+    # この発言の位置に出す、状態つきのカードの種類（plan / venues / split / transfer / retro。
     # 画面は、同じ種類のうち**いちばん新しい発言の位置**に出す。時系列を崩さないため。SPEC 7.5）
     card: str | None = None
     status: MessageStatus = MessageStatus.DONE

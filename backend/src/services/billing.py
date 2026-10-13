@@ -190,6 +190,19 @@ class BillingService:
             completed += run.all_received
         return {"checked": checked, "completed": completed}
 
+    async def settle_now(self, event_id: str) -> None:
+        """体験用の振込の承認の直後: 定期実行（1分ごと×2段）を待たず、支払いと入金をすぐ確認する。
+
+        確認の中身は定期実行と同じ（銀行の手続済 → 出金明細 → 幹事口座の入金明細）。
+        """
+        try:
+            await self._payment_api.poll()
+        except PaymentApiError:
+            logger.warning("payment poll failed: event=%s", event_id)  # 定期実行が拾う
+        event = self._store.get_event(event_id)
+        if event is not None and event.status is EventStatus.PAYMENT:
+            await self.confirm_incoming_payments(event_id)
+
     async def confirm_incoming_payments(self, event_id: str) -> CollectionRun:
         event = self._store.get_event(event_id)
         split = self._store.get_split(event_id)

@@ -47,7 +47,7 @@ export type ApiMessage = {
   text: string;
   status: "pending" | "done" | "failed" | "blocked";
   /** この発言の位置に出す、状態つきのカードの種類（時系列を崩さないため。画面は同じ種類のうち最後の発言に出す） */
-  card?: "venues" | "split" | "transfer" | "retro" | null;
+  card?: "plan" | "venues" | "split" | "transfer" | "retro" | null;
   created_at: string;
 };
 
