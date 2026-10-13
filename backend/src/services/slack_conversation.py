@@ -8,6 +8,7 @@ from src.services import kuroko_chat
 from src.services import slack_messages as msg
 from src.services.agent_context import event_for_slack_user, with_context
 from src.services.container import get_dashboard, get_event_store, get_retro
+from src.services.dashboard import looks_like_plan_request
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,16 @@ async def handle_direct_message(message: SlackDirectMessage) -> None:
 async def _start_plan(message: SlackDirectMessage) -> bool:
     """登録した幹事の企画の依頼なら、計画の案のカードを返す（エージェントは通さない）。"""
     try:
-        event = get_dashboard().start_from_slack(message.user_id, message.text)
+        dashboard = get_dashboard()
+        if not looks_like_plan_request(message.text):
+            return False
+        slack_email = None
+        if dashboard.slack_organizer_email(message.user_id) is None:
+            try:  # 登録が無いときは、Slack のプロフィールのメールで確かめる
+                slack_email = await slack.user_email(message.user_id)
+            except Exception:
+                logger.info("could not read the Slack profile email")
+        event = dashboard.start_from_slack(message.user_id, message.text, slack_email)
         if event is None:
             return False
         text, blocks = msg.plan_request(event, slack_user_id=message.user_id)

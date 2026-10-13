@@ -372,3 +372,11 @@ async def test_the_slack_plan_is_confirmed_only_by_the_requester_then_the_web_ta
     # 同じメールでログインすると、自分のイベントとして見える
     assert [e["event_id"] for e in w.svc.list_events(DEV, "live")] == [eid]
     assert w.svc.get_event(DEV, eid)["status"] == "rsvp"
+
+
+def test_without_a_registration_the_slack_profile_email_identifies_the_organizer():
+    w = World(live_emails={"dev@example.com"})  # live_slack_users は空
+    assert w.svc.start_from_slack("U_X", FIRST_REQUEST) is None
+    assert w.svc.start_from_slack("U_X", FIRST_REQUEST, "someone@example.com") is None
+    event = w.svc.start_from_slack("U_X", FIRST_REQUEST, "Dev@Example.com")
+    assert event is not None and event.organizer_email == "dev@example.com"

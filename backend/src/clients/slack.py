@@ -41,3 +41,10 @@ async def respond(response_url: str, text: str, blocks: list[dict]) -> None:
 
 async def publish_home(slack_user_id: str, view: dict) -> None:
     await _client().views_publish(user_id=slack_user_id, view=view)
+
+
+async def user_email(slack_user_id: str) -> str | None:
+    """Slack のプロフィールのメール（`users:read` と `users:read.email`。取れなければ None）。"""
+    res = await _client().users_info(user=slack_user_id)
+    email = ((res.get("user") or {}).get("profile") or {}).get("email")
+    return str(email).lower() if email else None

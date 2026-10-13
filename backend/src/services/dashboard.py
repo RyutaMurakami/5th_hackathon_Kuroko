@@ -700,20 +700,30 @@ class DashboardService:
         return {"event_id": event_id, "status": event.status.value}
 
     # ---------------------------------------- Slack から始める（実演用。SPEC 7.8）
-    def slack_organizer_email(self, slack_user_id: str) -> str | None:
-        """実演用に登録した Slack ユーザーなら、結びつけたアカウントのメール（登録なしは None）。"""
-        email = self._store.live_slack_users().get(slack_user_id)
-        if email and email.lower() in self._store.live_bank_emails():
+    def slack_organizer_email(
+        self, slack_user_id: str, slack_email: str | None = None
+    ) -> str | None:
+        """実演用の幹事なら、結びつけたアカウントのメール（そうでなければ None）。
+
+        登録（`live_slack_users`）があればそれを使う。登録が無いときは、Slack が署名して返した
+        プロフィールのメール（`slack_email`。呼び出し側が Slack から取る）が、実演用に登録した
+        アカウントのメールと同じなら、同じ人として扱う（メールは Slack に確認済みのものだけ）。
+        """
+        live = self._store.live_bank_emails()
+        email = self._store.live_slack_users().get(slack_user_id) or slack_email
+        if email and email.lower() in live:
             return email.lower()
         return None
 
-    def start_from_slack(self, slack_user_id: str, text: str) -> Event | None:
+    def start_from_slack(
+        self, slack_user_id: str, text: str, slack_email: str | None = None
+    ) -> Event | None:
         """登録した幹事の Slack DM が企画の依頼なら、計画の案つきでイベントを作る。
 
         依頼でなければ None（ふつうの会話として答える）。Web の本人（UID）は、そのアカウントで
         Web にログインしたときに引き継ぐ（`_adopt`）。
         """
-        email = self.slack_organizer_email(slack_user_id)
+        email = self.slack_organizer_email(slack_user_id, slack_email)
         text = text.strip()
         if email is None or not text or len(text) > 2000 or not looks_like_plan_request(text):
             return None
@@ -746,7 +756,6 @@ class DashboardService:
             or event.status is not EventStatus.PLANNING
             or not event.organizer_slack_user_id
             or event.organizer_slack_user_id != slack_user_id
-            or self.slack_organizer_email(slack_user_id) != event.organizer_email
         ):
             return None
         await self._confirm_plan(event, event.organizer_email, event.plan_draft)
