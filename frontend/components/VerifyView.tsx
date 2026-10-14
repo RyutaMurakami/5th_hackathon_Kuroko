@@ -371,7 +371,8 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
       {live && hint && <ScenarioHint hint={hint} />}
 
       {/* 幹事・参加者・承認者の3人ぶんの「KUROKO との DM」。最初から、3つとも開いておく */}
-      <div className={`${styles.columns} ${live ? styles.columnsPersonas : ""}`}>
+      {!live && (
+      <div className={styles.columns}>
         {!live && (
         <section className={styles.dm} aria-label="幹事と KUROKO のチャット">
           <header className={styles.dmHead}>
@@ -536,7 +537,7 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
           )}
         </section>
         )}
-        {personas.map((p) => (
+        {!live && personas.map((p) => (
           <PersonaChat
             key={p.user_id}
             persona={p}
@@ -564,6 +565,7 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
           />
         ))}
       </div>
+      )}
     </main>
   );
 }

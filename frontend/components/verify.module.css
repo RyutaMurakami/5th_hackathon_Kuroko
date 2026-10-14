@@ -170,14 +170,8 @@ main.wide {
   align-items: start;
 }
 
-/* 実演用: 幹事のチャットは出さず、くらお・花子の2人ぶんだけを並べる */
-.columnsPersonas {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 @media (max-width: 1100px) {
-  .columns,
-  .columnsPersonas {
+  .columns {
     grid-template-columns: minmax(0, 1fr);
   }
 }
