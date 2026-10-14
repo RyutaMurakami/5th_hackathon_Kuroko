@@ -269,6 +269,7 @@ def get_dashboard():
         enqueue_chat=_enqueue_self if project and s.kuroko_api_url else None,
         prefs=get_preference_intake(),
         organizer=get_organizer_dm(),
+        memory=get_memory(),
         upload_ttl_seconds=s.upload_url_ttl_seconds,
         ocr=GeminiReceiptModel(project=project) if project else None,
         reservation_reader=GeminiReservationModel(project=project) if project else None,

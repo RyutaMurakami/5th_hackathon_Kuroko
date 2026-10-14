@@ -1,6 +1,7 @@
 // kuroko-api の Web 向け API（`/api/dashboard/*`）を、この画面の中継（app/api/dashboard）経由で呼ぶ。
 // 利用者の確認は Firebase の ID トークン（SPEC 7.6）。権限の判定は API 側で、ここでは行わない。
 import type {
+  ApiReference,
   ApiEventDetail,
   ApiEventSummary,
   ApiMe,
@@ -87,6 +88,8 @@ async function call<T>(method: "GET" | "POST", path: string, body?: unknown): Pr
 export const getMe = () => call<ApiMe>("GET", "me");
 export const listEvents = (mode?: ApiUiMode) =>
   call<ApiEventSummary[]>("GET", mode ? `events?mode=${mode}` : "events");
+export const getReference = (eventId?: string | null) =>
+  call<ApiReference>("GET", eventId ? `reference?event_id=${encodeURIComponent(eventId)}` : "reference");
 export const getEvent = (id: string) => call<ApiEventDetail>("GET", `events/${id}`);
 
 /** `eventId` が無ければ、最初の発言として planning のイベントが作られる。

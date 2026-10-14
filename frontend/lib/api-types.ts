@@ -259,3 +259,29 @@ export type ApiPlan = {
   /** 幹事が足す主役（名簿の user_id） */
   guests_of_honor?: string[];
 };
+
+/** KUROKO が参照している情報（記憶と規程。SPEC 7.9） */
+export interface ApiReference {
+  memory: {
+    available: boolean;
+    error: string;
+    groups: { label: string; facts: { text: string; created: string }[] }[];
+  };
+  policy: {
+    title: string;
+    policy_id: string;
+    version: string;
+    source: "document" | "yaml";
+    articles: { number: string; heading: string; text: string }[];
+    values: {
+      member_classes: { label: string; weight: number; consent_cap_yen: number }[];
+      subsidy_per_attendee_yen: number;
+      subsidy_max_per_event_yen: number;
+      rounding_unit_yen: number;
+      hard_limit_per_person_yen: number;
+      approver_selection: string[];
+      venue_max_travel_minutes: number;
+    };
+    citations: Record<string, string>;
+  };
+}

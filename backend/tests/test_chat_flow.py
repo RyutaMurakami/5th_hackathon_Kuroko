@@ -473,3 +473,27 @@ def test_an_image_message_from_slack_is_taken_as_a_direct_message_with_files():
     assert message is not None and [f.file_id for f in message.files] == ["F1"]  # 画像だけ
     payload["event"]["subtype"] = "message_changed"
     assert extract_direct_message(payload) is None
+
+
+# ---------------------------------------------------------------- 参照（記憶・規程。SPEC 7.9）
+async def test_the_memory_and_the_policy_can_be_read_from_the_web():
+    from src.clients.memory_bank import InMemoryMemoryStore
+    from src.services.memory_facts import TEAM_SCOPE
+
+    w = World()
+    memory = InMemoryMemoryStore()
+    await memory.create(
+        TEAM_SCOPE, "第一開発チームの歓送迎会（2026/05）で『居酒屋 A』を10名で利用。"
+    )
+    await memory.create(
+        f"{TEAM_SCOPE}:guest:{JUDGE.uid}", "第一開発チームの歓送迎会（2026/10）で『B』を利用。"
+    )
+    await memory.create(f"{TEAM_SCOPE}:guest:{OTHER.uid}", "他のゲストの記憶")
+    w.svc._memory = memory
+    out = await w.svc.reference(JUDGE)
+    texts = [f["text"] for g in out["memory"]["groups"] for f in g["facts"]]
+    assert any("居酒屋 A" in t for t in texts) and any("『B』" in t for t in texts)
+    assert "他のゲストの記憶" not in texts  # ほかのゲストの記憶は見えない
+    policy = out["policy"]
+    assert policy["articles"] and policy["articles"][0]["number"] == "第1条"
+    assert policy["values"]["member_classes"][0]["weight"] > 0

@@ -95,6 +95,15 @@ def me(actor: Who, s: Svc) -> dict[str, Any]:
     return s.me(actor)
 
 
+@router.get("/reference")
+async def reference(actor: Who, s: Svc, event_id: str | None = None) -> dict[str, Any]:
+    """記憶（Memory Bank）と、会社の規程（条文と値）を見せる。読むだけ（SPEC 7.9）。"""
+    try:
+        return await s.reference(actor, event_id)
+    except DashboardError as e:
+        raise _raise(e) from None
+
+
 @router.get("/events")
 def list_events(
     actor: Who, s: Svc, mode: Literal["experience", "live"] | None = None

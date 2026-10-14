@@ -16,6 +16,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal, Protocol
 
+from src.clients.memory_bank import MemoryStore
 from src.db.events import EventStore
 from src.db.payments import PaymentReader
 from src.models.dashboard import (
@@ -210,9 +211,11 @@ class DashboardService:
         enqueue_chat: EnqueueSelf | None = None,
         prefs: PreferenceForm | None = None,
         organizer: "OrganizerDM | None" = None,
+        memory: "MemoryStore | None" = None,
         now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
     ) -> None:
         self._org_dm = organizer  # 実演用の幹事への Slack の DM（SPEC 7.8）
+        self._memory = memory  # 記憶（Memory Bank）。参照用（SPEC 7.9）
         self._personas, self._policy, self._retro = personas, policy, retro
         self._prefs = prefs
         self._reservation_reader = reservation_reader
@@ -1259,6 +1262,73 @@ class DashboardService:
             "予約が済んだら、予約完了の画面（スクリーンショット）を、このチャットに送ってください。",
         )
         return {"event_id": event_id, "venue": venue}
+
+    # ------------------------------------------------------------ 参照（記憶・規程。SPEC 7.9）
+    async def reference(self, actor: Actor, event_id: str | None = None) -> dict[str, Any]:
+        """KUROKO が参照している情報を見せる。記憶（Memory Bank）と、会社の規程（条文と値）。
+
+        読むだけ。記憶は、定型の文だけが入っている（個人の名前・個人ごとの回答は入らない）。
+        規程の値は、イベントの写しがあればそれ、なければ既定の値。
+        """
+        from src.clients.memory_bank import DisabledMemory
+        from src.services.memory_facts import TEAM_SCOPE, read_scopes
+        from src.services.policy import load_snapshot
+        from src.services.policy_search import DocumentRetriever
+
+        scopes = read_scopes(actor.role is Role.GUEST, actor.uid)
+        labels = {
+            TEAM_SCOPE: "第一開発チームの記憶（事前に入れたもの・保存したもの）",
+        }
+        memory: list[dict[str, Any]] = []
+        available = self._memory is not None and not isinstance(self._memory, DisabledMemory)
+        error = ""
+        for scope in scopes:
+            facts: list[dict[str, str]] = []
+            if available and self._memory is not None:
+                try:
+                    rows = await self._memory.list_facts(scope)
+                    facts = [
+                        {"text": f.fact, "created": f.created}
+                        for f in sorted(rows, key=lambda f: f.created, reverse=True)
+                    ]
+                except Exception:  # 記憶の読み取りに失敗しても、規程は見せる（理由は出さない）
+                    error = "memory_unavailable"
+            label = labels.get(scope, "あなたが保存した記憶（体験用）")
+            memory.append({"label": label, "facts": facts})
+        snap = None
+        if event_id:
+            try:
+                snap = self._own(actor, event_id).policy_snapshot
+            except DashboardError:
+                snap = None
+        snap = snap or load_snapshot()
+        doc = DocumentRetriever()
+        try:
+            articles = [
+                {"number": a.number, "heading": a.heading, "text": a.text} for a in doc.articles()
+            ]
+        except OSError:
+            articles = []
+        return {
+            "memory": {"available": available, "error": error, "groups": memory},
+            "policy": {
+                "title": doc.title if articles else "規程", "policy_id": snap.policy_id,
+                "version": snap.version, "source": snap.source, "articles": articles,
+                "values": {
+                    "member_classes": [
+                        {"label": c.label, "weight": c.weight, "consent_cap_yen": c.consent_cap_yen}
+                        for c in snap.member_classes
+                    ],
+                    "subsidy_per_attendee_yen": snap.subsidy.per_attendee_yen,
+                    "subsidy_max_per_event_yen": snap.subsidy.max_per_event_yen,
+                    "rounding_unit_yen": snap.rounding_unit_yen,
+                    "hard_limit_per_person_yen": snap.hard_limit_per_person_yen,
+                    "approver_selection": snap.approver_selection,
+                    "venue_max_travel_minutes": snap.venue_max_travel_minutes,
+                },
+                "citations": snap.citations,
+            },
+        }
 
     # ------------------------------------------------------------ 通知
     def list_notifications(self, actor: Actor) -> list[dict[str, Any]]:

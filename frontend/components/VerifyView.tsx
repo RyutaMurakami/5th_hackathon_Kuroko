@@ -35,6 +35,7 @@ import {
 import { Icon } from "./Icon";
 import { PersonaChat } from "./PersonaChat";
 import { PhaseStepper } from "./PhaseStepper";
+import { ReferenceDialog } from "./ReferenceDialog";
 import { ScenarioHint } from "./ScenarioHint";
 import {
   type AnchorKind,
@@ -137,6 +138,7 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
   const [events, setEvents] = useState<ApiEventSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<ApiEventDetail | null>(null);
+  const [showReference, setShowReference] = useState(false);
   const [sending, setSending] = useState(false);
   const [outgoing, setOutgoing] = useState<string | null>(null); // 送った直後の発言（一覧に載るまで）
   const [images, setImages] = useState<SentImage[]>([]);
@@ -347,6 +349,9 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
             <Pill tone={e.status === "closed" ? "lagoon" : "navy"}>{STATUS_LABEL[e.status] ?? e.status}</Pill>
           </button>
         ))}
+        <Button variant="secondary" className={styles.barButton} onClick={() => setShowReference(true)}>
+          記憶・規程を見る
+        </Button>
         <details className={styles.about}>
           <summary>この画面の見かた</summary>
           <p>{copy.banner}</p>
@@ -362,9 +367,12 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
       {notice && <InfoBanner>{notice}</InfoBanner>}
 
       <PhaseStepper detail={detail} />
+      {showReference && <ReferenceDialog eventId={selected} onClose={() => setShowReference(false)} />}
+      {live && hint && <ScenarioHint hint={hint} />}
 
       {/* 幹事・参加者・承認者の3人ぶんの「KUROKO との DM」。最初から、3つとも開いておく */}
-      <div className={styles.columns}>
+      <div className={`${styles.columns} ${live ? styles.columnsPersonas : ""}`}>
+        {!live && (
         <section className={styles.dm} aria-label="幹事と KUROKO のチャット">
           <header className={styles.dmHead}>
             <ChatAvatar who="kuroko" name="KUROKO" />
@@ -527,6 +535,7 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
           </div>
           )}
         </section>
+        )}
         {personas.map((p) => (
           <PersonaChat
             key={p.user_id}
