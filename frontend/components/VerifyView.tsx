@@ -34,6 +34,7 @@ import {
 } from "./ChatThread";
 import { Icon } from "./Icon";
 import { PersonaChat } from "./PersonaChat";
+import { PhaseStepper } from "./PhaseStepper";
 import { ScenarioHint } from "./ScenarioHint";
 import {
   type AnchorKind,
@@ -190,6 +191,24 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
     return () => clearInterval(t);
   }, [user, selected, refresh, waiting]);
 
+  // 実演用: Slack の DM から依頼が始まったとき（新しいイベントが現れたとき）、その画面を開く
+  const knownIds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!user || !live || selected) return;
+    const t = setInterval(() => void refresh(null).catch(() => undefined), POLL_MS);
+    return () => clearInterval(t);
+  }, [user, live, selected, refresh]);
+  useEffect(() => {
+    if (!live) return;
+    if (knownIds.current === null) {
+      if (events.length > 0 || me) knownIds.current = new Set(events.map((e) => e.event_id));
+      return;
+    }
+    const fresh = events.find((e) => !knownIds.current?.has(e.event_id));
+    events.forEach((e) => knownIds.current?.add(e.event_id));
+    if (fresh && !selected && !thinking) setSelected(fresh.event_id);
+  }, [events, live, me, selected, thinking]);
+
   // 按分の結果が出るまで、計算の途中経過を見せる（結果が出たら、内訳に置き換わる）
   useEffect(() => {
     if (!computing) return;
@@ -216,9 +235,6 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
     if (item.type === "text" && item.card && available.includes(item.card)) anchorAt.set(item.card, item.key);
   }
   const anchored = new Set(anchorAt.keys());
-  // 計画のカードは、KUROKO の返答を出したあとに出す（返答の前に、カードが出ないように）
-  const lastItem = items[items.length - 1];
-  const showPlan = !thinking && lastItem?.type === "text" && !lastItem.mine;
   const lastMine = [...items].reverse().find((i) => i.type === "text" && i.mine);
   const showOutgoing = !!outgoing && thinking && !(lastMine?.type === "text" && lastMine.text === outgoing);
   const imageKind = expectedImage(detail);
@@ -343,6 +359,8 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
       {error && <ErrorBanner>{error}</ErrorBanner>}
       {notice && <InfoBanner>{notice}</InfoBanner>}
 
+      <PhaseStepper detail={detail} />
+
       {/* 幹事・参加者・承認者の3人ぶんの「KUROKO との DM」。最初から、3つとも開いておく */}
       <div className={styles.columns}>
         <section className={styles.dm} aria-label="幹事と KUROKO のチャット">
@@ -413,7 +431,6 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
                 computing={computing}
                 onSplitStarted={() => setComputing(true)}
                 onRestart={() => void clear()}
-                showPlan={showPlan}
                 anchored={anchored}
               />
             )}

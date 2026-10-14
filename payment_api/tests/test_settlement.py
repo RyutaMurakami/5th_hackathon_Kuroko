@@ -196,9 +196,11 @@ def test_a_notification_failure_never_changes_the_payment(env, client):
 
 
 # ---------------- ポーリングの入口 ----------------
-def test_only_the_scheduler_can_poll(env, client):
+def test_only_the_scheduler_and_the_api_can_poll(env, client):
+    # 定期実行と、体験用の承認の直後に確認させる kuroko-api（sa-api）だけ。gateway・身元なしは不可
     assert client.post("/tasks/internal/payments/poll", headers=SCHEDULER).json() == {}
-    for headers in (API, GATEWAY, {}):
+    assert client.post("/tasks/internal/payments/poll", headers=API).json() == {}
+    for headers in (GATEWAY, {}):
         assert client.post("/tasks/internal/payments/poll", headers=headers).status_code == 403
 
 

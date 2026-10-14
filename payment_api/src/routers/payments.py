@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.models.schemas import PaymentResponse, StartPaymentRequest
-from src.services.caller_auth import Caller, require_api, require_scheduler
+from src.services.caller_auth import Caller, require_api, require_poller
 from src.services.container import Services, get_services
 from src.services.payments import BankFailure, PaymentConflict, UnknownPayment
 
@@ -36,7 +36,7 @@ def get_payment(payment_id: str, _: ApiCaller, svc: Svc) -> PaymentResponse:
 
 
 @router.post("/tasks/internal/payments/poll")
-def poll_payments(_: Annotated[Caller, Depends(require_scheduler)], svc: Svc) -> dict[str, int]:
+def poll_payments(_: Annotated[Caller, Depends(require_poller)], svc: Svc) -> dict[str, int]:
     """承認待ちの支払いを確認する（sunabar に Webhook が無いため、1分ごとのポーリング）。
     結果は、状態ごとの件数だけを返す（個人・金額は載せない）。"""
     return svc.payments.poll_all()

@@ -62,3 +62,8 @@ def require_api(authorization: str | None = Header(default=None)) -> Caller:
 def require_scheduler(authorization: str | None = Header(default=None)) -> Caller:
     """承認待ちのポーリングは sa-scheduler だけ（Cloud Scheduler が1分ごとに呼ぶ）。"""
     return _caller(authorization, {"scheduler"})
+
+
+def require_poller(authorization: str | None = Header(default=None)) -> Caller:
+    """承認待ちのポーリングは sa-scheduler（1分ごと）と、sa-api（体験用の承認の直後）。"""
+    return _caller(authorization, {"scheduler", "api"})

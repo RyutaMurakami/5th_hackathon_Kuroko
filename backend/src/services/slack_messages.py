@@ -192,9 +192,7 @@ def feedback_request(
         {
             "type": "actions",
             "elements": [
-                _button(
-                    f"{n}", Action.RATE, base | {"r": n}, "primary" if n >= 4 else None, mark=str(n)
-                )
+                _button(f"{n}", Action.RATE, base | {"r": n}, None, mark=str(n))
                 for n in range(1, 6)
             ],
         },
@@ -234,6 +232,38 @@ def bank_request(
                 )
             ],
         },
+    ]
+    return text, blocks
+
+
+def plan_request(event: Event, *, slack_user_id: str) -> tuple[str, Blocks]:
+    """Slack で受けた依頼の、計画の案（SPEC 7.8）。幹事が確かめて「この内容で進める」を押す。
+
+    細かい直し（主役・期限の変更など）は、Web の実演用の画面の計画のカードで行える。
+    """
+    draft = event.plan_draft
+    when = datetime.fromisoformat(str(draft.get("datetime")))
+    title = str(draft.get("title") or "飲み会")
+    text = f"「{title}」の計画の案です。内容を確かめてください"
+    lines = [
+        "依頼を受け取りました。次の内容で進めてよいですか？",
+        f"*題名*: {title}",
+        f"*日時*: {_when(when)}",
+        f"*人数*: {draft.get('party_size')}人",
+        f"*1人あたりの予算*: {yen(int(draft.get('budget_per_person_yen') or 0))}",
+        f"*出欠の回答期限*: {draft.get('rsvp_deadline') or '（なし）'}",
+    ]
+    value = {"k": "plan", "e": event.event_id, "s": slack_user_id}
+    blocks: Blocks = [
+        _section("\n".join(lines)),
+        {
+            "type": "actions",
+            "elements": [_button("この内容で進める", Action.PLAN, value, "primary")],
+        },
+        _section(
+            "お店の場所は、参加者の最寄り駅から KUROKO が探します。題名・日時・主役などを直す"
+            "ときは、Web の実演用の画面の計画のカードで直せます。"
+        ),
     ]
     return text, blocks
 

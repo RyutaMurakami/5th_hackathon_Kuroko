@@ -90,11 +90,12 @@ function Field({
 }
 
 /** 状態つきのカード（発言の位置に出す。時系列を崩さない）の種類 */
-export type AnchorKind = "venues" | "split" | "transfer" | "retro";
+export type AnchorKind = "plan" | "venues" | "split" | "transfer" | "retro";
 
 /** 状態が揃っていて、発言の位置に出せるカードの種類 */
 export function anchorsAvailable(detail: ApiEventDetail): AnchorKind[] {
   const out: AnchorKind[] = [];
+  if (detail.status === "planning") out.push("plan");
   if (detail.venue_candidates.length > 0) out.push("venues");
   if (detail.split) out.push("split");
   if (detail.split && ["approval", "payment", "completed", "retro", "closed"].includes(detail.status)) {
@@ -118,6 +119,10 @@ export function AnchoredCard({
   run: Run;
 }) {
   const base = { id: detail.event_id, onDone, run };
+  if (kind === "plan") {
+    const ex = (detail.hint.example ?? {}) as Record<string, Record<string, unknown>>;
+    return <PlanForm {...base} example={ex.plan as ApiPlanExample | undefined} />;
+  }
   if (kind === "venues") return <VenueStep {...base} detail={detail} />;
   if (kind === "split" && detail.split) return <SplitCard {...base} split={detail.split} detail={detail} />;
   if (kind === "transfer") return <TransferCard {...base} detail={detail} />;
@@ -139,7 +144,6 @@ export function StepForms({
   computing,
   onSplitStarted,
   onRestart,
-  showPlan,
   anchored,
 }: {
   detail: ApiEventDetail;
@@ -155,8 +159,6 @@ export function StepForms({
   onSplitStarted: () => void;
   /** デモの終わりの「最初からやり直す」 */
   onRestart: () => void;
-  /** 計画のカードを出してよいか（KUROKO の返答のあと） */
-  showPlan: boolean;
   /** 発言の位置に出している種類 */
   anchored: ReadonlySet<AnchorKind>;
 }) {
@@ -169,7 +171,6 @@ export function StepForms({
   const lonely = (kind: AnchorKind) => anchorsAvailable(detail).includes(kind) && !anchored.has(kind);
   return (
     <>
-      {s === "planning" && showPlan && <PlanForm {...base} example={ex.plan as ApiPlanExample | undefined} />}
       {s === "venue" && detail.venue_candidates.length === 0 && <VenueStep {...base} detail={detail} />}
       {lonely("venues") && <VenueStep {...base} detail={detail} />}
       {s === "venue" && chosen && (

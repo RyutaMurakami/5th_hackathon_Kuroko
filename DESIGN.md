@@ -332,10 +332,13 @@ Standard Card。上に Eyebrow Label（「予約内容の確認」「領収書�
 
 App Header の右、アカウントの左。線画のベルのアイコン（20px）と、未読があるときだけ右上に 8px の `--color-ink-navy` のドット（**件数は数字で `aria-label` に**）。押すと Popover（`--shadow-popover`、幅 360px）に、通知を新しい順に最大10件。1件 = 種類の Status Pill（確認待ち＝Sun、Slack で対応待ち＝Sun、完了＝Lagoon、ブロック＝Coral）＋ 定型の文（`body-sm`）＋ 時刻（`caption`）。押すと該当のイベントの位置へ移る。未読は背景 `--color-cream-subtle`。
 
-### Guest Banner（審査員として体験中）
-**Role:** ゲストであることと、扱いの注意を、常に伝える（SPEC 7.6）。
+### Phase Stepper（チャット画面の全体の流れ）
+**Role:** 実演・体験のチャット画面の上に、「いまどの段階か」を 5 段階で示す（SPEC 7.7）。
 
-画面上部、App Header の下に全幅。背景 `--color-navy-tint`、`body-sm`、先頭に情報アイコン。「**審査員として体験中です**。ここのデータは架空で、**7日で削除されます**。送金は sunabar（銀行APIのサンドボックス）で、資金は仮想です。」右に Text Button「使い方」。閉じるボタンは付けない（常に見える）。
+画面上部、操作の帯の下・3人ぶんのチャットの上。5 つの小さなカードを横に並べる（①依頼 ②提案 ③按分 ④承認 ⑤完了）。各カードは、番号つきの Pill・題名（`body-sm` bold）・1 行の説明（`caption`）。いまの段階は枠 `--color-ink-navy`・背景 `--color-sun-soft`・Pill は `--color-ink-navy` 地に `--color-cream-text`。終わった段階は Pill が `--color-lagoon-soft` 地に `--color-lagoon-text`（チェックつき）。1100px 以下は、番号つきの Pill だけにする。
+状態との対応: ①`planning` `rsvp` ②`venue` `booked` ③`day_of` `receipt` `split` ④`approval` `payment` ⑤`completed` `retro` `closed`。
+
+**なお、ゲストバナー（「審査員として体験中です…」）は廃止した（2026-10-13）。**
 
 ### Text Input の仲間: Checkbox / Radio
 **Role:** Confirmation Card・Venue Choice Card・Retro Summary Card の中だけで使う選択の部品。

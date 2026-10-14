@@ -112,6 +112,12 @@ class Event(BaseModel):
     # 幹事の Web 上の本人（Firebase の UID）。領収書の金額を確定できるのは、この UID だけ
     # （SPEC 7.3）
     organizer_web_uid: str = ""
+    # Slack の DM から始めたイベント（実演用。SPEC 7.8）。Slack の本人と、登録したアカウントの
+    # メール。Web にログインしたとき、このメールの本人のイベントとして引き継ぐ（UID が決まる）
+    organizer_email: str = ""
+    organizer_slack_user_id: str = ""
+    # 計画の確定前の案（Slack の依頼文から読み取った値。幹事が確かめて確定する）
+    plan_draft: dict = {}
     guests_of_honor: list[str] = []
     # 幹事が計画で決めた店の条件（例: 個室が必須）。幹事が確認した値だけ（LLM・希望ではない）
     plan_required_tags: list[str] = []

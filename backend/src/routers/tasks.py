@@ -93,6 +93,16 @@ async def create_checkouts(ref: EventRef) -> dict:
     }
 
 
+@router.post("/internal/settle", dependencies=[Depends(require_self)])
+async def settle(ref: EventRef) -> dict[str, str]:
+    """体験用の振込の承認の直後に、支払い・入金の確認をすぐ行う（定期実行の待ちを省く）。"""
+    try:
+        await get_billing().settle_now(ref.event_id)
+    except Exception:
+        logger.exception("settle failed: event=%s", ref.event_id)  # 定期実行が拾い直す
+    return {"status": "ok"}
+
+
 @router.post("/internal/collections", dependencies=[Depends(require_self)])
 async def confirm_collections(ref: EventRef) -> dict:
     """幹事口座の入金明細で、回収状況を更新する。"""

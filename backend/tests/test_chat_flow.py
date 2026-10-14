@@ -12,7 +12,7 @@ import datetime as dt
 import pytest
 
 from src.clients.ekispert import StationCheck
-from src.models.dashboard import UploadKind
+from src.models.dashboard import Actor, Role, UploadKind
 from src.models.event import EventStatus, ParticipantRole
 from src.services.agent_context import WEB_PLANNING, with_context
 from src.services.dashboard import DashboardError, validate_plan
@@ -192,7 +192,9 @@ async def test_the_breakdown_comes_first_then_the_approval_request_then_the_tran
     w = World()
     eid = await w.start()
     await w.to_approval(eid)  # 内訳が先。承認の依頼は、幹事の確認のあと
-    msgs = [m for m in w.store.list_messages(eid) if m.role == "kuroko" and m.card]
+    msgs = [
+        m for m in w.store.list_messages(eid) if m.role == "kuroko" and m.card and m.card != "plan"
+    ]
     assert [m.card for m in msgs] == ["split"] and "内訳" in msgs[0].text
     with pytest.raises(DashboardError):  # 承認されていないあいだは、振込の依頼を送れない
         await w.svc.approve_transfers(JUDGE, eid)
@@ -299,3 +301,82 @@ async def test_dislikes_written_with_vocabulary_words_do_not_wait_for_the_llm():
     card = w.cards(eid, "hanako")[0]
     await w.svc.press_persona_card(JUDGE, eid, card["card_id"], 0, {"dislikes": "甲殻類が苦手"})
     assert Runner.calls == 1 and w.person(eid, "hanako").preferences.dietary_avoid == ["かに"]
+
+
+# ---------------------------------------------------------------- 計画のカードは、企画の依頼にだけ
+def test_only_a_plan_request_gets_the_plan_card_not_a_greeting():
+    from src.services.dashboard import looks_like_plan_request as plan
+
+    assert plan("10月30日の19時から、第一開発チーム10人の歓送迎会を行いたい")
+    assert plan("来週、飲み会をやりたいです")
+    assert plan("11/5 19:00 8人でお願いします")
+    assert not plan("こんにちは")
+    assert not plan("ありがとう")
+    assert not plan("いくら払えばいい？")
+
+
+# ------------------------------------------------------- Slack から始める（実演用。SPEC 7.8）
+DEV = Actor(uid="dev1", email="dev@example.com", role=Role.GUEST)
+U_DEV = "U_DEV"
+
+
+def slack_world():
+    w = World(live_emails={"dev@example.com"})
+    w.store.live_slack = {U_DEV: "dev@example.com"}
+    return w
+
+
+def test_a_request_is_read_into_a_plan_draft():
+    from src.services.dashboard import plan_from_text
+
+    now = dt.datetime(2026, 10, 13, 12, 0, tzinfo=dt.UTC)
+    plan = plan_from_text(FIRST_REQUEST, now)
+    assert plan["title"] == "第一開発チーム 歓送迎会"
+    assert plan["datetime"] == "2026-10-30T19:00" and plan["party_size"] == 10
+    assert plan["rsvp_deadline"] == "2026-10-23"  # 開催の1週間前
+    other = plan_from_text("11/5の20:30に、8人で送別会をしたい", now)
+    assert other["datetime"] == "2026-11-05T20:30" and other["party_size"] == 8
+    assert other["title"] == "送別会"
+    validate_plan(plan)  # そのまま確定できる値
+
+
+async def test_only_a_registered_slack_user_can_start_a_plan_and_only_with_a_request():
+    w = slack_world()
+    assert w.svc.start_from_slack("U_OTHER", FIRST_REQUEST) is None  # 登録していない人
+    assert w.svc.start_from_slack(U_DEV, "こんにちは") is None  # 依頼ではない
+    event = w.svc.start_from_slack(U_DEV, FIRST_REQUEST)
+    assert event.ui_mode == "live" and event.status is EventStatus.PLANNING
+    assert event.organizer_email == "dev@example.com" and event.plan_draft["party_size"] == 10
+
+
+async def test_the_slack_plan_is_confirmed_only_by_the_requester_then_the_web_takes_it_over():
+    from src.models.slack import Action
+    from src.services.slack_messages import plan_request
+
+    w = slack_world()
+    event = w.svc.start_from_slack(U_DEV, FIRST_REQUEST)
+    eid = event.event_id
+    _, blocks = plan_request(event, slack_user_id=U_DEV)
+    button = next(el for b in blocks if b["type"] == "actions" for el in b["elements"])
+    assert button["action_id"] == Action.PLAN.value and f'"e":"{eid}"' in button["value"]
+    # 引き継ぐ前は、だれにも見えない。別のアカウントには、引き継がれない
+    assert w.svc.list_events(OTHER, "live") == []
+    with pytest.raises(DashboardError):
+        w.svc.get_event(OTHER, eid)
+    # 依頼した本人以外は、確定できない
+    assert await w.svc.confirm_slack_plan(eid, "U_OTHER") is None
+    done = await w.svc.confirm_slack_plan(eid, U_DEV)
+    assert done is not None and done.status is EventStatus.RSVP
+    assert done.title == "第一開発チーム 歓送迎会" and done.bank_approval == "bank"
+    assert await w.svc.confirm_slack_plan(eid, U_DEV) is None  # 二重に確定しない
+    # 同じメールでログインすると、自分のイベントとして見える
+    assert [e["event_id"] for e in w.svc.list_events(DEV, "live")] == [eid]
+    assert w.svc.get_event(DEV, eid)["status"] == "rsvp"
+
+
+def test_without_a_registration_the_slack_profile_email_identifies_the_organizer():
+    w = World(live_emails={"dev@example.com"})  # live_slack_users は空
+    assert w.svc.start_from_slack("U_X", FIRST_REQUEST) is None
+    assert w.svc.start_from_slack("U_X", FIRST_REQUEST, "someone@example.com") is None
+    event = w.svc.start_from_slack("U_X", FIRST_REQUEST, "Dev@Example.com")
+    assert event is not None and event.organizer_email == "dev@example.com"
