@@ -288,12 +288,19 @@ def plan_request(event: Event, *, slack_user_id: str) -> tuple[str, Blocks]:
     return text, blocks
 
 
+# 所要時間を添えるときの注意書き（計算の出どころを示す）
+TRAVEL_NOTE = (
+    "※ 所要時間・乗換回数は、駅すぱあとの経路検索で計算した目安です（運行状況で変わります）。"
+)
+
+
 def travel_line(venue_station: str, desired: str, minutes: int, transfers: int) -> str:
     """お店の最寄り駅から、本人の開催希望駅までの所要時間（開催案内に添える。SPEC 7.5）。"""
     change = f"・乗換{transfers}回" if transfers else "・乗換なし"
     return (
         f"帰り: お店の最寄り駅（{venue_station}）から、あなたの開催希望駅（{desired}）まで、"
-        f"約{minutes}分{change}"
+        f"約{minutes}分{change}\n"
+        f"{TRAVEL_NOTE}"
     )
 
 

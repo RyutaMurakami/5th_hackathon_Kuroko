@@ -554,3 +554,4 @@ async def test_the_event_notice_has_the_travel_time_from_the_venue_to_the_desire
         f"お店の最寄り駅（{station}）から、あなたの開催希望駅（{desired}）まで、約22分・乗換1回"
         in text
     )
+    assert "駅すぱあと" in text and "目安" in text  # 計算の出どころの注意書き
