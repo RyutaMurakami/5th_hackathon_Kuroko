@@ -9,12 +9,23 @@
 - events/{event_id}/cards/{card_id}        PersonaCard（登場人物に届いたカード。SPEC 7.7）
 """
 
+from datetime import timedelta, timezone
 from typing import Protocol
 
 from src.models.dashboard import DecisionEntry, Message, Notification, PersonaCard, Upload
 from src.models.event import Event, Participant, Receipt
 from src.models.feedback import Feedback, Retrospective
 from src.models.split import Approval, ApprovalStatus, SplitResult
+
+_JST = timezone(timedelta(hours=9))
+
+
+def _by_datetime(event) -> float:  # noqa: ANN001
+    """並べ替えの鍵。時差の有無が混ざっていても比べられるようにする（時差なしは日本時間）。"""
+    when = event.datetime
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=_JST)
+    return when.timestamp()
 
 
 class EventStore(Protocol):
@@ -155,7 +166,7 @@ class MemoryEventStore:
 
     def list_events_by_organizer_email(self, email):
         rows = [e for e in self.events.values() if e.organizer_email == email.lower()]
-        return [e.model_copy(deep=True) for e in sorted(rows, key=lambda e: e.datetime)]
+        return [e.model_copy(deep=True) for e in sorted(rows, key=_by_datetime)]
 
     def save_card(self, card):
         self.cards.setdefault(card.event_id, {})[card.card_id] = card.model_copy(deep=True)
@@ -184,11 +195,11 @@ class MemoryEventStore:
 
     def list_events_for_organizer(self, uid):
         rows = [e for e in self.events.values() if e.organizer_web_uid == uid and not e.sandbox]
-        return [e.model_copy(deep=True) for e in sorted(rows, key=lambda e: e.datetime)]
+        return [e.model_copy(deep=True) for e in sorted(rows, key=_by_datetime)]
 
     def list_events_for_guest(self, uid):
         rows = [e for e in self.events.values() if e.sandbox and e.guest_owner_uid == uid]
-        return [e.model_copy(deep=True) for e in sorted(rows, key=lambda e: e.datetime)]
+        return [e.model_copy(deep=True) for e in sorted(rows, key=_by_datetime)]
 
     def list_expired_sandbox(self, now):
         return [
@@ -354,12 +365,12 @@ class FirestoreEventStore:
     def list_events_for_organizer(self, uid):
         docs = self._db.collection("events").where("organizer_web_uid", "==", uid).stream()
         events = [Event.model_validate(d.to_dict()) for d in docs]
-        return sorted((e for e in events if not e.sandbox), key=lambda e: e.datetime)
+        return sorted((e for e in events if not e.sandbox), key=_by_datetime)
 
     def list_events_for_guest(self, uid):
         docs = self._db.collection("events").where("guest_owner_uid", "==", uid).stream()
         events = [Event.model_validate(d.to_dict()) for d in docs]
-        return sorted((e for e in events if e.sandbox), key=lambda e: e.datetime)
+        return sorted((e for e in events if e.sandbox), key=_by_datetime)
 
     def list_expired_sandbox(self, now):
         docs = self._db.collection("events").where("sandbox", "==", True).stream()
@@ -487,7 +498,7 @@ class FirestoreEventStore:
 
     def list_events_by_organizer_email(self, email):
         docs = self._db.collection("events").where("organizer_email", "==", email.lower()).stream()
-        return sorted((Event.model_validate(d.to_dict()) for d in docs), key=lambda e: e.datetime)
+        return sorted((Event.model_validate(d.to_dict()) for d in docs), key=_by_datetime)
 
     def save_card(self, card):
         self._event(card.event_id).collection("cards").document(card.card_id).set(

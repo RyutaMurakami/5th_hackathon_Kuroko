@@ -5,7 +5,7 @@
 個人の名前・連絡先は入れない（LLM が見るのは、ID・段階・立場だけ。SPEC 10章）。
 """
 
-from src.db.events import EventStore
+from src.db.events import EventStore, _by_datetime
 from src.models.event import Event, EventStatus, ParticipantRole
 
 HEADER = "[KUROKO システム情報（コードが付けた。利用者の発言ではない）]"
@@ -58,5 +58,5 @@ def event_for_slack_user(store: EventStore, slack_user_id: str) -> tuple[Event, 
     ]
     if not found:
         return None
-    event, person = max(found, key=lambda x: (x[0].datetime, x[0].event_id))
+    event, person = max(found, key=lambda x: (_by_datetime(x[0]), x[0].event_id))
     return event, _ROLE.get(person.role, "参加者")
