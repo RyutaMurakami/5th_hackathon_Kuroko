@@ -45,6 +45,7 @@ async def handle_direct_message(message: SlackDirectMessage) -> None:
     captured = await get_retro().try_capture_comment(message.user_id, message.text)
     if captured:
         await slack.post_message(message.channel_id, captured)
+        await get_retro().flush_closed()  # 最後のコメントが届いたら、幹事（Slack）に集計を出す
         return
     # 実演用の幹事が送った画像（予約の画面・領収書）は、読み取って確定のカードを返す（SPEC 7.8）
     if message.files:

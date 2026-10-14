@@ -49,7 +49,12 @@ PROXY_ANSWERS: tuple[tuple[int, tuple[str, ...], tuple[str, ...]], ...] = (
 
 THANKS = (
     "ご回答ありがとうございました。コメントがあれば、このDMに返信してください"
-    f"（{MAX_COMMENT_CHARS}字まで・任意）。原文は保存されません。"
+    f"（{MAX_COMMENT_CHARS}字まで）。なければ「なし」と返信してください。原文は保存されません。"
+)
+# コメントが無いときの返信（コメントの受け付けを終える）
+NO_COMMENT_WORDS = frozenset(
+    {"なし", "ない", "特になし", "とくになし", "無し", "ありません", "特にありません", "スキップ"}
+    | {"skip"}
 )
 
 
@@ -153,8 +158,12 @@ class Retrospectives:
             if self._store.get_feedback(event.event_id, p.user_id) is None:
                 self._store.save_feedback(
                     Feedback(
-                        event_id=event.event_id, user_id=p.user_id, rating=rating,
-                        liked=list(liked), concerns=list(concerns), submitted_at=now,
+                        event_id=event.event_id,
+                        user_id=p.user_id,
+                        rating=rating,
+                        liked=list(liked),
+                        concerns=list(concerns),
+                        submitted_at=now,
                     )  # fmt: skip
                 )
             done.append(p.user_id)
@@ -237,19 +246,33 @@ class Retrospectives:
                 event_id=event_id,
                 user_id=user_id,
                 rating=rating,
-                comment_open=True,
+                # Slack で答えた人だけ、コメントを待つ（Web のカードから答えた人は待たない）
+                comment_open=bool(person.slack_user_id) and not via_web,
                 submitted_at=self._now(),
             )
         )
         retro.response_count += 1
         close_cards(self._store, event_id, "feedback", user_id, "回答済みです。")
-        if retro.invited_count and retro.response_count >= retro.invited_count:
-            event = self._store.get_event(event_id)
-            self._close(retro, event)  # 全員が回答したら、その時点で締切
-        else:
-            self._apply_summary(retro)
-            self._store.save_retro(retro)
+        self._apply_summary(retro)
+        self._store.save_retro(retro)
+        self._maybe_close(event_id)  # 全員の満足度とコメントがそろったら、締切
         return "recorded"
+
+    def _maybe_close(self, event_id: str) -> bool:
+        """全員の満足度が届き、コメントの受け付けも終わっているときだけ、締め切る（SPEC 7.4）。
+
+        コメントを待っている人（満足度のあと、DM への返信をまだしていない人）がいるあいだは、
+        幹事に結果を出さない。コメントが無い人は「なし」と返信すれば、受け付けを終える。
+        """
+        retro = self._store.get_retro(event_id)
+        if retro is None or retro.status is not RetroStatus.COLLECTING:
+            return False
+        if not retro.invited_count or retro.response_count < retro.invited_count:
+            return False
+        if any(f.comment_open for f in self._store.list_feedbacks(event_id)):
+            return False
+        self._close(retro, self._store.get_event(event_id))
+        return True
 
     # ---------------------------------------------------------------- 締切・幹事の確認
     def _close(self, retro: Retrospective, event: Event | None) -> None:
@@ -282,6 +305,30 @@ class Retrospectives:
         when = event.datetime
         return draft_facts(retro, event_type=event.event_type, year=when.year, month=when.month)
 
+    def organizer_summary(self, event_id: str) -> str:
+        """幹事（Slack の DM）に出す、振り返りの集計。個人ごとの回答は含めない。"""
+        from src.services.memory_facts import CONCERN_LABELS, LIKED_LABELS
+
+        retro = self._store.get_retro(event_id)
+        if retro is None:
+            return "振り返りの集計が見つかりません。"
+        rating = f"{retro.avg_rating:.1f}" if retro.avg_rating is not None else "—"
+        lines = [
+            f"*振り返りがまとまりました*（回答 {retro.response_count} / {retro.invited_count}名）",
+            f"平均満足度: *{rating}* / 5",
+        ]
+        liked = sorted(retro.liked_counts.items(), key=lambda kv: -kv[1])[:3]
+        concern = sorted(retro.concern_counts.items(), key=lambda kv: -kv[1])[:3]
+        if liked:
+            lines.append(
+                "良かった点: " + "・".join(f"{LIKED_LABELS.get(k, k)}（{n}）" for k, n in liked)
+            )
+        if concern:
+            names = "・".join(f"{CONCERN_LABELS.get(k, k)}（{n}）" for k, n in concern)
+            lines.append(f"気になった点: {names}")
+        lines.append("個人ごとの回答・コメントは見えません（集計だけ）。")
+        return "\n".join(lines)
+
     async def flush_closed(self) -> None:
         """締め切ったイベントの幹事（実演用は Slack）に、確認の DM を送る（SPEC 7.8）。"""
         pending, self._closed = self._closed, []
@@ -291,12 +338,7 @@ class Retrospectives:
             retro, event = self._store.get_retro(event_id), self._store.get_event(event_id)
             if retro is None or event is None or retro.status is not RetroStatus.AWAITING_ORGANIZER:
                 continue
-            rating = f"{retro.avg_rating:.1f}" if retro.avg_rating is not None else "—"
-            summary = (
-                f"*振り返りがまとまりました*（回答 {retro.response_count} / "
-                f"{retro.invited_count}名・平均満足度 {rating}）。個人ごとの回答は見えません。"
-            )
-            await self._org_dm.retro(event, summary)
+            await self._org_dm.retro(event, self.organizer_summary(event_id))
 
     def close_now(self, event_id: str) -> str:
         """幹事が、回答を待たずに締め切る。結果: closed / not_collecting。"""
@@ -387,6 +429,11 @@ class Retrospectives:
         feedback = self._store.find_open_comment(slack_user_id)
         if feedback is None:
             return None
+        if text.strip().lower() in NO_COMMENT_WORDS:
+            feedback.comment_open = False  # コメントなし。受け付けを終える
+            self._store.save_feedback(feedback)
+            self._maybe_close(feedback.event_id)
+            return "了解しました。ありがとうございました。"
         extracted = await self._extractor.extract(text[:MAX_COMMENT_CHARS])
         feedback.liked, feedback.concerns = extracted.liked, extracted.concerns
         feedback.comment_open = False
@@ -395,6 +442,7 @@ class Retrospectives:
         if retro is not None:
             self._apply_summary(retro)
             self._store.save_retro(retro)
+        self._maybe_close(feedback.event_id)  # 最後のコメントが届いたら、幹事に結果を出す
         return "コメントを受け取りました。ありがとうございました。"
 
     # ---------------------------------------------------------------- 集計
