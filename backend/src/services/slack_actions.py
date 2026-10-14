@@ -105,9 +105,11 @@ class SlackActions:
         }[i.action]
         await handler(i)
 
-    async def _reply(self, i: SlackInteraction, text: str) -> None:
+    async def _reply(
+        self, i: SlackInteraction, text: str, blocks: list[dict] | None = None
+    ) -> None:
         if i.response_url:
-            await self._slack.respond(i.response_url, text, msg.resolved(text))
+            await self._slack.respond(i.response_url, text, blocks or msg.resolved(text))
 
     async def _done(
         self, i: SlackInteraction, event_id: str, kind: str, user_id: str, text: str
@@ -474,6 +476,10 @@ class SlackActions:
             except Exception:
                 logger.exception("organizer op failed: op=%s", i.value.get("o"))
                 text = "うまく処理できませんでした。少し時間をおいて、もう一度お試しください。"
+        # 振り返りの確認は、押したあとも、集計を残す（集計の下に、選んだ結果を添える）
+        if text and i.value.get("o") == "retro" and self._retro is not None:
+            summary = self._retro.organizer_summary(str(i.value.get("e", "")))
+            return await self._reply(i, text, [msg._section(summary), msg._section(f"→ {text}")])
         await self._reply(i, text or "この操作はできません。")
 
     async def _plan(self, i: SlackInteraction) -> None:

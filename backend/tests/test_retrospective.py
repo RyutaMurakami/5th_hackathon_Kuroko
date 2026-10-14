@@ -96,13 +96,30 @@ async def test_rating_after_the_deadline_is_refused():
     assert retro.record_rating("ev-demo", "kurao", SLACK["kurao"], 5) == "closed"
 
 
-async def test_the_retro_closes_when_everyone_has_answered():
+async def test_the_retro_closes_only_when_everyone_has_rated_and_commented():
+    """全員の満足度が届いても、コメントを待っている人がいるあいだは、幹事に結果を出さない。"""
     retro, store, *_ = await started()
     invited = store.get_retro("ev-demo").invited_user_ids
     for uid in invited:
         retro.record_rating("ev-demo", uid, SLACK[uid], 4)
     r = store.get_retro("ev-demo")
-    assert r.status is RetroStatus.AWAITING_ORGANIZER and r.response_count == 9
+    assert r.response_count == 9 and r.status is RetroStatus.COLLECTING  # コメント待ち
+    waiting = [u for u in invited if store.get_feedback("ev-demo", u).comment_open]
+    assert waiting  # Slack で答えた人は、コメントを待っている
+    # 最後の1人だけが残るまでは、締め切らない
+    for uid in waiting[:-1]:
+        await retro.try_capture_comment(SLACK[uid], "なし")
+        assert store.get_retro("ev-demo").status is RetroStatus.COLLECTING
+    await retro.try_capture_comment(SLACK[waiting[-1]], "料理が美味しかった")
+    assert store.get_retro("ev-demo").status is RetroStatus.AWAITING_ORGANIZER
+
+
+async def test_answering_from_the_web_card_does_not_wait_for_a_comment():
+    retro, store, *_ = await started()
+    for uid in store.get_retro("ev-demo").invited_user_ids:
+        retro.record_rating("ev-demo", uid, "", 4, via_web=True)
+    assert store.get_feedback("ev-demo", "kurao").comment_open is False
+    assert store.get_retro("ev-demo").status is RetroStatus.AWAITING_ORGANIZER
 
 
 # ---------------- コメント ----------------
