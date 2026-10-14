@@ -53,6 +53,21 @@ def _button(
     return button
 
 
+def _input(block_id: str, label: str, placeholder: str) -> dict:
+    """メッセージの入力欄（任意）。値は、ボタンを押したときの `state` で届く。"""
+    return {
+        "type": "input",
+        "block_id": block_id,
+        "optional": True,
+        "label": {"type": "plain_text", "text": label},
+        "element": {
+            "type": "plain_text_input",
+            "action_id": block_id,
+            "placeholder": {"type": "plain_text", "text": placeholder},
+        },
+    }
+
+
 def _section(text: str) -> dict:
     return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
 
@@ -89,6 +104,10 @@ def consent_request(
             "実際の振込は、*銀行の承認ページで、あなたが承認したときだけ*実行されます。\n"
             "• 振込の依頼が作られる前なら、App Home からいつでも取り消せます。"
         ),
+        # 最寄り駅・苦手な食べ物（任意）。「参加する」を押したときに、あわせて受け取る。
+        # 駅は駅すぱあとで確かめ、食べ物は固定の語彙にして持つ（原文は保存しない。SPEC 7.5）
+        _input("station", "最寄り駅", "例: 渋谷"),
+        _input("dislikes", "苦手な食べ物・食べられないもの", "例: えびが苦手（無ければ空）"),
         {
             "type": "actions",
             "elements": [

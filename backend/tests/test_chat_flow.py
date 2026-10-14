@@ -497,3 +497,33 @@ async def test_the_memory_and_the_policy_can_be_read_from_the_web():
     policy = out["policy"]
     assert policy["articles"] and policy["articles"][0]["number"] == "第1条"
     assert policy["values"]["member_classes"][0]["weight"] > 0
+
+
+# ------------------------------------------- Slack の出欠カードの入力欄（最寄り駅・苦手な食べ物）
+def test_the_consent_card_has_inputs_and_the_press_carries_their_values():
+    import json
+
+    from src.services.slack_interactions import extract_interaction
+    from src.services.slack_messages import consent_request
+
+    people = demo_participants()
+    organizer = next(p for p in people if p.role is ParticipantRole.ORGANIZER)
+    _, blocks = consent_request(
+        demo_event(), people[0], organizer, cap_yen=12000,
+        expires_at=dt.datetime(2026, 11, 6), slack_user_id="U1",
+    )  # fmt: skip
+    inputs = [b for b in blocks if b["type"] == "input"]
+    assert [b["block_id"] for b in inputs] == ["station", "dislikes"]
+    assert all(b["optional"] for b in inputs)
+    button = next(el for b in blocks if b["type"] == "actions" for el in b["elements"])
+    payload = {
+        "type": "block_actions", "user": {"id": "U1"}, "team": {"id": "T"},
+        "actions": [{"action_id": "consent", "value": button["value"]}],
+        "state": {"values": {
+            "station": {"station": {"type": "plain_text_input", "value": "渋谷"}},
+            "dislikes": {"dislikes": {"type": "plain_text_input", "value": "えびが苦手"}},
+        }},
+    }  # fmt: skip
+    i = extract_interaction(payload)
+    assert i.inputs == {"station": "渋谷", "dislikes": "えびが苦手"}
+    assert json.loads(button["value"])["s"] == "U1"

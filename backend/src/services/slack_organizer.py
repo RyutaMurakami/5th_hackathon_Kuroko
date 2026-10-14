@@ -89,8 +89,16 @@ class OrganizerDM:
         if not slack_id or not event.venue_candidates:
             return
         shown = event.venue_candidates[:MAX_VENUE_BUTTONS]
+        people = [
+            p for p in self._store.list_participants(event.event_id) if p.attendance_confirmed
+        ]
+        stations = {
+            p.preferences.nearest_station_code for p in people if p.preferences.nearest_station_code
+        }
         lines = [
-            "*お店の候補です*（全員の最寄り駅からの帰りやすさ・苦手な食べ物・過去の実績で順位を付けています）"
+            f"参加者 {len(people)}人の最寄り駅（{len(stations)}駅）から、全員が行きやすい駅を"
+            "駅すぱあとで調べました。",
+            "*お店の候補です*（全員の最寄り駅からの帰りやすさ・苦手な食べ物・過去の実績で順位を付けています）",
         ]
         for n, c in enumerate(shown, start=1):
             price = (
