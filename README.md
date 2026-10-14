@@ -46,7 +46,7 @@ Google Cloud の AI エージェントのハッカソン（第5回）の提出�
 
 ## アーキテクチャ
 
-![KUROKO の構成図](docs/diagrams/export/KUROKO_GoogleCloud構成図_v2.0.svg)
+![KUROKO の構成図](docs/diagrams/export/KUROKO_GoogleCloud構成図_v3.0.svg)
 
 | 置き場所 | 名前 | 役割 |
 |---|---|---|

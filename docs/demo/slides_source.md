@@ -176,7 +176,7 @@
 | `KUROKO_スライド_04_3つの鍵` | 3つの鍵と、二重の検査 |
 | `KUROKO_スライド_05_エージェントがすること` | エージェントと4つのツール、実際の応答 |
 | `KUROKO_スライド_06_デモの前提` | 登場人物・お金の流れ・2つの画面 |
-| `KUROKO_スライド_07_構成図`（PNG だけ） | 構成図。元は `docs/diagrams/KUROKO_GoogleCloud構成図_v2.0.drawio` |
+| `KUROKO_スライド_07_構成図`（PNG だけ） | 構成図。元は `docs/diagrams/KUROKO_GoogleCloud構成図_v3.0.drawio` |
 
 図を直したら、draw.io の CLI で書き出し直します。
 
