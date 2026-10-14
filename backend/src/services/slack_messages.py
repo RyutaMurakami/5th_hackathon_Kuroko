@@ -257,10 +257,7 @@ def bank_request(
 
 
 def plan_request(event: Event, *, slack_user_id: str) -> tuple[str, Blocks]:
-    """Slack で受けた依頼の、計画の案（SPEC 7.8）。幹事が確かめて「この内容で進める」を押す。
-
-    細かい直し（主役・期限の変更など）は、Web の実演用の画面の計画のカードで行える。
-    """
+    """Slack で受けた依頼の、計画の案（SPEC 7.8）。幹事が確かめて「この内容で進める」を押す。"""
     draft = event.plan_draft
     when = datetime.fromisoformat(str(draft.get("datetime")))
     title = str(draft.get("title") or "飲み会")
@@ -281,10 +278,6 @@ def plan_request(event: Event, *, slack_user_id: str) -> tuple[str, Blocks]:
             "type": "actions",
             "elements": [_button("この内容で進める", Action.PLAN, value, "primary")],
         },
-        _section(
-            "お店の場所は、参加者の開催希望駅から KUROKO が探します。題名・日時・主役などを直す"
-            "ときは、Web の実演用の画面の計画のカードで直せます。"
-        ),
     ]
     return text, blocks
 
