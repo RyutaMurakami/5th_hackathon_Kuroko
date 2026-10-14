@@ -66,10 +66,13 @@ class Retrospectives:
         extractor: FeedbackExtractor,
         memory: MemoryStore | None = None,
         lifecycle=None,  # noqa: ANN001
+        organizer=None,  # noqa: ANN001  実演用の幹事への Slack の DM（SPEC 7.8）
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._store, self._slack, self._extractor, self._now = store, slack, extractor, now
         self._memory, self._life = memory, lifecycle
+        self._org_dm = organizer
+        self._closed: list[str] = []  # 締め切ったが、幹事への DM をまだ送っていないイベント
 
     # ---------------------------------------------------------------- 依頼
     async def collect_feedback(self, event_id: str) -> dict[str, Any]:
@@ -118,8 +121,15 @@ class Retrospectives:
                 ),
                 card="retro",
             )
+        if self._org_dm is not None:
+            await self._org_dm.say(
+                event,
+                f"全員の入金を確認し、精算が完了しました。出席者の全員（{retro.invited_count}名）に、"
+                "振り返り（満足度）のお願いをお送りしました。",
+            )
         if not invited:
             self._close(retro, event)  # 答えを待つ人がいない。その時点の集計で、幹事の確認に進む
+        await self.flush_closed()
         return {"started": True, "invited": retro.invited_count}
 
     def _proxy_answers(self, event: Event) -> list[str]:
@@ -245,6 +255,7 @@ class Retrospectives:
     def _close(self, retro: Retrospective, event: Event | None) -> None:
         """締切。集計と、記憶の事実の下書きを作り、幹事の確認待ちにする。"""
         retro.status = RetroStatus.AWAITING_ORGANIZER
+        self._closed.append(retro.event_id)
         self._apply_summary(retro)
         if event is not None:
             retro.memory_facts = self._draft(retro, event)
@@ -270,6 +281,22 @@ class Retrospectives:
     def _draft(self, retro: Retrospective, event: Event) -> list[MemoryFact]:
         when = event.datetime
         return draft_facts(retro, event_type=event.event_type, year=when.year, month=when.month)
+
+    async def flush_closed(self) -> None:
+        """締め切ったイベントの幹事（実演用は Slack）に、確認の DM を送る（SPEC 7.8）。"""
+        pending, self._closed = self._closed, []
+        if self._org_dm is None:
+            return
+        for event_id in pending:
+            retro, event = self._store.get_retro(event_id), self._store.get_event(event_id)
+            if retro is None or event is None or retro.status is not RetroStatus.AWAITING_ORGANIZER:
+                continue
+            rating = f"{retro.avg_rating:.1f}" if retro.avg_rating is not None else "—"
+            summary = (
+                f"*振り返りがまとまりました*（回答 {retro.response_count} / "
+                f"{retro.invited_count}名・平均満足度 {rating}）。個人ごとの回答は見えません。"
+            )
+            await self._org_dm.retro(event, summary)
 
     def close_now(self, event_id: str) -> str:
         """幹事が、回答を待たずに締め切る。結果: closed / not_collecting。"""

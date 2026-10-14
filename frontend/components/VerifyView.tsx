@@ -35,6 +35,7 @@ import {
 import { Icon } from "./Icon";
 import { PersonaChat } from "./PersonaChat";
 import { PhaseStepper } from "./PhaseStepper";
+import { ReferenceDialog } from "./ReferenceDialog";
 import { ScenarioHint } from "./ScenarioHint";
 import {
   type AnchorKind,
@@ -137,6 +138,7 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
   const [events, setEvents] = useState<ApiEventSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<ApiEventDetail | null>(null);
+  const [showReference, setShowReference] = useState(false);
   const [sending, setSending] = useState(false);
   const [outgoing, setOutgoing] = useState<string | null>(null); // 送った直後の発言（一覧に載るまで）
   const [images, setImages] = useState<SentImage[]>([]);
@@ -239,6 +241,8 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
   const showOutgoing = !!outgoing && thinking && !(lastMine?.type === "text" && lastMine.text === outgoing);
   const imageKind = expectedImage(detail);
   const done = detail?.status === "closed";
+  // 実演用は、幹事の操作を Slack の DM で行う（SPEC 7.8）。この画面は、進み具合を映すだけ
+  const viewOnly = live && !!detail;
 
   const select = (id: string | null) => {
     setSelected(id);
@@ -345,6 +349,9 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
             <Pill tone={e.status === "closed" ? "lagoon" : "navy"}>{STATUS_LABEL[e.status] ?? e.status}</Pill>
           </button>
         ))}
+        <Button variant="secondary" className={styles.barButton} onClick={() => setShowReference(true)}>
+          記憶・規程を見る
+        </Button>
         <details className={styles.about}>
           <summary>この画面の見かた</summary>
           <p>{copy.banner}</p>
@@ -360,9 +367,13 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
       {notice && <InfoBanner>{notice}</InfoBanner>}
 
       <PhaseStepper detail={detail} />
+      {showReference && <ReferenceDialog eventId={selected} onClose={() => setShowReference(false)} />}
+      {live && hint && <ScenarioHint hint={hint} />}
 
       {/* 幹事・参加者・承認者の3人ぶんの「KUROKO との DM」。最初から、3つとも開いておく */}
+      {!live && (
       <div className={styles.columns}>
+        {!live && (
         <section className={styles.dm} aria-label="幹事と KUROKO のチャット">
           <header className={styles.dmHead}>
             <ChatAvatar who="kuroko" name="KUROKO" />
@@ -396,7 +407,7 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
               ) : (
                 <Fragment key={item.key}>
                   <KurokoRow at={item.at}>{item.text}</KurokoRow>
-                  {detail && item.card && anchorAt.get(item.card) === item.key && (
+                  {detail && !viewOnly && item.card && anchorAt.get(item.card) === item.key && (
                     <AnchoredCard
                       kind={item.card}
                       detail={detail}
@@ -420,7 +431,7 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
             {imageBusy && (
               <KurokoWorking hint="画像の中の文字を読み取っています">画像を読み取っています…</KurokoWorking>
             )}
-            {detail && (
+            {detail && !viewOnly && (
               <StepForms
                 key={detail.event_id}
                 detail={detail}
@@ -435,6 +446,14 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
               />
             )}
           </Thread>
+          {viewOnly ? (
+            <div className={styles.composer}>
+              <Caption>
+                実演用: 幹事の操作（お店選び・画像の送信・確認・承認の依頼）は、Slack の DM の KUROKO で行います。
+                この画面は、進み具合と、3人ぶんのやりとりを映します。
+              </Caption>
+            </div>
+          ) : (
           <div className={styles.composer}>
             {suggestions.length > 0 && !blocked && !done && (
               <div className={styles.suggestions} role="group" aria-label="入力の候補">
@@ -515,8 +534,10 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
             </div>
             <Caption>Ctrl / ⌘ + Enter で送信。実在の個人情報・領収書は入れないでください。</Caption>
           </div>
+          )}
         </section>
-        {personas.map((p) => (
+        )}
+        {!live && personas.map((p) => (
           <PersonaChat
             key={p.user_id}
             persona={p}
@@ -544,6 +565,7 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
           />
         ))}
       </div>
+      )}
     </main>
   );
 }

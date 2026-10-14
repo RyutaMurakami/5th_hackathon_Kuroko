@@ -46,6 +46,10 @@ async def handle_direct_message(message: SlackDirectMessage) -> None:
     if captured:
         await slack.post_message(message.channel_id, captured)
         return
+    # 実演用の幹事が送った画像（予約の画面・領収書）は、読み取って確定のカードを返す（SPEC 7.8）
+    if message.files:
+        await _handle_images(message)
+        return
     # 実演用に登録した幹事の企画の依頼は、イベントを作り、計画の案のカードを返す（SPEC 7.8）
     if await _start_plan(message):
         return
@@ -84,3 +88,38 @@ async def _start_plan(message: SlackDirectMessage) -> bool:
         logger.exception("could not start a plan from Slack: event_id=%s", message.event_id)
         return False
     return True
+
+
+async def _handle_images(message: SlackDirectMessage) -> None:
+    """実演用の幹事が DM で送った画像を、いまの段階（予約画面・領収書）に合わせて読み取る。"""
+    dashboard = get_dashboard()
+    email = dashboard.slack_organizer_email(message.user_id)
+    if email is None:
+        try:
+            email = dashboard.slack_organizer_email(
+                message.user_id, await slack.user_email(message.user_id)
+            )
+        except Exception:
+            logger.info("could not read the Slack profile email")
+    event = dashboard.latest_slack_event(email) if email else None
+    if event is None:
+        await slack.post_message(
+            message.channel_id, "画像を受け取りました。いま、画像を受け付けている依頼はありません。"
+        )
+        return
+    # 本人に結びつけておく（次からの操作は、この人だけ）
+    if not event.organizer_slack_user_id:
+        event = event.model_copy(update={"organizer_slack_user_id": message.user_id})
+        get_event_store().save_event(event)
+    file = message.files[0]
+    try:
+        data = await slack.download_file(file.url)
+        if data is None:
+            text = "画像を受け取れませんでした。もう一度送ってください。"
+        else:
+            text = await dashboard.ingest_slack_image(event, data, file.mimetype, file.file_id)
+    except Exception:
+        logger.exception("could not read the Slack image: event_id=%s", message.event_id)
+        text = "画像を読み取れませんでした。少し時間をおいて、もう一度送ってください。"
+    if text:
+        await slack.post_message(message.channel_id, text)

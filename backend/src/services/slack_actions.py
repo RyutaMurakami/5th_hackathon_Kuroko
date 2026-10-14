@@ -29,6 +29,7 @@ from src.services.split import calculate_split
 if TYPE_CHECKING:
     from src.services.lifecycle import Lifecycle
     from src.services.retrospective import Retrospectives
+    from src.services.slack_organizer import OrganizerDM
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,8 @@ Enqueue = Callable[[str, dict, str], Awaitable[None]]  # (path, payload, task_id
 BankApprove = Callable[[str, str], Awaitable[bool]]  # (event_id, user_id) → 承認できたか
 # (event_id, 押した人の Slack ユーザーID) → 確定できたら、そのイベント（Slack から始めた依頼）
 PlanConfirm = Callable[[str, str], Awaitable["Event | None"]]
+# (event_id, 押した人の Slack ユーザーID, ボタンの値) → 結果の文（None: 受け付けない）
+OrganizerOp = Callable[[str, str, dict], Awaitable[str | None]]
 
 # Web のカードから押せる操作（SPEC 7.7）。取り消しは Slack だけ
 WEB_ACTIONS = {
@@ -66,11 +69,15 @@ class SlackActions:
         proxy_sign: Enqueue | None = None,
         bank_approve: BankApprove | None = None,
         plan_confirm: PlanConfirm | None = None,
+        organizer_op: OrganizerOp | None = None,
+        organizer: "OrganizerDM | None" = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         # 体験用の「銀行で承認する」（体験用の承認待ちの振込だけに効く。SPEC 7.7）
         self._bank_approve = bank_approve
         self._plan_confirm = plan_confirm
+        self._organizer_op = organizer_op  # 実演用の幹事の操作（Slack のカード。SPEC 7.8）
+        self._org_dm = organizer
         # デモ用の代行（SPEC 7.6）: Slack のアカウントを持たない参加者の、委任状の署名の依頼先
         self._proxy_sign = proxy_sign
         self._retro = retro
@@ -89,6 +96,7 @@ class SlackActions:
             Action.RATE: self._rate,
             Action.BANK: self._bank,
             Action.PLAN: self._plan,
+            Action.ORG: self._org,
         }[i.action]
         await handler(i)
 
@@ -300,6 +308,8 @@ class SlackActions:
                 "下のカードで確認してください。",
                 card="transfer",
             )
+        if self._org_dm is not None:
+            await self._org_dm.transfers(event, approver.display_name if approver else "承認者")
         await self._done(
             i, event_id, "approval", split.approver_user_id,
             "按分を承認しました。幹事が振込の依頼を送ることを確認すると、各自の支払いが始まります。",
@@ -324,6 +334,7 @@ class SlackActions:
         result = self._retro.record_rating(
             str(i.value.get("e", "")), str(i.value.get("u", "")), i.user_id, rating, via_web=web
         )
+        await self._retro.flush_closed()  # 全員が答えたら、幹事（実演用は Slack）に確認の DM
         await self._reply(
             i,
             {
@@ -391,10 +402,10 @@ class SlackActions:
                 f"{person.display_name} が銀行で振込を承認しました（体験用）",
             )  # fmt: skip
             # 幹事の画面に、1人ごとに知らせる（承認のたびに、振込が実行されたことが分かるように）
-            self._life.say(
-                event.event_id,
-                f"{person.display_name}さんからの支払いが承認され、振り込みが実行されました。",
-            )
+            notice = f"{person.display_name}さんからの支払いが承認され、振り込みが実行されました。"
+            self._life.say(event.event_id, notice)
+            if self._org_dm is not None:
+                await self._org_dm.say(event, notice)
         # 支払いと入金の確認を、定期実行（1分ごと）を待たずに始める。失敗しても、定期実行が拾う
         try:
             await self._enqueue(
@@ -405,6 +416,18 @@ class SlackActions:
         except Exception:
             logger.warning("could not start the settlement check: event=%s", event.event_id)
         return True
+
+    async def _org(self, i: SlackInteraction) -> None:
+        """実演用の幹事の操作（依頼した本人だけ。中身は `DashboardService.slack_op`）。"""
+        run = self._organizer_op
+        text = None
+        if run is not None:
+            try:
+                text = await run(str(i.value.get("e", "")), i.user_id, dict(i.value))
+            except Exception:
+                logger.exception("organizer op failed: op=%s", i.value.get("o"))
+                text = "うまく処理できませんでした。少し時間をおいて、もう一度お試しください。"
+        await self._reply(i, text or "この操作はできません。")
 
     async def _plan(self, i: SlackInteraction) -> None:
         """Slack から始めた依頼の計画を確定する（依頼した本人だけ。SPEC 7.8）。"""
@@ -573,6 +596,8 @@ class SlackActions:
                 f"参加者 {len(sent)}名に、開催の案内（日時・お店・地図）をお送りしました。"
                 "当日はお楽しみください。開催が終わったら、下の「開催が終わった」を押してください。",
             )
+        if sent and self._org_dm is not None:
+            await self._org_dm.held_prompt(event)  # 幹事（Slack）に、「開催が終わった」のボタン
         return {"sent": sent}
 
     async def request_split_approval(self, event_id: str) -> dict[str, Any]:
@@ -615,6 +640,16 @@ class SlackActions:
                 "承認を依頼してください。",
                 card="split",
             )
+        if self._org_dm is not None:
+            lines = [
+                f"・{by_id[r.user_id].display_name or r.user_id}: {msg.yen(r.share_yen)}"
+                for r in split.rows
+                if r.user_id in by_id and r.share_yen > 0
+            ]
+            lines.append(
+                f"会計 {msg.yen(split.total_amount_yen)}・会社補助 {msg.yen(split.subsidy_yen)}"
+            )
+            await self._org_dm.split(event, lines, approver.display_name or "承認者")
         return {"ok": True, "failures": [], "approver": approver.user_id, "hash": split.hash}
 
     async def send_approval_request(self, event_id: str) -> dict[str, Any]:

@@ -5,7 +5,7 @@ kuroko-gateway で使う。業務判断はしない。
 
 from typing import Any
 
-from src.models.schemas import SlackDirectMessage
+from src.models.schemas import SlackDirectMessage, SlackFile
 
 
 def extract_direct_message(payload: dict[str, Any]) -> SlackDirectMessage | None:
@@ -20,11 +20,21 @@ def extract_direct_message(payload: dict[str, Any]) -> SlackDirectMessage | None
     event = payload.get("event") or {}
     if event.get("type") != "message" or event.get("channel_type") != "im":
         return None
-    # subtype があるのは編集・削除・参加など。bot_id があるのは Bot（KUROKO 自身を含む）の発言
-    if event.get("subtype") or event.get("bot_id"):
+    # subtype があるのは編集・削除・参加など（画像つきの発言 `file_share` は受ける）。
+    # bot_id があるのは Bot（KUROKO 自身を含む）の発言
+    if event.get("subtype") not in (None, "file_share") or event.get("bot_id"):
         return None
+    files = [
+        SlackFile(
+            file_id=str(f["id"]), mimetype=str(f.get("mimetype") or ""),
+            url=str(f.get("url_private_download") or f.get("url_private") or ""),
+            size=int(f.get("size") or 0),
+        )
+        for f in (event.get("files") or [])
+        if str(f.get("mimetype") or "").startswith("image/") and f.get("id")
+    ]
     text = (event.get("text") or "").strip()
-    if not text or not event.get("user"):
+    if (not text and not files) or not event.get("user"):
         return None
     return SlackDirectMessage(
         event_id=payload["event_id"],
@@ -33,4 +43,5 @@ def extract_direct_message(payload: dict[str, Any]) -> SlackDirectMessage | None
         channel_id=event["channel"],
         text=text,
         ts=event.get("ts", ""),
+        files=files,
     )

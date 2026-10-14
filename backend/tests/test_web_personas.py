@@ -51,10 +51,13 @@ class World:
             self.queued.append((path, payload))
 
         self.queued: list[tuple] = []
+        from src.services.slack_organizer import OrganizerDM
+
+        self.org = OrganizerDM(store=self.store, slack=self.slack)  # 実演用の幹事への Slack の DM
         self.actions = SlackActions(
             store=self.store, slack=self.slack, enqueue_self=enqueue,
             mandates=MemoryMandateReader(), lifecycle=life, proxy_sign=proxy_sign,
-            bank_approve=self.approve_transfer, now=lambda: NOW,
+            bank_approve=self.approve_transfer, organizer=self.org, now=lambda: NOW,
         )  # fmt: skip
 
         async def chat(key, text):
@@ -63,7 +66,8 @@ class World:
         self.dispatcher = Dispatcher()
         self.svc = DashboardService(
             store=self.store, chat=chat, signer=Signer(), dispatcher=self.dispatcher,
-            lifecycle=life, payments=self.payments, personas=self.actions, now=lambda: NOW,
+            lifecycle=life, payments=self.payments, personas=self.actions, organizer=self.org,
+            now=lambda: NOW,
         )  # fmt: skip
 
     async def approve_transfer(self, event_id, user_id):
