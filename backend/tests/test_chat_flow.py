@@ -589,3 +589,25 @@ async def test_a_plan_started_from_slack_is_confirmed_in_japan_time():
     done = await w.svc.confirm_slack_plan(event.event_id, U_DEV)
     assert done.datetime.utcoffset() == dt.timedelta(hours=9)
     assert done.datetime.hour == 19 and done.datetime.day == 30
+
+
+async def test_the_demo_start_marker_gets_no_reply_and_starts_nothing(monkeypatch):
+    from src.models.schemas import SlackDirectMessage
+    from src.services import slack_conversation as conv
+
+    assert conv.is_demo_start_marker("---デモスタート---")
+    assert conv.is_demo_start_marker("  ---デモスタート---  ")
+    assert conv.is_demo_start_marker("デモスタート")
+    assert not conv.is_demo_start_marker("デモスタートしたい")
+    assert not conv.is_demo_start_marker("こんにちは")
+
+    def boom(*a, **k):
+        raise AssertionError("合図には、何も返さない")
+
+    monkeypatch.setattr(conv.slack, "post_message", boom)
+    monkeypatch.setattr(conv, "get_retro", boom)
+    monkeypatch.setattr(conv, "get_dashboard", boom)
+    msg = SlackDirectMessage(
+        event_id="Ev", team_id="T", user_id="U1", channel_id="D1", text="---デモスタート---", ts="1"
+    )
+    await conv.handle_direct_message(msg)  # 何も呼ばれず、例外も出ない

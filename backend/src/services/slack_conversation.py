@@ -40,7 +40,19 @@ async def _answer(channel_id: str, thinking_ts: str | None, text: str) -> None:
     await slack.post_message(channel_id, text)
 
 
+# 実演（動画の撮影）の開始の合図。送られても、KUROKO は何も返さない・何も始めない
+DEMO_START_MARKER = "デモスタート"
+_MARKER_PADDING = "-－ー―‐–—_＿ \u3000"
+
+
+def is_demo_start_marker(text: str) -> bool:
+    """`---デモスタート---` のような合図か（前後のハイフン・空白の数の違いは問わない）。"""
+    return text.strip().strip(_MARKER_PADDING) == DEMO_START_MARKER
+
+
 async def handle_direct_message(message: SlackDirectMessage) -> None:
+    if not message.files and is_demo_start_marker(message.text):
+        return  # 合図だけ。返信しない・コメントや依頼として扱わない
     # 満足度のあとの返信は、振り返りのコメント（語彙に落として原文は捨てる。LLM には渡さない）
     captured = await get_retro().try_capture_comment(message.user_id, message.text)
     if captured:
