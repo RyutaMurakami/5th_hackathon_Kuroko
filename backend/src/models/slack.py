@@ -43,7 +43,7 @@ class SlackInteraction(BaseModel):
     # （ゲートウェイから届いた値は捨てる）。だれとして押したか（参加者の user_id）と、押した人
     acting_for: str | None = None
     web_uid: str | None = None
-    # メッセージの入力欄の値（block_id → 文字列。最寄り駅・苦手な食べ物など。SPEC 7.5）
+    # メッセージの入力欄の値（block_id → 文字列。開催希望駅・苦手な食べ物など。SPEC 7.5）
     inputs: dict[str, str] = {}
 
 

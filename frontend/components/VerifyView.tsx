@@ -332,26 +332,47 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
       </div>
 
       <div className={styles.bar}>
-        <Button variant="secondary" className={styles.barButton} onClick={() => select(null)}>
-          新しく依頼する
-        </Button>
-        <Button variant="secondary" className={styles.barButton} onClick={() => void clear()} disabled={thinking}>
-          最初からやり直す
-        </Button>
-        {events.map((e) => (
+        {/* 操作: 新しく始める（主な操作）・やり直す（控えめな文字のボタン） */}
+        <div className={styles.barGroup}>
+          <Button className={styles.barPrimary} onClick={() => select(null)}>
+            <Icon name="plus" size="sm" />
+            新しく依頼する
+          </Button>
           <button
-            key={e.event_id}
             type="button"
-            className={`${styles.eventTab} ${e.event_id === selected ? styles.eventTabActive : ""}`}
-            onClick={() => select(e.event_id)}
+            className={styles.barReset}
+            onClick={() => void clear()}
+            disabled={thinking}
           >
-            {e.title || "（題名未定）"}
-            <Pill tone={e.status === "closed" ? "lagoon" : "navy"}>{STATUS_LABEL[e.status] ?? e.status}</Pill>
+            <Icon name="refresh" size="sm" />
+            最初からやり直す
           </button>
-        ))}
-        <Button variant="secondary" className={styles.barButton} onClick={() => setShowReference(true)}>
+        </div>
+        {/* 進行中のイベント: 切り替えるタブ（ボタンとは別の入れ物に入れる） */}
+        {events.length > 0 && (
+          <div className={styles.eventTray} role="group" aria-label="進行中のイベント">
+            <span className={styles.eventTrayLabel}>進行中のイベント</span>
+            {events.map((e) => (
+              <button
+                key={e.event_id}
+                type="button"
+                aria-pressed={e.event_id === selected}
+                className={`${styles.eventTab} ${e.event_id === selected ? styles.eventTabActive : ""}`}
+                onClick={() => select(e.event_id)}
+              >
+                {e.title || "（題名未定）"}
+                <Pill tone={e.status === "closed" ? "lagoon" : "navy"}>
+                  {STATUS_LABEL[e.status] ?? e.status}
+                </Pill>
+              </button>
+            ))}
+          </div>
+        )}
+        {/* 参照: KUROKO が根拠にしている情報（右端） */}
+        <button type="button" className={styles.barRef} onClick={() => setShowReference(true)}>
+          <Icon name="book" size="sm" />
           記憶・規程を見る
-        </Button>
+        </button>
         <details className={styles.about}>
           <summary>この画面の見かた</summary>
           <p>{copy.banner}</p>

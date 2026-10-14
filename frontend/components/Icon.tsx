@@ -19,7 +19,10 @@ type IconName =
   | "clipboard"
   | "edit"
   | "image"
-  | "map";
+  | "map"
+  | "plus"
+  | "refresh"
+  | "book";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   info: (
@@ -35,6 +38,19 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   arrowRight: <path d="M4 10h12M11.5 5.5 16 10l-4.5 4.5" />,
+  plus: <path d="M10 4v12M4 10h12" />,
+  refresh: (
+    <>
+      <path d="M16 10a6 6 0 1 1-1.8-4.3" />
+      <path d="M16 3.5v3.5h-3.5" />
+    </>
+  ),
+  book: (
+    <>
+      <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v12H5.5A1.5 1.5 0 0 0 4 16.5v-12Z" />
+      <path d="M4 16.5A1.5 1.5 0 0 0 5.5 18H16v-3" />
+    </>
+  ),
   check: <path d="m5 10.5 3.2 3L15 6.5" />,
   slack: (
     <>

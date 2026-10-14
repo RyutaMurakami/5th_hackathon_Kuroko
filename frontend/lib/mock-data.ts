@@ -585,7 +585,7 @@ function buildWorkers(status: EventStatus): Worker[] {
       system("rag", "規程の検索", "歓送迎会の規程（予算の目安・係数）を引いています", "running", "RAG Engine。LLM の外の仕組み"),
     ],
     rsvp: [
-      extract("x", "参加者の自由記述（好み・最寄り駅）を、決まった形式の値だけに変えています", "running"),
+      extract("x", "参加者の自由記述（好み・開催希望駅）を、決まった形式の値だけに変えています", "running"),
       kuroko("k", "出欠と委任がそろうのを待っています", "waiting"),
     ],
     venue: [
@@ -622,7 +622,7 @@ function buildWorkers(status: EventStatus): Worker[] {
     ],
     completed: [
       kuroko("k", "経費精算の記録（PDF）を用意しています", "running"),
-      system("redact", "個人情報の削除", "好み・最寄り駅などを消しています", "running"),
+      system("redact", "個人情報の削除", "好み・開催希望駅などを消しています", "running"),
     ],
     retro: [
       system("summary", "振り返りの集計", "回答を集計し、覚えさせる内容の下書きを作りました", "done"),

@@ -268,7 +268,7 @@ class BillingService:
         return run
 
     async def _after_completed(self, event_id: str) -> None:
-        """完了の直後: 参加者の好み・最寄り駅を削除し（SPEC 9.6）、振り返りを始める（7.4）。
+        """完了の直後: 参加者の好み・開催希望駅を削除し（SPEC 9.6）、振り返りを始める（7.4）。
 
         どちらの失敗も、完了を取り消さない（振り返りは、1日1回の定期実行が拾い直す）。
         """
@@ -277,7 +277,7 @@ class BillingService:
             if self._life and removed:
                 self._life.log(
                     event_id, "kuroko", "更新",
-                    f"{removed}名の好み・最寄り駅を削除しました（開催の完了）",
+                    f"{removed}名の好み・開催希望駅を削除しました（開催の完了）",
                 )  # fmt: skip
         except Exception:
             logger.exception("redact failed: event=%s", event_id)
@@ -292,7 +292,7 @@ class BillingService:
 
 
 def redact_personal_data(store: EventStore, event_id: str) -> int:
-    """参加者の好み（最寄り駅・食べられないもの・苦手なもの・店の希望）を削除する（SPEC 9.6）。
+    """参加者の好み（開催希望駅・食べられないもの・苦手なもの・店の希望）を削除する（SPEC 9.6）。
 
     ドキュメントは残し、`preferences` だけを空にする。削除した人数を返す。
     """

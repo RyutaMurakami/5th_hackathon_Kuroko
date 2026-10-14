@@ -96,9 +96,9 @@ class OrganizerDM:
             p.preferences.nearest_station_code for p in people if p.preferences.nearest_station_code
         }
         lines = [
-            f"参加者 {len(people)}人の最寄り駅（{len(stations)}駅）から、全員が行きやすい駅を"
+            f"参加者 {len(people)}人の開催希望駅（{len(stations)}駅）から、全員が行きやすい駅を"
             "駅すぱあとで調べました。",
-            "*お店の候補です*（全員の最寄り駅からの帰りやすさ・苦手な食べ物・過去の実績で順位を付けています）",
+            "*お店の候補です*（みなさんの開催希望駅からの帰りやすさ・苦手な食べ物・過去の実績で順位を付けています）",
         ]
         for n, c in enumerate(shown, start=1):
             price = (
@@ -162,7 +162,7 @@ class OrganizerDM:
             ],
         )
 
-    async def held_prompt(self, event: Event) -> None:
+    async def held_prompt(self, event: Event, extra: str = "") -> None:
         slack_id = await self._slack_id(event)
         if not slack_id:
             return
@@ -172,6 +172,8 @@ class OrganizerDM:
             [
                 _section(
                     "予約が確定しました。参加者に開催の案内を送っています。\n"
+                    + (f"{extra}\n" if extra else "")
+                    +
                     "開催が終わったら、下のボタンを押してください（そのあと、領収書の画像を送ります）。"
                 ),
                 _actions(

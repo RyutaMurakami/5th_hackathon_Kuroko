@@ -41,9 +41,11 @@ Enqueue = Callable[[str, dict, str], Awaitable[None]]  # (path, payload, task_id
 
 BankApprove = Callable[[str, str], Awaitable[bool]]  # (event_id, user_id) → 承認できたか
 # (event_id, 押した人の Slack ユーザーID) → 確定できたら、そのイベント（Slack から始めた依頼）
-PlanConfirm = Callable[[str, str], Awaitable["Event | None"]]
+PlanConfirm = Callable[[str, str, str], Awaitable["Event | None"]]
 # (event_id, 押した人の Slack ユーザーID, ボタンの値) → 結果の文（None: 受け付けない）
 OrganizerOp = Callable[[str, str, dict], Awaitable[str | None]]
+# (出発の駅名, 到着の駅名) → (所要分, 乗換回数)。分からなければ None（開催案内の所要時間）
+RouteMinutes = Callable[[str, str], Awaitable["tuple[int, int] | None"]]
 
 # Web のカードから押せる操作（SPEC 7.7）。取り消しは Slack だけ
 WEB_ACTIONS = {
@@ -71,6 +73,7 @@ class SlackActions:
         organizer_op: OrganizerOp | None = None,
         organizer: "OrganizerDM | None" = None,
         preferences: Any = None,
+        route_minutes: RouteMinutes | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         # 体験用の「銀行で承認する」（体験用の承認待ちの振込だけに効く。SPEC 7.7）
@@ -78,7 +81,8 @@ class SlackActions:
         self._plan_confirm = plan_confirm
         self._organizer_op = organizer_op  # 実演用の幹事の操作（Slack のカード。SPEC 7.8）
         self._org_dm = organizer
-        self._prefs = preferences  # 出欠のカードの最寄り駅・苦手な食べ物（SPEC 7.5）
+        self._route = route_minutes
+        self._prefs = preferences  # 出欠のカードの開催希望駅・苦手な食べ物（SPEC 7.5）
         # デモ用の代行（SPEC 7.6）: Slack のアカウントを持たない参加者の、委任状の署名の依頼先
         self._proxy_sign = proxy_sign
         self._retro = retro
@@ -241,7 +245,7 @@ class SlackActions:
     async def _take_preferences(
         self, event: Event, person: Participant, inputs: dict[str, str]
     ) -> str:
-        """出欠のカードの入力欄（最寄り駅・苦手な食べ物）を取り込む。結果の補足の文を返す。
+        """出欠のカードの入力欄（開催希望駅・苦手な食べ物）を取り込む。結果の補足の文を返す。
 
         取り込めなくても、出欠の回答は止めない。原文は保存しない・ログに出さない。
         """
@@ -259,15 +263,15 @@ class SlackActions:
         if self._life:
             self._life.log(
                 event.event_id, "kuroko", "記録",
-                "参加者1名の最寄り駅・苦手な食べ物を受け取りました（駅コードと固定の語彙に変換。"
+                "参加者1名の開催希望駅・苦手な食べ物を受け取りました（駅コードと固定の語彙に変換。"
                 "原文は保存しません）",
             )  # fmt: skip
         status = getattr(result, "station_status", "")
         if station and status == "ambiguous":
             options = "・".join(getattr(result, "candidates", ())[:5])
-            return f"\n最寄り駅が1つに決まりませんでした（候補: {options}）。書き直してください。"
+            return f"\n開催希望駅が1つに決まりませんでした（候補: {options}）。書き直してください。"
         if station and status in ("not_found", "error"):
-            return "\n最寄り駅を確かめられませんでした。駅名を書き直してください。"
+            return "\n開催希望駅を確かめられませんでした。駅名を書き直してください。"
         return ""
 
     async def _after_rsvp(self, event_id: str) -> None:
@@ -478,7 +482,9 @@ class SlackActions:
         event = None
         if confirm is not None:
             try:
-                event = await confirm(str(i.value.get("e", "")), i.user_id)
+                event = await confirm(
+                    str(i.value.get("e", "")), i.user_id, i.inputs.get("station", "")
+                )
             except Exception:
                 logger.exception("could not confirm the plan from Slack")
         if event is None:
@@ -624,8 +630,9 @@ class SlackActions:
             ):
                 continue
             text, blocks = msg.event_notice(
-                event, guest_of_honor=p.user_id in event.guests_of_honor
-            )
+                event, guest_of_honor=p.user_id in event.guests_of_honor,
+                travel=await self._travel(event, p),
+            )  # fmt: skip
             try:
                 if await self._deliver(event, p, "notice", text, blocks):
                     sent.append(p.user_id)
@@ -641,8 +648,28 @@ class SlackActions:
                 "当日はお楽しみください。開催が終わったら、下の「開催が終わった」を押してください。",
             )
         if sent and self._org_dm is not None:
-            await self._org_dm.held_prompt(event)  # 幹事（Slack）に、「開催が終わった」のボタン
+            organizer = next(
+                (p for p in self._store.list_participants(event_id)
+                 if p.user_id == event.organizer_user_id), None,
+            )  # fmt: skip
+            extra = await self._travel(event, organizer) if organizer else ""
+            await self._org_dm.held_prompt(event, extra)  # 幹事（Slack）に、「開催が終わった」
         return {"sent": sent}
+
+    async def _travel(self, event: Event, person: Participant) -> str:
+        """お店の最寄り駅から、この人の開催希望駅までの所要時間の文（出せなければ空）。"""
+        desired = person.preferences.nearest_station_name
+        place_id = str((event.venue or {}).get("place_id") or "")
+        known = next((c for c in event.venue_candidates if c.get("place_id") == place_id), None)
+        station = str((known or {}).get("nearest_station") or "")
+        if self._route is None or not desired or not station:
+            return ""
+        try:
+            got = await self._route(station, desired)
+        except Exception:  # 所要時間が出せなくても、開催案内は届ける
+            logger.warning("could not get the travel time: event=%s", event.event_id)
+            return ""
+        return msg.travel_line(station, desired, got[0], got[1]) if got else ""
 
     async def request_split_approval(self, event_id: str) -> dict[str, Any]:
         """Policy Gate 6.1 を通ったら按分を計算し、承認者に承認依頼を送る。"""

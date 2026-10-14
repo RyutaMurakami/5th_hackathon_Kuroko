@@ -132,7 +132,7 @@ export function PersonaChat({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [bankOpen, setBankOpen] = useState(false);
-  // 出欠のカードの入力欄（最寄り駅・苦手な食べ物）。はじめは、サーバーが出したデモ用の候補
+  // 出欠のカードの入力欄（開催希望駅・苦手な食べ物）。はじめは、サーバーが出したデモ用の候補
   const [typed, setTyped] = useState<Record<string, string>>({});
   const open = persona.cards.filter((c) => c.buttons.length > 0);
   const valueOf = (card: ApiPersonaCard, key: string) =>

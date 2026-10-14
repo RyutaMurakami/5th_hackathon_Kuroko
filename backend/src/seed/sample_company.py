@@ -7,27 +7,20 @@ from src.models.event import Event, Participant, ParticipantRole, Preferences
 EVENT_DATE = dt.datetime(2026, 10, 30, 19, 0)
 
 
-# 最寄り駅（駅すぱあとの `verify_station` で一意に確かめた駅コード。TASKS B18・O6）。
-# Web からイベントを作ると、この名簿が参加者になり、店の候補は、この駅から全員が行きやすい駅で探す。
-# 都心の駅に寄せてある（郊外の駅が混じると、どの人の駅を変えても、中心部の同じ駅に決まってしまう。
-# 2026-10-14 に駅すぱあとで確かめた。くらお・花子の入力で、候補の駅が変わる）
+# 開催希望駅（駅すぱあとの `verify_station` で確かめた駅コードと駅名。TASKS B18・O6）。
+# 聞くのは、**幹事・赤坂 くらお・赤くら 花子の3人だけ**（ほかの参加者は聞かない。2026-10-15）。
+# 店の候補は、この3人の希望から、駅すぱあとで全員が行きやすい駅を計算して探す
 STATION = {
-    "hanako": "23368",  # 横浜
-    "sasaki": "22513",  # 池袋
-    "kanji": "22741",  # 新宿
-    "kurao": "22715",  # 渋谷
-    "watanabe": "22849",  # 中野(東京都)
-    "nakamura": "22640",  # 錦糸町
-    "kobayashi": "22709",  # 品川
-    "kato": "22528",  # 上野
-    "matsumoto": "22741",  # 新宿
-    "inoue": "22715",  # 渋谷
+    "kanji": ("22741", "新宿"),
+    "kurao": ("22715", "渋谷"),
+    "hanako": ("23368", "横浜"),
 }
 
 
 def person(user_id, title, hire, emp, role=ParticipantRole.PARTICIPANT, **kw) -> Participant:
     if user_id in STATION and "preferences" not in kw:
-        kw["preferences"] = Preferences(nearest_station_code=STATION[user_id])
+        code, name = STATION[user_id]
+        kw["preferences"] = Preferences(nearest_station_code=code, nearest_station_name=name)
     return Participant(
         user_id=user_id,
         display_name=kw.pop("display_name", user_id),
@@ -59,7 +52,7 @@ NAMES = {
 # Web のチャット画面に列がある登場人物（SPEC 7.7）
 PERSONAS = {"kurao", "hanako"}
 
-# 出欠のカードの入力欄（最寄り駅・苦手な食べ物）に、はじめから入れておくデモ用の値（SPEC 7.7）
+# 出欠のカードの入力欄（開催希望駅・苦手な食べ物）に、はじめから入れておくデモ用の値（SPEC 7.7）
 DEMO_ANSWERS = {
     "kurao": {"station": "渋谷", "dislikes": "えびが苦手です"},
     "hanako": {"station": "横浜", "dislikes": ""},

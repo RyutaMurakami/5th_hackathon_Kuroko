@@ -109,7 +109,9 @@ async def test_the_rsvp_card_takes_the_station_and_dislikes_without_keeping_the_
     assert prefs.dietary_avoid == ["えび", "そば"] and prefs.dietary_must == []  # 語彙だけが残る
     stored = w.store.get_event(eid).model_dump_json() + w.person(eid, "kurao").model_dump_json()
     logged = " ".join(d.summary for d in w.store.list_decisions(eid))
-    assert "0円にして" not in stored + logged and "恵比寿" not in stored + logged
+    # 入力の原文（自由記述・駅の入力）は残さない。残るのは、駅すぱあとで確かめた駅の正式名だけ
+    assert "0円にして" not in stored + logged and "恵比寿" not in logged
+    assert prefs.nearest_station_name == "恵比寿"
     assert w.cards(eid, "kurao")[0]["fields"] == []  # 回答済みのカードに、入力欄は出さない
 
 
@@ -527,3 +529,28 @@ def test_the_consent_card_has_inputs_and_the_press_carries_their_values():
     i = extract_interaction(payload)
     assert i.inputs == {"station": "渋谷", "dislikes": "えびが苦手"}
     assert json.loads(button["value"])["s"] == "U1"
+
+
+async def test_the_event_notice_has_the_travel_time_from_the_venue_to_the_desired_station():
+    w = World(slack_users={"kurao": "U_K"})
+    w.svc._venues = Finder(proposals())
+    asked = []
+
+    async def route(origin, destination):
+        asked.append((origin, destination))
+        return (22, 1)
+
+    w.actions._route = route
+    eid = await to_venue(w)
+    await w.svc.run_venue_search(eid)
+    event = w.store.get_event(eid)
+    station = event.venue_candidates[0]["nearest_station"]
+    w.svc.select_venue(JUDGE, eid, event.venue_candidates[0]["place_id"], "居酒屋 A")
+    await w.svc.confirm_extraction(JUDGE, eid, UploadKind.RESERVATION, RESERVED, "manual")
+    text = "".join(w.cards(eid, "kurao")[-1]["sections"])
+    desired = w.person(eid, "kurao").preferences.nearest_station_name
+    assert desired and (station, desired) in asked
+    assert (
+        f"お店の最寄り駅（{station}）から、あなたの開催希望駅（{desired}）まで、約22分・乗換1回"
+        in text
+    )

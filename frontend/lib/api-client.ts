@@ -53,7 +53,7 @@ const MESSAGES: Record<string, string> = {
   memory_not_configured: "記憶の保存先が設定されていません。",
   live_not_allowed: "実演用の画面は、登録した開発者のアカウントだけが使えます。",
   venue_search_failed: "いま店を探せませんでした。少し待って、もう一度お試しください。",
-  venue_search_no_stations: "参加者の最寄り駅が無いため、店を探せませんでした。",
+  venue_search_no_stations: "参加者の開催希望駅が無いため、店を探せませんでした。",
   venue_search_no_common_station: "全員が時間内に着ける駅が見つかりませんでした。",
   venue_search_no_venues: "条件に合う店が見つかりませんでした。",
   not_configured: "サーバーの設定が済んでいません。",
@@ -149,7 +149,7 @@ export const requestApproval = (eventId: string) => call("POST", `events/${event
 export const approveTransfers = (eventId: string) => call("POST", `events/${eventId}/approve-transfers`);
 
 /** 登場人物として、カードのボタンを押す（体験用のイベントだけ。値はサーバーのカードから取る）。
- *  `inputs` は、出欠のカードの入力欄（最寄り駅・苦手な食べ物） */
+ *  `inputs` は、出欠のカードの入力欄（開催希望駅・苦手な食べ物） */
 export const pressPersonaCard = (
   eventId: string,
   cardId: string,
