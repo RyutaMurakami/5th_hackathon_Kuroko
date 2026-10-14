@@ -141,6 +141,7 @@ def get_slack_actions():
         plan_confirm=_confirm_slack_plan,
         organizer_op=_organizer_op,
         organizer=get_organizer_dm(),
+        preferences=get_preference_intake(),
     )
 
 

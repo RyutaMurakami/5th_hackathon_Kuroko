@@ -56,6 +56,13 @@ def extract_interaction(payload: dict[str, Any]) -> SlackInteraction | None:
     user = (payload.get("user") or {}).get("id")
     if not user:
         return None
+    # 入力欄（`input` ブロック）の値。短い文字列だけ受ける（上限は後段でも検査する）
+    inputs: dict[str, str] = {}
+    for block_id, fields in ((payload.get("state") or {}).get("values") or {}).items():
+        for element in (fields or {}).values():
+            text = element.get("value") if isinstance(element, dict) else None
+            if isinstance(text, str) and text.strip():
+                inputs[str(block_id)[:40]] = text.strip()[:200]
     digest_source = f"{action.value}|{json.dumps(value, sort_keys=True)}|{user}"
     return SlackInteraction(
         interaction_id=hashlib.sha256(digest_source.encode()).hexdigest()[:32],
@@ -66,6 +73,7 @@ def extract_interaction(payload: dict[str, Any]) -> SlackInteraction | None:
         message_ts=(payload.get("message") or {}).get("ts"),
         response_url=payload.get("response_url"),
         value=value,
+        inputs=inputs,
     )
 
 

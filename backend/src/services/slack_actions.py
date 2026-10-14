@@ -55,7 +55,6 @@ class CardError(Exception):
     """Web のカードの操作を受け付けられない。message は画面に返すコード。"""
 
 
-
 class SlackActions:
     def __init__(
         self,
@@ -71,6 +70,7 @@ class SlackActions:
         plan_confirm: PlanConfirm | None = None,
         organizer_op: OrganizerOp | None = None,
         organizer: "OrganizerDM | None" = None,
+        preferences: Any = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         # 体験用の「銀行で承認する」（体験用の承認待ちの振込だけに効く。SPEC 7.7）
@@ -78,6 +78,7 @@ class SlackActions:
         self._plan_confirm = plan_confirm
         self._organizer_op = organizer_op  # 実演用の幹事の操作（Slack のカード。SPEC 7.8）
         self._org_dm = organizer
+        self._prefs = preferences  # 出欠のカードの最寄り駅・苦手な食べ物（SPEC 7.5）
         # デモ用の代行（SPEC 7.6）: Slack のアカウントを持たない参加者の、委任状の署名の依頼先
         self._proxy_sign = proxy_sign
         self._retro = retro
@@ -214,6 +215,15 @@ class SlackActions:
                 },
                 f"web-sign-{event.event_id}-{person.user_id}",
             )  # fmt: skip
+        note = await self._take_preferences(event, person, i.inputs)
+        person = next(  # 取り込んだ好みを、上書きしない
+            (
+                p
+                for p in self._store.list_participants(event.event_id)
+                if p.user_id == person.user_id
+            ),
+            person,
+        )
         self._store.save_participant(
             event.event_id,
             person.model_copy(
@@ -223,9 +233,42 @@ class SlackActions:
         await self._done(
             i, event.event_id, "consent", person.user_id,
             f"参加で回答し、支払いの委任に同意しました（上限 {msg.yen(cap)}・幹事のみ）。"
-            "按分の承認のあと、銀行での承認をお願いします。取り消しは App Home からできます。",
+            "按分の承認のあと、銀行での承認をお願いします。取り消しは App Home からできます。"
+            + note,
         )  # fmt: skip
         await self._after_rsvp(event.event_id)
+
+    async def _take_preferences(
+        self, event: Event, person: Participant, inputs: dict[str, str]
+    ) -> str:
+        """出欠のカードの入力欄（最寄り駅・苦手な食べ物）を取り込む。結果の補足の文を返す。
+
+        取り込めなくても、出欠の回答は止めない。原文は保存しない・ログに出さない。
+        """
+        station = str(inputs.get("station") or "").strip()[:40]
+        dislikes = str(inputs.get("dislikes") or "").strip()[:200]
+        if self._prefs is None or not (station or dislikes):
+            return ""
+        try:
+            result = await self._prefs.record_form(
+                event.event_id, person.user_id, station=station, dislikes=dislikes
+            )
+        except Exception:
+            logger.warning("could not record the preferences: event=%s", event.event_id)
+            return ""
+        if self._life:
+            self._life.log(
+                event.event_id, "kuroko", "記録",
+                "参加者1名の最寄り駅・苦手な食べ物を受け取りました（駅コードと固定の語彙に変換。"
+                "原文は保存しません）",
+            )  # fmt: skip
+        status = getattr(result, "station_status", "")
+        if station and status == "ambiguous":
+            options = "・".join(getattr(result, "candidates", ())[:5])
+            return f"\n最寄り駅が1つに決まりませんでした（候補: {options}）。書き直してください。"
+        if station and status in ("not_found", "error"):
+            return "\n最寄り駅を確かめられませんでした。駅名を書き直してください。"
+        return ""
 
     async def _after_rsvp(self, event_id: str) -> None:
         """出欠が出そろったら、店の選択へ進め、店の検索を始める（SPEC 7.5）。
@@ -495,6 +538,7 @@ class SlackActions:
 
         def on_web(p: Participant) -> bool:  # Web のチャット画面で、人が答える（SPEC 7.7）
             return event.sandbox and p.demo_persona
+
         for p in people:
             if (
                 p.user_id == event.organizer_user_id
