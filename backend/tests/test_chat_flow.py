@@ -555,3 +555,37 @@ async def test_the_event_notice_has_the_travel_time_from_the_venue_to_the_desire
         in text
     )
     assert "駅すぱあと" in text and "目安" in text  # 計算の出どころの注意書き
+
+
+def test_events_with_and_without_a_time_zone_can_be_listed_together():
+    """Slack から始めたイベントの日時（時差なし）と、Web のもの（時差つき）が、並んでも落ちない。"""
+    from src.db.events import MemoryEventStore
+
+    store = MemoryEventStore()
+    aware = demo_event().model_copy(
+        update={
+            "event_id": "a",
+            "datetime": dt.datetime(2026, 10, 30, 10, 0, tzinfo=dt.UTC),
+            "sandbox": True,
+            "guest_owner_uid": "g1",
+        }
+    )
+    naive = demo_event().model_copy(
+        update={
+            "event_id": "b",
+            "datetime": dt.datetime(2026, 10, 30, 19, 30),
+            "sandbox": True,
+            "guest_owner_uid": "g1",
+        }
+    )
+    store.save_event(aware)
+    store.save_event(naive)
+    assert [e.event_id for e in store.list_events_for_guest("g1")] == ["a", "b"]  # 19:00 → 19:30
+
+
+async def test_a_plan_started_from_slack_is_confirmed_in_japan_time():
+    w = slack_world()
+    event = w.svc.start_from_slack(U_DEV, FIRST_REQUEST)
+    done = await w.svc.confirm_slack_plan(event.event_id, U_DEV)
+    assert done.datetime.utcoffset() == dt.timedelta(hours=9)
+    assert done.datetime.hour == 19 and done.datetime.day == 30

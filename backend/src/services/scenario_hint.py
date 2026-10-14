@@ -117,7 +117,7 @@ def _hint_for(
                 "候補は Google マップで確かめられます。"
                 "「この店にする」で選びます。"
             ),
-            {"reservation": {"venue_name": "大衆酒場 たけちゃん", "party_size": 10,
+            {"reservation": {"venue_name": "デモ用居酒屋", "party_size": 10,
                              "datetime": event.datetime.isoformat(), "course_price_yen": 4950}},
             [ASK_BUDGET],
         )  # fmt: skip

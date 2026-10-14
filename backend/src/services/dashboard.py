@@ -780,6 +780,10 @@ class DashboardService:
         ):
             return None
         plan = {**event.plan_draft, **({"station": station} if station else {})}
+        # 案の日時は、画面の入力欄の形（時差なし・日本時間）。確定するときは、日本時間として扱う
+        when = str(plan.get("datetime") or "")
+        if when and "+" not in when and not when.endswith("Z"):
+            plan["datetime"] = f"{when}:00+09:00" if len(when) == 16 else f"{when}+09:00"
         await self._confirm_plan(event, event.organizer_email, plan)
         return self._store.get_event(event_id)
 
@@ -841,7 +845,9 @@ class DashboardService:
             e for e in self._store.list_events_by_organizer_email(email)
             if e.ui_mode == "live" and e.status is not EventStatus.CLOSED
         ]  # fmt: skip
-        return max(rows, key=lambda e: e.datetime, default=None)
+        from src.db.events import _by_datetime
+
+        return max(rows, key=_by_datetime, default=None)
 
     async def slack_op(
         self, event_id: str, slack_user_id: str, value: dict[str, Any]
