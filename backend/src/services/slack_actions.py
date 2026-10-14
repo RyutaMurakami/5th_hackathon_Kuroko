@@ -499,8 +499,7 @@ class SlackActions:
             )
         await self._reply(
             i,
-            f"「{event.title}」の計画を確定しました。参加者に、出欠と委任の依頼を送りました。"
-            "続きは、Web の実演用の画面で進めてください（お店選び・予約・領収書・承認）。",
+            f"「{event.title}」の計画を確定しました。参加者に、出欠と委任の依頼を送りました。",
         )
 
     async def _bank(self, i: SlackInteraction) -> None:
