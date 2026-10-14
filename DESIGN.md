@@ -332,6 +332,14 @@ Standard Card。上に Eyebrow Label（「予約内容の確認」「領収書�
 
 App Header の右、アカウントの左。線画のベルのアイコン（20px）と、未読があるときだけ右上に 8px の `--color-ink-navy` のドット（**件数は数字で `aria-label` に**）。押すと Popover（`--shadow-popover`、幅 360px）に、通知を新しい順に最大10件。1件 = 種類の Status Pill（確認待ち＝Sun、Slack で対応待ち＝Sun、完了＝Lagoon、ブロック＝Coral）＋ 定型の文（`body-sm`）＋ 時刻（`caption`）。押すと該当のイベントの位置へ移る。未読は背景 `--color-cream-subtle`。
 
+### Chat Bar（チャット画面の操作の帯。2026-10-15）
+**Role:** 操作・イベントの切り替え・参照が、同じ見た目のボタンに見えないようにする。
+
+- **新しく依頼する**: Primary Pill Button（塗りつぶし・`--color-ink-navy`）＋ 左にプラスのアイコン。帯の中で唯一の塗りつぶし。
+- **最初からやり直す**: 枠も背景も無い文字のボタン（`--color-coral-text`・`body-sm`）＋ 更新のアイコン。作ったものが消える操作なので、赤系で控えめに。
+- **進行中のイベント**: `--color-cream-subtle` のトレイ（角 `--radius-smallelements`）に入れたタブ。ラベル「進行中のイベント」（`caption`）＋ タブ（角 `--radius-checkbox`。選択中は白地・`--color-ink-navy` の枠・太字）＋ 状態の Pill。
+- **記憶・規程を見る**: 右端。`--color-navy-tint` 地の角丸ボタン＋ 本のアイコン（読むだけ）。
+
 ### Phase Stepper（チャット画面の全体の流れ）
 **Role:** 実演・体験のチャット画面の上に、「いまどの段階か」を 5 段階で示す（SPEC 7.7）。
 

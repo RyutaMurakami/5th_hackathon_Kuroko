@@ -24,7 +24,7 @@ export function VenueChoiceCard({
     <Card
       eyebrow="店舗候補"
       title={decided ? `「${decided.name}」で進めます` : "お店を1つ選んでください"}
-      description="全員の最寄り駅から帰りやすい順。予約は幹事がお店で行い、予約画面をこの画面にアップロードします"
+      description="みなさんの開催希望駅から帰りやすい順。予約は幹事がお店で行い、予約画面をこの画面にアップロードします"
       actions={decided ? <Pill tone="lagoon">選択済み</Pill> : undefined}
     >
       <fieldset style={{ border: 0, margin: 0, padding: 0 }} disabled={!!decided}>

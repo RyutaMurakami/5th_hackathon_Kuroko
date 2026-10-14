@@ -44,7 +44,8 @@ class RsvpStatus(StrEnum):
 class Preferences(BaseModel):
     """参加者の好み（SPEC 3章）。隔離抽出を通した固定の語彙だけ。完了時に削除する（9.6節）。"""
 
-    nearest_station_code: str | None = None  # `verify_station` で一意に決めた駅コード
+    nearest_station_code: str | None = None  # `verify_station` で一意に決めた駅コード（開催希望駅）
+    nearest_station_name: str = ""  # その駅の正式な名前（開催案内の所要時間に使う）
     dietary_must: list[str] = []  # 食べられないもの（ハード制約）
     dietary_avoid: list[str] = []  # 苦手なもの（ソフト制約）
     request_tags: list[str] = []  # 店の希望（ソフト制約）

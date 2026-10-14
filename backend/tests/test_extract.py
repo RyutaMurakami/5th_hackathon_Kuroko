@@ -131,7 +131,8 @@ async def test_free_text_becomes_vocabulary_and_the_station_becomes_a_code():
     out = await svc.record("ev-demo", "kurao", free_text="…", field="dietary_must")
     assert out.saved and out.station_status == "verified"
     assert prefs_of(store) == Preferences(
-        nearest_station_code="22715", dietary_must=["そば"], request_tags=["個室", "焼き鳥"]
+        nearest_station_code="22715", nearest_station_name="渋谷", dietary_must=["そば"],
+        request_tags=["個室", "焼き鳥"],
     )
 
 

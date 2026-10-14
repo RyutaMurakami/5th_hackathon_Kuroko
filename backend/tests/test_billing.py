@@ -267,7 +267,7 @@ async def test_everyone_paid_completes_the_event_once_and_leaves_a_log_and_a_not
     assert done.status is EventStatus.COMPLETED and done.completed_at == NOW  # 振り返りの起点
     assert [d.summary for d in store.list_decisions("ev-demo")] == [
         "全員の入金を明細で確認しました",
-        "10名の好み・最寄り駅を削除しました（開催の完了）",  # SPEC 9.6
+        "3名の好み・開催希望駅を削除しました（開催の完了）",  # SPEC 9.6
     ]
     assert all(
         p.preferences.nearest_station_code is None for p in store.list_participants("ev-demo")

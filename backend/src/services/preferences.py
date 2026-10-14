@@ -1,7 +1,7 @@
 """参加者の好みの取り込み（SPEC 3章 Participant.preferences・9.9。TASKS B26）。
 
 自由記述は、**統括エージェントに原文を渡さず**、隔離抽出（`extract_free_text`）で固定の語彙に変換する。
-最寄り駅は、駅すぱあとで**一意の鉄道の駅に確かめ**、駅コードで持つ（あいまいな駅名は採用しない）。
+開催希望駅は、駅すぱあとで**一意の鉄道の駅に確かめ**、駅コードで持つ（あいまいな駅名は採用しない）。
 入力欄の違い（食べられないもの／苦手）は、**コードが**ハード制約（`dietary_must`）・ソフト制約
 （`dietary_avoid`）に振り分ける（LLM の出力からは決まらない）。原文は保存しない。
 """
@@ -45,9 +45,9 @@ class PreferenceIntake:
     async def record_form(
         self, event_id: str, user_id: str, *, station: str, dislikes: str
     ) -> PreferencesResult:
-        """出欠のカードの入力欄（最寄り駅・苦手な食べ物の2欄）から取り込む（SPEC 7.7）。
+        """出欠のカードの入力欄（開催希望駅・苦手な食べ物の2欄）から取り込む（SPEC 7.7）。
 
-        - 最寄り駅: 欄が分かれているので、LLM を通さない。駅名の形を検査し、駅すぱあとで
+        - 開催希望駅: 欄が分かれているので、LLM を通さない。駅名の形を検査し、駅すぱあとで
           **一意の駅に決まったときだけ**、駅コードで持つ（決まらなければ、いまの値のまま）
         - 苦手な食べ物: 自由記述なので、隔離抽出で固定の語彙に落とす。加えて、語彙の語が
           そのまま書かれていれば拾う（隔離抽出が使えないとき・失敗したときの補い。決定論的）
@@ -60,6 +60,7 @@ class PreferenceIntake:
             return PreferencesResult(False, "not_given")
         current = person.preferences
         code, status, candidates = current.nearest_station_code, "not_given", ()
+        station_name = current.nearest_station_name
         name = _clean_station(station)
         # 駅の確認と、苦手な食べ物の読み取りを、同時に行う（回答のボタンを待たせない）
         station_job = self._check_station(name) if name else None
@@ -86,12 +87,14 @@ class PreferenceIntake:
                 status = "error"
             elif check.valid:
                 code, status = str(check.station_code), "verified"
+                station_name = str(getattr(check, "canonical_name", "") or name or "")
             else:
                 status = "ambiguous" if check.candidates else "not_found"
                 candidates = check.candidates
         found = [*words, *results.get("extract", [])]
         prefs = Preferences(
             nearest_station_code=code,
+            nearest_station_name=station_name,
             dietary_must=list(current.dietary_must),
             dietary_avoid=[*current.dietary_avoid, *found],  # 「苦手」の欄なので、ソフト制約
             request_tags=list(current.request_tags),
@@ -136,6 +139,7 @@ class PreferenceIntake:
         assert isinstance(extracted, PreferencesExtract)
         current = person.preferences
         station_code, status, candidates = current.nearest_station_code, "not_given", ()
+        station_name = current.nearest_station_name
         if extracted.nearest_station:
             try:
                 check = await self._stations.verify_station(extracted.nearest_station)
@@ -143,6 +147,7 @@ class PreferenceIntake:
                 check, status = None, "error"
             if check is not None and check.valid:
                 station_code, status = str(check.station_code), "verified"
+                station_name = str(getattr(check, "canonical_name", "") or "")
             elif check is not None:
                 status = "ambiguous" if check.candidates else "not_found"
                 candidates = check.candidates
@@ -153,6 +158,7 @@ class PreferenceIntake:
         merged[field] = [*merged[field], *extracted.dislikes]  # 振り分けはコード（入力欄）が決める
         prefs = Preferences(
             nearest_station_code=station_code,
+            nearest_station_name=station_name,
             dietary_must=merged["dietary_must"],
             dietary_avoid=merged["dietary_avoid"],
             request_tags=[*current.request_tags, *extracted.preferences],

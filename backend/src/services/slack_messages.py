@@ -104,9 +104,9 @@ def consent_request(
             "実際の振込は、*銀行の承認ページで、あなたが承認したときだけ*実行されます。\n"
             "• 振込の依頼が作られる前なら、App Home からいつでも取り消せます。"
         ),
-        # 最寄り駅・苦手な食べ物（任意）。「参加する」を押したときに、あわせて受け取る。
+        # 開催希望駅・苦手な食べ物（任意）。「参加する」を押したときに、あわせて受け取る。
         # 駅は駅すぱあとで確かめ、食べ物は固定の語彙にして持つ（原文は保存しない。SPEC 7.5）
-        _input("station", "最寄り駅", "例: 渋谷"),
+        _input("station", "開催希望駅", "例: 渋谷"),
         _input("dislikes", "苦手な食べ物・食べられないもの", "例: えびが苦手（無ければ空）"),
         {
             "type": "actions",
@@ -275,19 +275,38 @@ def plan_request(event: Event, *, slack_user_id: str) -> tuple[str, Blocks]:
     value = {"k": "plan", "e": event.event_id, "s": slack_user_id}
     blocks: Blocks = [
         _section("\n".join(lines)),
+        _input("station", "あなたの開催希望駅（任意）", f"例: {draft.get('station') or '新宿'}"),
         {
             "type": "actions",
             "elements": [_button("この内容で進める", Action.PLAN, value, "primary")],
         },
         _section(
-            "お店の場所は、参加者の最寄り駅から KUROKO が探します。題名・日時・主役などを直す"
+            "お店の場所は、参加者の開催希望駅から KUROKO が探します。題名・日時・主役などを直す"
             "ときは、Web の実演用の画面の計画のカードで直せます。"
         ),
     ]
     return text, blocks
 
 
-def event_notice(event: Event, *, guest_of_honor: bool = False) -> tuple[str, Blocks]:
+# 所要時間を添えるときの注意書き（計算の出どころを示す）
+TRAVEL_NOTE = (
+    "※ 所要時間・乗換回数は、駅すぱあとの経路検索で計算した目安です（運行状況で変わります）。"
+)
+
+
+def travel_line(venue_station: str, desired: str, minutes: int, transfers: int) -> str:
+    """お店の最寄り駅から、本人の開催希望駅までの所要時間（開催案内に添える。SPEC 7.5）。"""
+    change = f"・乗換{transfers}回" if transfers else "・乗換なし"
+    return (
+        f"帰り: お店の最寄り駅（{venue_station}）から、あなたの開催希望駅（{desired}）まで、"
+        f"約{minutes}分{change}\n"
+        f"{TRAVEL_NOTE}"
+    )
+
+
+def event_notice(
+    event: Event, *, guest_of_honor: bool = False, travel: str = ""
+) -> tuple[str, Blocks]:
     """開催の案内（予約が確定したあと。SPEC 7.5）。ボタンは無い。主役には、費用の話を書かない。"""
     title = event.title or "飲み会"
     venue = event.venue or {}
@@ -297,6 +316,8 @@ def event_notice(event: Event, *, guest_of_honor: bool = False) -> tuple[str, Bl
     if name:
         url = maps_url(name, str(venue.get("place_id") or ""))
         lines.append(f"お店: {name}（<{url}|Google マップで見る>）")
+    if travel:
+        lines.append(travel)
     blocks: Blocks = [_section("\n".join(lines))]
     if not guest_of_honor:
         blocks.append(

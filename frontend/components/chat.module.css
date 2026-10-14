@@ -35,33 +35,111 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--spacing-8);
+  gap: var(--spacing-8) var(--spacing-24);
 }
 
-.barButton {
+.barGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-16);
+}
+
+/* 主な操作: 新しく始める（塗りつぶし） */
+.barPrimary {
+  gap: var(--spacing-8);
   min-height: calc(var(--spacing-32) + var(--spacing-4));
   padding: 0 var(--spacing-16);
   font-size: var(--text-body-sm);
+}
+
+/* やり直す: 枠も背景も無い、文字のボタン（押すと、作ったものが消えるので、赤系） */
+.barReset {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  padding: var(--spacing-4) 0;
+  background: transparent;
+  border: 0;
+  color: var(--color-coral-text);
+  font: inherit;
+  font-size: var(--text-body-sm);
+  cursor: pointer;
+}
+
+.barReset:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.barReset:disabled {
+  color: var(--color-mist-blue);
+  cursor: not-allowed;
+}
+
+/* 進行中のイベント: 切り替えるタブ。ボタンより角を小さくし、トレイに入れる */
+.eventTray {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-4);
+  padding: var(--spacing-4) var(--spacing-8);
+  background: var(--color-cream-subtle);
+  border: var(--border-width) solid var(--color-hairline);
+  border-radius: var(--radius-smallelements);
+}
+
+.eventTrayLabel {
+  padding: 0 var(--spacing-8);
+  color: var(--color-steel-text);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
 }
 
 .eventTab {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-8);
-  min-height: calc(var(--spacing-32) + var(--spacing-4));
-  padding: 0 var(--spacing-16);
-  background: var(--color-pure-white);
-  border: var(--border-width) solid var(--color-hairline);
-  border-radius: var(--radius-buttons);
-  color: var(--color-ink-navy);
+  min-height: var(--spacing-32);
+  padding: 0 var(--spacing-8);
+  background: transparent;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-checkbox);
+  color: var(--color-slate-blue);
+  font: inherit;
   font-size: var(--text-body-sm);
-  font-weight: var(--font-weight-medium);
   cursor: pointer;
 }
 
+.eventTab:hover {
+  background: var(--color-pure-white);
+}
+
 .eventTabActive {
+  background: var(--color-pure-white);
   border-color: var(--color-ink-navy);
+  color: var(--color-ink-navy);
+  font-weight: var(--font-weight-bold);
+}
+
+/* 参照: 記憶・規程（右端。情報を見るだけのボタン） */
+.barRef {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  min-height: calc(var(--spacing-32) + var(--spacing-4));
+  margin-left: auto;
+  padding: 0 var(--spacing-16);
   background: var(--color-navy-tint);
+  border: 0;
+  border-radius: var(--radius-smallelements);
+  color: var(--color-navy-text);
+  font: inherit;
+  font-size: var(--text-body-sm);
+  font-weight: var(--font-weight-bold);
+  cursor: pointer;
+}
+
+.barRef:hover {
+  background: var(--color-hairline);
 }
 
 .about {

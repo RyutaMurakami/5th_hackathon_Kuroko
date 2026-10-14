@@ -214,6 +214,7 @@ function PlanForm({ id, example, onDone, run }: FormProps & { example?: ApiPlanE
     party: String(example?.party_size ?? ""),
     budget: String(example?.budget_per_person_yen ?? ""),
     deadline: String(example?.rsvp_deadline ?? ""),
+    station: String(example?.station ?? ""),
   });
   const options = example?.honorees ?? [];
   const [honorees, setHonorees] = useState<Record<string, boolean>>(() =>
@@ -231,6 +232,7 @@ function PlanForm({ id, example, onDone, run }: FormProps & { example?: ApiPlanE
           budget_per_person_yen: Number(v.budget),
           required_tags: [],
           rsvp_deadline: v.deadline || undefined,
+          station: v.station || undefined,
           // 名簿の主役は、サーバーが主役のままにする。送るのは、足したぶんだけ
           guests_of_honor: options.filter((h) => !h.locked && honorees[h.user_id]).map((h) => h.user_id),
         });
@@ -241,7 +243,7 @@ function PlanForm({ id, example, onDone, run }: FormProps & { example?: ApiPlanE
     <KurokoRow card>
       <span className={styles.cardTitle}>次の内容で進めてよいですか？</span>
       <span>
-        直すところがあれば直して、「この内容で進める」を押してください。お店の場所は、参加者の最寄り駅から
+        直すところがあれば直して、「この内容で進める」を押してください。お店の場所は、参加者の開催希望駅から
         探すので、ここでは決めません。
       </span>
       <div className={styles.form}>
@@ -250,6 +252,12 @@ function PlanForm({ id, example, onDone, run }: FormProps & { example?: ApiPlanE
         <Field label="出欠の回答期限" type="date" value={v.deadline} onChange={set("deadline")} />
         <Field label="人数（2〜50）" type="number" value={v.party} onChange={set("party")} />
         <Field label="1人あたりの予算（円）" type="number" value={v.budget} onChange={set("budget")} />
+        <Field
+          label="あなた（幹事）の開催希望駅"
+          value={v.station}
+          onChange={set("station")}
+          placeholder="例: 新宿"
+        />
         {options.length > 0 && (
           <fieldset className={`${styles.group} ${styles.wide}`}>
             <legend>主役（歓迎・送別される方。費用の案内は届きません）</legend>
@@ -274,7 +282,7 @@ function PlanForm({ id, example, onDone, run }: FormProps & { example?: ApiPlanE
           {busy ? "送信中…（参加者に依頼を送っています）" : "この内容で進める"}
         </Button>
       </div>
-      <Caption>確定すると、参加者に、出欠・支払いの委任・最寄り駅・苦手な食べ物の確認が届きます。</Caption>
+      <Caption>確定すると、参加者に、出欠・支払いの委任・開催希望駅・苦手な食べ物の確認が届きます。</Caption>
     </KurokoRow>
   );
 }
@@ -317,7 +325,7 @@ function VenueStep({ id, detail, onDone, run }: FormProps & { detail: ApiEventDe
   if (candidates.length === 0 && (busy || (search === "searching" && !slow))) {
     return (
       <KurokoWorking hint="駅すぱあとで全員の帰りやすい駅を調べ、Google マップでお店を探すので、30秒ほどかかります">
-        全員の最寄り駅から、帰りやすいお店を探しています…
+        みなさんの開催希望駅から、帰りやすいお店を探しています…
       </KurokoWorking>
     );
   }
@@ -328,7 +336,7 @@ function VenueStep({ id, detail, onDone, run }: FormProps & { detail: ApiEventDe
           {search === "failed" ? "お店を見つけられませんでした" : "お店を探します"}
         </span>
         <span>
-          全員の最寄り駅からの帰りやすさ・苦手な食べ物・過去の実績（記憶）から、候補を出します。順位は、
+          みなさんの開催希望駅からの帰りやすさ・苦手な食べ物・過去の実績（記憶）から、候補を出します。順位は、
           決まった手順のコードが決めます。
         </span>
         <div className={styles.actions}>

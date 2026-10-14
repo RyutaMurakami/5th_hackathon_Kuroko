@@ -13,7 +13,7 @@ from src.seed.sample_company import demo_participants
 
 TOTAL = 9
 
-# デモの開催日は 10月30日（金）19時。場所は聞かない（参加者の最寄り駅から、コードが探す）
+# デモの開催日は 10月30日（金）19時。場所は聞かない（参加者の開催希望駅から、コードが探す）
 FIRST_REQUEST = "10月30日の19時から、第一開発チーム10人の歓送迎会を行いたい"
 
 
@@ -36,6 +36,7 @@ def plan_example() -> dict[str, Any]:
     return {
         "title": "第一開発チーム 歓送迎会", "datetime": "2026-10-30T19:00", "party_size": 10,
         "budget_per_person_yen": 5000, "rsvp_deadline": "2026-10-23", "honorees": honorees,
+        "station": "新宿",
     }  # fmt: skip
 
 
@@ -88,7 +89,7 @@ def _hint_for(
             1, "web", "幹事", "計画を確かめて、確定する",
             "KUROKO が出した計画のカードで、題名・日時・人数・予算・主役・出欠の回答期限を"
             "確かめて「この内容で進める」を押します。確定すると、参加者に出欠と委任の依頼が"
-            "届きます。お店の場所は、参加者の最寄り駅から KUROKO が探すので、入れません。",
+            "届きます。お店の場所は、参加者の開催希望駅から KUROKO が探すので、入れません。",
             {"plan": plan_example()}, [ASK_POLICY],
         )  # fmt: skip
     if s is EventStatus.RSVP:
@@ -96,9 +97,9 @@ def _hint_for(
         return _hint(
             2, where, "参加者", "出欠と委任に答える",
             "赤坂 くらお・赤くら 花子の2人に、出欠と委任（上限つき）の依頼が届きました。"
-            f"{cards}で、最寄り駅と苦手な食べ物を確かめて「参加して、委任に同意する」を"
+            f"{cards}で、開催希望駅と苦手な食べ物を確かめて「参加して、委任に同意する」を"
             "押します。ほかの参加者のぶんは、デモ用の代行が済ませます。2人が答えると、"
-            "KUROKO が全員の最寄り駅から、お店を探し始めます。",
+            "KUROKO がみなさんの開催希望駅から、お店を探し始めます。",
             {"waiting": pending}, [ASK_POLICY],
         )  # fmt: skip
     if s is EventStatus.VENUE:
@@ -111,8 +112,9 @@ def _hint_for(
                 "参加者に開催の案内が届きます。コース単価が規程の上限を超えると、予算超過の"
                 "確認に進みます。"
                 if chosen
-                else "KUROKO が、全員の最寄り駅からの帰りやすさ・苦手な食べ物・過去の実績から、"
-                "お店の候補を出します（30秒ほど）。候補は Google マップで確かめられます。"
+                else "KUROKO が、みなさんの開催希望駅からの帰りやすさ・苦手な食べ物・"
+                "過去の実績から、お店の候補を出します（30秒ほど）。"
+                "候補は Google マップで確かめられます。"
                 "「この店にする」で選びます。"
             ),
             {"reservation": {"venue_name": "大衆酒場 たけちゃん", "party_size": 10,

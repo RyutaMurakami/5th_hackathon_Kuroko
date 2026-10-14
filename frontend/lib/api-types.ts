@@ -165,7 +165,7 @@ export type ApiPersonaCard = {
   created_at: string;
   /** 体験用の「銀行で承認する」のカード（押すと、銀行の承認ページを模した画面を挟む） */
   bank?: boolean;
-  /** 出欠のカードの入力欄（最寄り駅・苦手な食べ物）。値は、デモ用の候補 */
+  /** 出欠のカードの入力欄（開催希望駅・苦手な食べ物）。値は、デモ用の候補 */
   fields?: ApiCardField[];
 };
 
@@ -179,6 +179,8 @@ export type ApiPlanExample = {
   party_size?: number;
   budget_per_person_yen?: number;
   rsvp_deadline?: string;
+  /** 幹事の開催希望駅（任意。駅すぱあとで確かめる） */
+  station?: string;
   /** 主役に選べる人（名簿の主役は `locked` で、外せない） */
   honorees?: { user_id: string; display_name: string; selected: boolean; locked: boolean }[];
 };
@@ -258,6 +260,8 @@ export type ApiPlan = {
   rsvp_deadline?: string;
   /** 幹事が足す主役（名簿の user_id） */
   guests_of_honor?: string[];
+  /** 幹事の開催希望駅（任意。駅すぱあとで確かめる） */
+  station?: string;
 };
 
 /** KUROKO が参照している情報（記憶と規程。SPEC 7.9） */

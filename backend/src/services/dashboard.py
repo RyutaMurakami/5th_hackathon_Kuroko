@@ -158,7 +158,7 @@ class PersonaActions(Protocol):
 
 
 class PreferenceForm(Protocol):
-    """出欠のカードの入力欄（最寄り駅・苦手な食べ物）の取り込み（`PreferenceIntake`）。"""
+    """出欠のカードの入力欄（開催希望駅・苦手な食べ物）の取り込み（`PreferenceIntake`）。"""
 
     async def record_form(
         self, event_id: str, user_id: str, *, station: str, dislikes: str
@@ -343,7 +343,7 @@ class DashboardService:
     ) -> dict[str, Any]:  # fmt: skip
         """登場人物として、カードのボタンを押す。体験用のイベントを作った本人だけ。
 
-        `inputs` は、出欠のカードの入力欄（最寄り駅・苦手な食べ物。SPEC 7.7）。「参加」を押した
+        `inputs` は、出欠のカードの入力欄（開催希望駅・苦手な食べ物。SPEC 7.7）。「参加」を押した
         ときだけ取り込む。駅は駅すぱあとで確かめた駅コード、食べ物は固定の語彙にして持ち、
         原文は保存しない。取り込めなくても、出欠の回答は止めない。
         """
@@ -387,7 +387,7 @@ class DashboardService:
             return
         self._life.log(
             event_id, "kuroko", "記録",
-            "参加者1名の最寄り駅・苦手な食べ物を受け取りました（駅コードと固定の語彙に変換。"
+            "参加者1名の開催希望駅・苦手な食べ物を受け取りました（駅コードと固定の語彙に変換。"
             "原文は保存しません）",
         )  # fmt: skip
 
@@ -689,6 +689,7 @@ class DashboardService:
             honorees=clean["honorees"],
         )  # fmt: skip
         self._store.save_event(event)
+        await self._take_organizer_station(event, clean["station"])
         self._life.log(event_id, "human", "確認", "幹事が計画を確定しました")
         if reading is not None:
             self._life.log(
@@ -700,11 +701,22 @@ class DashboardService:
         self._life.say(
             event_id,
             f"「{clean['title']}」の計画を確定しました。参加者に、出欠・支払いの委任・"
-            "最寄り駅・苦手な食べ物の確認をお送りしました。回答がそろったら、全員の最寄り駅から"
+            "開催希望駅・苦手な食べ物の確認をお送りしました。回答がそろったら、みなさんの開催希望駅から"
             "帰りやすいお店を探します（場所は、こちらで調べます）。",
         )
         await self._dispatcher.start_rsvp(event_id)
         return {"event_id": event_id, "status": event.status.value}
+
+    async def _take_organizer_station(self, event: Event, station: str) -> None:
+        """幹事の開催希望駅を取り込む（駅すぱあとで確かめる。決まらなければ、名簿の既定の駅のまま）。"""
+        if not station or self._prefs is None:
+            return
+        try:
+            await self._prefs.record_form(
+                event.event_id, event.organizer_user_id, station=station, dislikes=""
+            )
+        except Exception:  # 原文はログに出さない
+            logger.warning("could not record the organizer station: event=%s", event.event_id)
 
     # ---------------------------------------- Slack から始める（実演用。SPEC 7.8）
     def slack_organizer_email(
@@ -755,7 +767,9 @@ class DashboardService:
         )
         return event
 
-    async def confirm_slack_plan(self, event_id: str, slack_user_id: str) -> Event | None:
+    async def confirm_slack_plan(
+        self, event_id: str, slack_user_id: str, station: str = ""
+    ) -> Event | None:
         """Slack のカードの「この内容で進める」。依頼した本人だけが確定できる。"""
         event = self._store.get_event(event_id)
         if (
@@ -765,7 +779,8 @@ class DashboardService:
             or event.organizer_slack_user_id != slack_user_id
         ):
             return None
-        await self._confirm_plan(event, event.organizer_email, event.plan_draft)
+        plan = {**event.plan_draft, **({"station": station} if station else {})}
+        await self._confirm_plan(event, event.organizer_email, plan)
         return self._store.get_event(event_id)
 
     def _adopt(self, actor: Actor, event: Event) -> Event:
@@ -1230,7 +1245,7 @@ class DashboardService:
         )  # fmt: skip
         self._life.say(
             event_id,
-            f"お店の候補を {len(candidates)}件見つけました。全員の最寄り駅からの帰りやすさ・"
+            f"お店の候補を {len(candidates)}件見つけました。みなさんの開催希望駅からの帰りやすさ・"
             "苦手な食べ物・過去の実績から、決まった手順で順位を付けています。"
             "下のカードから1つ選んでください。",
             card="venues",
@@ -1421,7 +1436,7 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
         when = dt.datetime.fromisoformat(str(plan.get("datetime")))
     except ValueError:
         raise DashboardError("invalid_plan") from None
-    # エリアは聞かない（店は、参加者の最寄り駅からコードが探す。SPEC 7.5）。来たら残すだけ
+    # エリアは聞かない（店は、参加者の開催希望駅からコードが探す。SPEC 7.5）。来たら残すだけ
     title, area = str(plan.get("title", "")).strip(), str(plan.get("area") or "").strip()
     size, budget = plan.get("party_size"), plan.get("budget_per_person_yen")
     if not title or len(title) > 60 or len(area) > 40:
@@ -1445,6 +1460,8 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
     tags = only_vocab(
         [t for t in plan.get("required_tags", []) if isinstance(t, str)], REQUEST_TAGS
     )
+    # 幹事の開催希望駅（任意。駅すぱあとで確かめて、駅コードで持つ）。原文は計画に残さない
+    station = str(plan.get("station") or "").strip()[:40]
     details: dict[str, Any] = {"party_size": size, "budget_per_person_yen": budget}
     if area:
         details["area"] = area
@@ -1452,7 +1469,7 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
         details["rsvp_deadline"] = deadline
     return {
         "title": title, "datetime": when, "required_tags": tags, "plan": details,
-        "honorees": [h for h in honorees if isinstance(h, str)],
+        "honorees": [h for h in honorees if isinstance(h, str)], "station": station,
     }  # fmt: skip
 
 
@@ -1509,12 +1526,12 @@ def _card_view(card) -> dict[str, Any]:  # noqa: ANN001
                     "label": str((el.get("text") or {}).get("text", "")),
                     "style": el.get("style") or "default",
                 })  # fmt: skip
-    # 出欠のカードには、最寄り駅・苦手な食べ物の入力欄を出す（SPEC 7.7）。値はデモ用の候補
+    # 出欠のカードには、開催希望駅・苦手な食べ物の入力欄を出す（SPEC 7.7）。値はデモ用の候補
     fields = []
     if card.kind == "consent" and not card.resolved_text:
         demo = DEMO_ANSWERS.get(card.user_id, {})
         fields = [
-            {"key": "station", "label": "最寄り駅", "value": demo.get("station", ""),
+            {"key": "station", "label": "開催希望駅", "value": demo.get("station", ""),
              "placeholder": "例: 渋谷"},
             {"key": "dislikes", "label": "苦手な食べ物・食べられないもの",
              "value": demo.get("dislikes", ""), "placeholder": "例: えびが苦手（無ければ空）"},

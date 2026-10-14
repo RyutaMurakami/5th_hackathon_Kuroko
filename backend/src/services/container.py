@@ -142,7 +142,18 @@ def get_slack_actions():
         organizer_op=_organizer_op,
         organizer=get_organizer_dm(),
         preferences=get_preference_intake(),
+        route_minutes=_route_minutes,
     )
+
+
+async def _route_minutes(origin: str, destination: str):
+    """駅すぱあとで、2駅の所要時間と乗換回数を調べる（開催案内用。出せなければ None）。"""
+    from src.clients.ekispert import EkispertClient
+
+    route = await EkispertClient(api_key=get_settings().ekispert_api_key).search_routes(
+        origin, destination
+    )
+    return (route.minutes, route.transfers) if route else None
 
 
 async def _organizer_op(event_id: str, slack_user_id: str, value: dict):
@@ -165,9 +176,9 @@ def get_organizer_dm():
     )
 
 
-async def _confirm_slack_plan(event_id: str, slack_user_id: str):
+async def _confirm_slack_plan(event_id: str, slack_user_id: str, station: str = ""):
     """Slack から始めた依頼の計画を確定する（依頼した本人だけ。SPEC 7.8）。"""
-    return await get_dashboard().confirm_slack_plan(event_id, slack_user_id)
+    return await get_dashboard().confirm_slack_plan(event_id, slack_user_id, station)
 
 
 async def _approve_demo_transfer(event_id: str, user_id: str) -> bool:
@@ -195,7 +206,7 @@ def get_venue_search():
 
 @lru_cache
 def get_preference_intake():
-    """出欠のカードの入力欄（最寄り駅・苦手な食べ物）の取り込み（SPEC 7.7）。"""
+    """出欠のカードの入力欄（開催希望駅・苦手な食べ物）の取り込み（SPEC 7.7）。"""
     from src.clients.ekispert import EkispertClient
     from src.services.preferences import PreferenceIntake
 
