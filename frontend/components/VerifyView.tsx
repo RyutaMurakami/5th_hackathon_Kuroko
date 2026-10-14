@@ -239,6 +239,8 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
   const showOutgoing = !!outgoing && thinking && !(lastMine?.type === "text" && lastMine.text === outgoing);
   const imageKind = expectedImage(detail);
   const done = detail?.status === "closed";
+  // 実演用は、幹事の操作を Slack の DM で行う（SPEC 7.8）。この画面は、進み具合を映すだけ
+  const viewOnly = live && !!detail;
 
   const select = (id: string | null) => {
     setSelected(id);
@@ -396,7 +398,7 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
               ) : (
                 <Fragment key={item.key}>
                   <KurokoRow at={item.at}>{item.text}</KurokoRow>
-                  {detail && item.card && anchorAt.get(item.card) === item.key && (
+                  {detail && !viewOnly && item.card && anchorAt.get(item.card) === item.key && (
                     <AnchoredCard
                       kind={item.card}
                       detail={detail}
@@ -420,7 +422,7 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
             {imageBusy && (
               <KurokoWorking hint="画像の中の文字を読み取っています">画像を読み取っています…</KurokoWorking>
             )}
-            {detail && (
+            {detail && !viewOnly && (
               <StepForms
                 key={detail.event_id}
                 detail={detail}
@@ -435,6 +437,14 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
               />
             )}
           </Thread>
+          {viewOnly ? (
+            <div className={styles.composer}>
+              <Caption>
+                実演用: 幹事の操作（お店選び・画像の送信・確認・承認の依頼）は、Slack の DM の KUROKO で行います。
+                この画面は、進み具合と、3人ぶんのやりとりを映します。
+              </Caption>
+            </div>
+          ) : (
           <div className={styles.composer}>
             {suggestions.length > 0 && !blocked && !done && (
               <div className={styles.suggestions} role="group" aria-label="入力の候補">
@@ -515,6 +525,7 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
             </div>
             <Caption>Ctrl / ⌘ + Enter で送信。実在の個人情報・領収書は入れないでください。</Caption>
           </div>
+          )}
         </section>
         {personas.map((p) => (
           <PersonaChat

@@ -73,7 +73,7 @@ def start_hint(*, live: bool) -> dict[str, Any]:
     )  # fmt: skip
 
 
-def hint_for(
+def _hint_for(
     event: Event, people: list[Participant], *, has_receipt: bool, retro_ready: bool = False,
     split_ready: bool = False, approved: bool = False,
 ) -> dict[str, Any]:  # fmt: skip
@@ -201,3 +201,49 @@ def hint_for(
         "覚えさせた内容は、次の企画の店の候補に使われます。「新しく依頼する」から、"
         "もう一度試せます。",
     )  # fmt: skip
+
+
+# 実演用（SPEC 7.8）: 幹事の操作は、Web ではなく Slack の DM で行う。画面は進み具合を映す
+_LIVE_DO = {
+    "planning": "Slack の DM に、計画の案のカードが届きます。内容を確かめて「この内容で進める」を"
+    "押します（Slack で依頼を送ったときは、読み取った案が出ています）。",
+    "venue_choose": "Slack の DM に、お店の候補が届きます（30秒ほど）。Google マップで確かめて、"
+    "「この店にする」のボタンで選びます。",
+    "venue_reserved": "お店に予約したあと、予約完了の画面を、Slack の DM に画像で送ります。"
+    "読み取った内容を確かめて「この内容で確定する」を押すと、参加者に開催の案内が届きます。",
+    "booked": "予約が確定しました。開催が終わったら、Slack の DM の「開催が終わった」を押します。",
+    "receipt": "領収書の写真を、Slack の DM に画像で送ります。読み取った金額を確かめて"
+    "「この内容で確定する」を押すと、規程にもとづいて按分を計算します。",
+    "split": "Slack の DM に、按分の内訳が届きます。確かめて「承認者に承認を依頼する」を押します。",
+    "transfers": "承認者が按分を承認しました。Slack の DM の「振込の依頼を送る」を押すと、"
+    "参加者に、銀行で承認するお願いが届きます。",
+    "retro": "Slack の DM に、振り返りのまとめが届きます。「記憶に残す」かを選びます。",
+}
+
+
+def hint_for(
+    event: Event, people: list[Participant], *, has_receipt: bool, retro_ready: bool = False,
+    split_ready: bool = False, approved: bool = False,
+) -> dict[str, Any]:  # fmt: skip
+    """進行ヒント。実演用のイベントでは、幹事の操作を Slack の DM に案内する（SPEC 7.8）。"""
+    hint = _hint_for(
+        event, people, has_receipt=has_receipt, retro_ready=retro_ready,
+        split_ready=split_ready, approved=approved,
+    )  # fmt: skip
+    if event.ui_mode != "live" or hint.get("who") != "幹事":
+        return hint
+    s = event.status
+    chosen = bool((event.venue or {}).get("place_id"))
+    key = {
+        EventStatus.PLANNING: "planning",
+        EventStatus.VENUE: "venue_reserved" if chosen else "venue_choose",
+        EventStatus.BOOKED: "booked",
+        EventStatus.DAY_OF: "receipt",
+        EventStatus.RECEIPT: "receipt",
+        EventStatus.SPLIT: "split",
+        EventStatus.APPROVAL: "transfers",
+        EventStatus.RETRO: "retro",
+    }.get(s)
+    if key is None:
+        return hint
+    return {**hint, "where": "slack", "do": _LIVE_DO[key]}

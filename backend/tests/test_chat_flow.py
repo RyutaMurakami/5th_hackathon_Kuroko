@@ -380,3 +380,96 @@ def test_without_a_registration_the_slack_profile_email_identifies_the_organizer
     assert w.svc.start_from_slack("U_X", FIRST_REQUEST, "someone@example.com") is None
     event = w.svc.start_from_slack("U_X", FIRST_REQUEST, "Dev@Example.com")
     assert event is not None and event.organizer_email == "dev@example.com"
+
+
+# ----------------------------------------- 幹事の操作を Slack で行う（実演用。SPEC 7.8）
+async def _slack_event(w, **update):
+    event = w.svc.start_from_slack(U_DEV, FIRST_REQUEST)
+    await w.svc.confirm_slack_plan(event.event_id, U_DEV)
+    event = w.store.get_event(event.event_id)
+    candidates = [
+        {"place_id": "p1", "name": "居酒屋 A", "nearest_station": "渋谷", "max_travel_minutes": 20,
+         "selection_reason": "全員が乗り換えなしで行ける"},
+        {"place_id": "p2", "name": "居酒屋 B"},
+    ]  # fmt: skip
+    event = event.model_copy(
+        update={"status": EventStatus.VENUE, "venue_candidates": candidates} | update
+    )
+    w.store.save_event(event)
+    return event
+
+
+def _org_buttons(w, *, since=0):
+    out = []
+    for _, _, blocks in w.slack.dms[since:]:
+        for b in blocks:
+            if b.get("type") == "actions":
+                out += [(el["action_id"], el["value"]) for el in b["elements"]]
+    return out
+
+
+async def test_the_organizer_picks_the_venue_and_sends_the_reservation_image_in_slack():
+    import json
+
+    w = slack_world()
+    event = await _slack_event(w)
+    n = len(w.slack.dms)
+    await w.org.venues(event)
+    buttons = _org_buttons(w, since=n)
+    assert [a for a, _ in buttons] == ["org:venue1", "org:venue2"]
+    value = json.loads(buttons[1][1])
+    assert value["s"] == U_DEV and value["o"] == "venue" and value["p"] == "p2"
+    # 依頼した本人以外・別の操作は受け付けない
+    assert await w.svc.slack_op(event.event_id, "U_OTHER", value) is None
+    text = await w.svc.slack_op(event.event_id, U_DEV, value)
+    assert "居酒屋 B" in text
+    assert w.store.get_event(event.event_id).venue["place_id"] == "p2"
+    assert "画像で送って" in w.slack.dms[-1][1] or "画像で送って" in str(w.slack.dms[-1][2])
+
+    # 予約の画面を画像で送ると、読み取って、確定のカードを返す。確定すると予約が確定する
+    async def read(up, data=None):
+        return up.model_copy(update={"extraction_status": "done", "extraction": {
+            "venue_name": "居酒屋 B", "datetime": "2026-10-30T19:00:00+09:00",
+            "party_size": 10, "course_price_yen": 4500, "warnings": []}})  # fmt: skip
+
+    w.svc._read_reservation = read
+    n = len(w.slack.dms)
+    event = w.store.get_event(event.event_id)
+    assert await w.svc.ingest_slack_image(event, b"png", "image/png", "F1") == ""
+    ((action, raw),) = _org_buttons(w, since=n)
+    assert action == "org"
+    done = await w.svc.slack_op(event.event_id, U_DEV, json.loads(raw))
+    assert "確定" in done
+    assert w.store.get_event(event.event_id).venue["course_price_yen"] == 4500
+    assert w.store.get_event(event.event_id).status is EventStatus.BOOKED
+
+
+async def test_slack_images_are_only_taken_at_the_right_stage():
+    w = slack_world()
+    event = await _slack_event(w, status=EventStatus.RSVP)
+    assert "受け付ける段階ではありません" in await w.svc.ingest_slack_image(
+        event, b"png", "image/png", "F1"
+    )
+    assert "受け取れませんでした" in await w.svc.ingest_slack_image(
+        event, b"gif", "image/gif", "F2"
+    )
+
+
+def test_an_image_message_from_slack_is_taken_as_a_direct_message_with_files():
+    from src.services.slack_intake import extract_direct_message
+
+    payload = {
+        "type": "event_callback", "event_id": "Ev1", "team_id": "T1",
+        "event": {
+            "type": "message", "subtype": "file_share", "channel_type": "im", "user": U_DEV,
+            "channel": "D1", "text": "", "ts": "1.0",
+            "files": [
+                {"id": "F1", "mimetype": "image/png", "url_private_download": "https://files.slack.com/x"},
+                {"id": "F2", "mimetype": "application/pdf", "url_private_download": "https://files.slack.com/y"},
+            ],
+        },
+    }  # fmt: skip
+    message = extract_direct_message(payload)
+    assert message is not None and [f.file_id for f in message.files] == ["F1"]  # 画像だけ
+    payload["event"]["subtype"] = "message_changed"
+    assert extract_direct_message(payload) is None

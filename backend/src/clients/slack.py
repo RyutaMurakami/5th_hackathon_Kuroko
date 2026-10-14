@@ -48,3 +48,27 @@ async def user_email(slack_user_id: str) -> str | None:
     res = await _client().users_info(user=slack_user_id)
     email = ((res.get("user") or {}).get("profile") or {}).get("email")
     return str(email).lower() if email else None
+
+
+async def download_file(url: str, max_bytes: int = 10 * 1024 * 1024) -> bytes | None:
+    """DM に添えられたファイル（`url_private_download`）を、Bot Token で取得する（files:read）。
+
+    Slack のドメイン以外・大きすぎるものは取らない。
+    """
+    import httpx
+
+    if not url.startswith("https://files.slack.com/"):
+        return None
+    async with httpx.AsyncClient(timeout=30, follow_redirects=False) as http:
+        res = await http.get(
+            url, headers={"Authorization": f"Bearer {get_settings().slack_bot_token}"}
+        )
+    if res.status_code != 200 or len(res.content) > max_bytes:
+        return None
+    return res.content
+
+
+async def user_id_by_email(email: str) -> str | None:
+    """メールから Slack ユーザーID（`users:read.email`。取れなければ None）。"""
+    res = await _client().users_lookupByEmail(email=email)
+    return (res.get("user") or {}).get("id")

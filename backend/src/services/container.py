@@ -90,6 +90,7 @@ def get_retro():
         extractor=_feedback_extractor(),
         memory=get_memory(),
         lifecycle=get_lifecycle(),
+        organizer=get_organizer_dm(),
     )
 
 
@@ -138,6 +139,28 @@ def get_slack_actions():
         proxy_sign=enqueue_demo_mandate if s.demo_runner_service_account else None,
         bank_approve=_approve_demo_transfer,
         plan_confirm=_confirm_slack_plan,
+        organizer_op=_organizer_op,
+        organizer=get_organizer_dm(),
+    )
+
+
+async def _organizer_op(event_id: str, slack_user_id: str, value: dict):
+    """実演用の幹事の Slack での操作（依頼した本人だけ。SPEC 7.8）。"""
+    return await get_dashboard().slack_op(event_id, slack_user_id, value)
+
+
+@lru_cache
+def get_organizer_dm():
+    """実演用の幹事への Slack の DM（お店・確認・承認依頼などのカード）。"""
+    from src.services.slack_organizer import OrganizerDM
+
+    async def find_by_email(email: str) -> str | None:
+        from src.clients import slack
+
+        return await slack.user_id_by_email(email)
+
+    return OrganizerDM(
+        store=get_event_store(), slack=_SlackClientPort(), find_by_email=find_by_email
     )
 
 
@@ -245,6 +268,7 @@ def get_dashboard():
         # 返答は Cloud Tasks で作る（Hosting の60秒制限。SPEC 7.5）。ローカルでは、その場で待つ
         enqueue_chat=_enqueue_self if project and s.kuroko_api_url else None,
         prefs=get_preference_intake(),
+        organizer=get_organizer_dm(),
         upload_ttl_seconds=s.upload_url_ttl_seconds,
         ocr=GeminiReceiptModel(project=project) if project else None,
         reservation_reader=GeminiReservationModel(project=project) if project else None,

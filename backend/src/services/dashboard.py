@@ -46,6 +46,7 @@ from src.services.policy_extract import PolicyReader
 from src.services.receipt_ocr import ReceiptModel, ocr_receipt
 from src.services.reservation_read import ReservationModel, ingest_reservation
 from src.services.scenario_hint import hint_for, plan_example, start_hint
+from src.services.slack_organizer import OrganizerDM
 from src.services.vocab import REQUEST_TAGS, only_vocab
 
 logger = logging.getLogger(__name__)
@@ -208,8 +209,10 @@ class DashboardService:
         venues: VenueFinder | None = None,
         enqueue_chat: EnqueueSelf | None = None,
         prefs: PreferenceForm | None = None,
+        organizer: "OrganizerDM | None" = None,
         now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
     ) -> None:
+        self._org_dm = organizer  # 実演用の幹事への Slack の DM（SPEC 7.8）
         self._personas, self._policy, self._retro = personas, policy, retro
         self._prefs = prefs
         self._reservation_reader = reservation_reader
@@ -649,6 +652,7 @@ class DashboardService:
         event = Event(
             event_id=_id("ev"), datetime=now, organizer_user_id=actor.uid, ui_mode=mode,
             organizer_web_uid=actor.uid, status=EventStatus.PLANNING, sandbox=guest,
+            organizer_email=actor.email.lower() if mode == "live" else "",
             guest_owner_uid=actor.uid if guest else None,
             expires_at=now + dt.timedelta(days=SANDBOX_DAYS) if guest else None,
         )  # fmt: skip
@@ -765,7 +769,7 @@ class DashboardService:
         """Slack から始めたイベントを、同じメールでログインした本人のものにする（1回だけ）。"""
         if (
             event.organizer_email != actor.email.lower()
-            or event.organizer_web_uid
+            or (event.organizer_web_uid and not event.organizer_web_uid.startswith("slack:"))
             or not self._live_allowed(actor)
         ):
             return event
@@ -781,6 +785,162 @@ class DashboardService:
             return
         for e in self._store.list_events_by_organizer_email(actor.email):
             self._adopt(actor, e)
+
+    # ---------------------------------------- 実演用の幹事の操作を Slack で行う（SPEC 7.8）
+    def _slack_actor(self, event: Event) -> Actor:
+        """Slack の操作を、幹事本人（イベントの持ち主）の操作として扱うための利用者。
+
+        Web の本人（UID）が決まるまでは、Slack ユーザーから作った仮の ID を持ち主にする。
+        同じメールで Web にログインしたとき、本人の UID に引き継がれる（`_adopt`）。
+        """
+        uid = event.organizer_web_uid
+        if not uid:
+            uid = f"slack:{event.organizer_slack_user_id}"
+            update: dict[str, Any] = {"organizer_web_uid": uid}
+            if event.sandbox:
+                update["guest_owner_uid"] = uid
+            self._store.save_event(event.model_copy(update=update))
+        return Actor(
+            uid=uid, email=event.organizer_email,
+            role=Role.GUEST if event.sandbox else Role.ORGANIZER,
+        )  # fmt: skip
+
+    def _slack_event(self, event_id: str, slack_user_id: str) -> Event | None:
+        """この Slack ユーザーが幹事の、実演用のイベント（本人だけ）。"""
+        event = self._store.get_event(event_id)
+        if (
+            event is None
+            or event.ui_mode != "live"
+            or not event.organizer_slack_user_id
+            or event.organizer_slack_user_id != slack_user_id
+        ):
+            return None
+        return event
+
+    def latest_slack_event(self, email: str) -> Event | None:
+        """この幹事（メール）の、いま進行中の実演用のイベント（いちばん新しいもの）。"""
+        rows = [
+            e for e in self._store.list_events_by_organizer_email(email)
+            if e.ui_mode == "live" and e.status is not EventStatus.CLOSED
+        ]  # fmt: skip
+        return max(rows, key=lambda e: e.datetime, default=None)
+
+    async def slack_op(
+        self, event_id: str, slack_user_id: str, value: dict[str, Any]
+    ) -> str | None:
+        """Slack のカードの、幹事の操作（`Action.ORG`）。結果の文を返す（None: 受け付けない）。
+
+        依頼した幹事の本人だけ（`organizer_slack_user_id`）。操作の中身は Web の操作と同じ
+        （同じ検査を通る）。
+        """
+        event = self._slack_event(event_id, slack_user_id)
+        if event is None:
+            return None
+        actor, op = self._slack_actor(event), str(value.get("o", ""))
+        try:
+            if op == "venue":
+                place_id = str(value.get("p", ""))
+                known = next(
+                    (c for c in event.venue_candidates if c.get("place_id") == place_id), None
+                )
+                if known is None:
+                    return "この候補は見つかりませんでした。"
+                self.select_venue(actor, event_id, place_id, str(known["name"]))
+                if self._org_dm is not None:
+                    await self._org_dm.reservation_prompt(event, str(known["name"]))
+                return f"「{known['name']}」を選びました。"
+            if op == "held":
+                self.mark_event_held(actor, event_id)
+                if self._org_dm is not None:
+                    await self._org_dm.receipt_prompt(self._store.get_event(event_id) or event)
+                return "開催の終了を受け取りました。"
+            if op == "extract":
+                return await self._slack_confirm_extraction(actor, event_id, value)
+            if op == "budget":
+                await self.confirm_budget_overrun(actor, event_id)
+                return "続行します。承認者に最終確認を依頼しました。"
+            if op == "split":
+                await self.request_approval(actor, event_id)
+                return "承認者に、按分の承認を依頼しました。"
+            if op == "transfers":
+                await self.approve_transfers(actor, event_id)
+                return "参加者に、振込の依頼を送ります。各自が銀行で承認すると、振込されます。"
+            if op == "retro":
+                decision = "save" if value.get("d") == "save" else "skip"
+                await self.confirm_retro(
+                    actor, event_id, str(value.get("ri", "unanswered")),
+                    ["venue_record", "venue_evaluation"], decision,
+                )  # fmt: skip
+                return "記憶に残しました。" if decision == "save" else "記憶には残しませんでした。"
+        except DashboardError as e:
+            logger.info("slack op rejected: op=%s code=%s", op, e.code)
+            return "この操作はできません（すでに済んでいるか、いまの段階ではありません）。"
+        return None
+
+    async def _slack_confirm_extraction(
+        self, actor: Actor, event_id: str, value: dict[str, Any]
+    ) -> str:
+        kind = UploadKind.RECEIPT if value.get("kd") == "receipt" else UploadKind.RESERVATION
+        up = self._store.get_upload(event_id, str(value.get("u", "")))
+        if up is None or up.kind is not kind or up.extraction_status != "done":
+            return "読み取った内容が見つかりませんでした。もう一度、画像を送ってください。"
+        data = up.extraction or {}
+        if kind is UploadKind.RECEIPT:
+            values: dict[str, Any] = {"total_amount_yen": data.get("total_amount_yen")}
+        else:
+            values = {
+                k: data.get(k) for k in ("venue_name", "datetime", "party_size", "course_price_yen")
+            }
+        try:
+            await self.confirm_extraction(actor, event_id, kind, values, "extracted")
+        except DashboardError:
+            return "この内容は確定できませんでした。もう一度、画像を送ってください。"
+        if kind is UploadKind.RECEIPT:
+            return "領収書の金額を確定しました。按分を計算します。"
+        return "予約の内容を確定しました。"
+
+    async def ingest_slack_image(
+        self, event: Event, data: bytes, content_type: str, file_id: str
+    ) -> str:
+        """Slack の DM で届いた画像を読み取る。画面の段階で、予約画面か領収書かを決める。
+
+        結果は、幹事が確定するまで使われない（Web のアップロードと同じ）。読み取れたときは、
+        確定のカードを DM で返す。結果は、幹事に伝える文を返す（空: カードで答えた）。
+        """
+        if content_type not in ALLOWED_CONTENT_TYPES or not 0 < len(data) <= MAX_UPLOAD_BYTES:
+            return "この画像は受け取れませんでした（PNG・JPEG・WebP の10MBまで）。"
+        actor = self._slack_actor(event)
+        event = self._store.get_event(event.event_id) or event
+        chosen = bool((event.venue or {}).get("place_id"))
+        if event.status is EventStatus.VENUE and chosen:
+            kind = UploadKind.RESERVATION
+        elif event.status is EventStatus.RECEIPT:
+            kind = UploadKind.RECEIPT
+        else:
+            return "いまは、画像を受け付ける段階ではありません。"
+        mine = [u for u in self._store.list_uploads(event.event_id) if u.kind is kind]
+        if sum(1 for u in mine if u.status != "rejected") >= MAX_UPLOADS[kind]:
+            return "この画像は、これ以上受け取れません。"
+        up = Upload(
+            upload_id=_id("up"), event_id=event.event_id, kind=kind,
+            object_path=f"slack/{file_id}", content_type=content_type,
+            size_bytes_declared=len(data), source="upload", uploaded_by=actor.uid,
+            created_at=self._now(), status="registered",
+        )  # fmt: skip
+        up = (
+            await self._read_receipt(up, data)
+            if kind is UploadKind.RECEIPT
+            else await self._read_reservation(up, data)
+        )
+        self._store.save_upload(up)
+        if up.extraction_status != "done":
+            return "画像から読み取れませんでした。見やすい画像で、もう一度送ってください。"
+        if self._org_dm is not None:
+            await self._org_dm.extraction(
+                event, "receipt" if kind is UploadKind.RECEIPT else "reservation",
+                up.upload_id, up.extraction or {},
+            )  # fmt: skip
+        return ""
 
     # ------------------------------------------------------------ アップロード
     def issue_upload_url(
@@ -825,9 +985,10 @@ class DashboardService:
         self._store.save_upload(up)
         return {"upload_id": upload_id, "status": "registered", "extraction": up.extraction_status}
 
-    async def _read_receipt(self, up: Upload) -> Upload:
+    async def _read_receipt(self, up: Upload, data: bytes | None = None) -> Upload:
         """読み取れなければ failed（手入力に切り替えられる）。結果は確認するまで使われない。"""
-        data = self._signer.read_bytes(up.object_path) if self._ocr else None
+        if data is None:
+            data = self._signer.read_bytes(up.object_path) if self._ocr else None
         reading = await ocr_receipt(self._ocr, data) if self._ocr and data else None
         if reading is None or not reading.ok:
             return up.model_copy(update={"extraction_status": "failed"})
@@ -839,10 +1000,11 @@ class DashboardService:
             },
         })  # fmt: skip
 
-    async def _read_reservation(self, up: Upload) -> Upload:
+    async def _read_reservation(self, up: Upload, data: bytes | None = None) -> Upload:
         """読み取れなければ failed（手入力できる）。結果は、幹事が確定するまで使われない。"""
         model = self._reservation_reader
-        data = self._signer.read_bytes(up.object_path) if model else None
+        if data is None:
+            data = self._signer.read_bytes(up.object_path) if model else None
         reading = await ingest_reservation(model, data) if model and data else None
         if reading is None or not reading.ok:
             return up.model_copy(update={"extraction_status": "failed"})
@@ -917,6 +1079,10 @@ class DashboardService:
                 f"コース単価（{venue['course_price_yen']:,}円）が、規程の上限（{limit:,}円）を"
                 "超えています。続行するか、下のカードで確認してください。",
             )
+            if self._org_dm is not None and limit is not None:
+                fresh = self._store.get_event(event_id)
+                if fresh is not None:
+                    await self._org_dm.budget(fresh, venue["course_price_yen"], limit)
         else:
             self._life.say(
                 event_id,
@@ -1066,6 +1232,10 @@ class DashboardService:
             "下のカードから1つ選んでください。",
             card="venues",
         )
+        if self._org_dm is not None:
+            fresh = self._store.get_event(event_id)
+            if fresh is not None:
+                await self._org_dm.venues(fresh)
         return candidates
 
     def select_venue(self, actor: Actor, event_id: str, place_id: str, name: str) -> dict[str, Any]:
