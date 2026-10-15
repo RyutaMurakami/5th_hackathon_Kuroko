@@ -9,6 +9,7 @@
 - 判断ログに残すもの: 確定した人の uid、`source`（読み取り／手入力）
 """
 
+import asyncio
 import datetime as dt
 import logging
 import re
@@ -127,6 +128,9 @@ def plan_from_text(text: str, now: dt.datetime) -> dict[str, Any]:
     }
 
 
+SETTLE_WAIT_SECONDS = 20.0  # 体験用のボタンで承認した直後の、入金の確認を待つ上限
+
+
 class DashboardError(Exception):
     def __init__(self, code: str, status: int = 400) -> None:
         super().__init__(code)
@@ -212,10 +216,13 @@ class DashboardService:
         prefs: PreferenceForm | None = None,
         organizer: "OrganizerDM | None" = None,
         memory: "MemoryStore | None" = None,
+        settle: "Callable[[str], Awaitable[None]] | None" = None,
         now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
     ) -> None:
         self._org_dm = organizer  # 実演用の幹事への Slack の DM（SPEC 7.8）
         self._memory = memory  # 記憶（Memory Bank）。参照用（SPEC 7.9）
+        # 支払いと入金の確認を、すぐ行う（体験用のボタンで承認した直後。定期実行を待たない）
+        self._settle = settle
         self._personas, self._policy, self._retro = personas, policy, retro
         self._prefs = prefs
         self._reservation_reader = reservation_reader
@@ -413,6 +420,13 @@ class DashboardService:
             raise DashboardError("not_allowed", 403)
         if not await self._personas.approve_bank(event, person):
             raise DashboardError("no_transfer_to_approve", 409)
+        # 2人が承認したら、すぐに後続（入金の確認 → 完了 → 振り返り）へ進める。
+        # 画面の応答を長く待たせないよう、短い時間で切る（切れても、タスクと定期実行が拾う）
+        if self._settle is not None:
+            try:
+                await asyncio.wait_for(self._settle(event_id), timeout=SETTLE_WAIT_SECONDS)
+            except Exception:
+                logger.info("settle after the web approval did not finish: event=%s", event_id)
         return {"user_id": user_id, "status": "approved"}
 
     # ---------------------------------------------- 按分の承認・振込の依頼（SPEC 7.5）

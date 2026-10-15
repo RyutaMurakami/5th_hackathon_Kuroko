@@ -353,9 +353,9 @@ async def test_only_registered_accounts_can_start_a_live_event_from_the_develope
     assert e.value.code == "live_not_allowed" and w.store.events == {}
     live = await w.start(OWNER, mode="live")
     assert w.store.get_event(live).bank_approval == "bank"
-    # 同じアカウントでも、審査員の画面から作れば、体験用（既定は、体験も実際の sunabar）
+    # 同じアカウントでも、審査員の画面から作れば、体験用（体験用のボタンで承認する）
     trial = await w.start(OWNER, mode="experience")
-    assert w.store.get_event(trial).bank_approval == "bank"
+    assert w.store.get_event(trial).bank_approval == "web"
     assert [e["event_id"] for e in w.svc.list_events(OWNER, "live")] == [live]
     assert [e["event_id"] for e in w.svc.list_events(OWNER, "experience")] == [trial]
     assert w.svc.me(OWNER)["live_allowed"] and not w.svc.me(JUDGE)["live_allowed"]
