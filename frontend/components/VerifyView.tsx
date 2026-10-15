@@ -74,7 +74,7 @@ const COPY: Record<ApiUiMode, { title: string; meta: string; banner: string }> =
     title: "KUROKO を体験する",
     meta: "あなたが幹事です。右の2人（参加者・承認者）の対応も、この画面で進められます",
     banner:
-      "左が、幹事（あなた）と KUROKO の DM です。右の2列は、参加者（赤坂 くらお）と承認者（赤くら 花子）に届く KUROKO からの DM で、Slack に届くものと同じです。体験用に、ここから2人の代わりにボタンを押せます。銀行の承認は、承認ページを模した画面で行い、お金は動きません。",
+      "左が、幹事（あなた）と KUROKO の DM です。右の2列は、参加者（赤坂 くらお）と承認者（赤くら 花子）に届く KUROKO からの DM で、Slack に届くものと同じです。体験用に、ここから2人の代わりにボタンを押せます。振込は、実際の銀行 API（sunabar。資金は仮想）で動くので、sunabar のサービスサイトで承認して、お金の動きを追えます。",
   },
   live: {
     title: "実演（開発者用）",
@@ -328,7 +328,7 @@ export function VerifyView({ mode = "experience" }: { mode?: ApiUiMode }) {
         <h1 className={styles.title}>{copy.title}</h1>
         <p className={styles.headMeta}>{copy.meta}</p>
         {done && <Pill tone="lagoon">デモ完了</Pill>}
-        <Pill tone={live ? "sun" : "navy"}>{live ? "実演用：本物の銀行 API" : "体験用：お金は動きません"}</Pill>
+        <Pill tone={live ? "sun" : "navy"}>{live ? "実演用：本物の銀行 API" : "体験用：sunabar（仮想の銀行）で振込が動きます"}</Pill>
       </div>
 
       <div className={styles.bar}>

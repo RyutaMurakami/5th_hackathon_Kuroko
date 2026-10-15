@@ -86,6 +86,13 @@ class EventStore(Protocol):
     def live_bank_emails(self) -> set[str]:
         """本物の銀行で承認する実演用の Google アカウント（`config/demo`。SPEC 7.7）。"""
 
+    def experience_bank_mode(self) -> str:
+        """審査員の体験用のイベントの、振込の承認先（`config/demo.experience_bank`）。
+
+        `bank`（既定）: 実際の sunabar（仮想の銀行）で、サービスサイトで承認する。
+        `web`: 体験用のボタンで代える（銀行には送らない。sunabar を使えないときの逃げ道）。
+        """
+
     def live_slack_users(self) -> dict[str, str]:
         """実演用に登録した Slack ユーザーID → Google アカウントのメール（`config/demo`）。"""
 
@@ -157,12 +164,16 @@ class MemoryEventStore:
         self.cards: dict[str, dict[str, PersonaCard]] = {}
         self.live_emails: set[str] = set()
         self.live_slack: dict[str, str] = {}
+        self.experience_bank: str = "bank"
 
     def live_bank_emails(self):
         return set(self.live_emails)
 
     def live_slack_users(self):
         return dict(self.live_slack)
+
+    def experience_bank_mode(self):
+        return self.experience_bank
 
     def list_events_by_organizer_email(self, email):
         rows = [e for e in self.events.values() if e.organizer_email == email.lower()]
@@ -490,6 +501,11 @@ class FirestoreEventStore:
         snap = self._db.collection("config").document("demo").get()
         emails = (snap.to_dict() or {}).get("live_bank_emails") or [] if snap.exists else []
         return {str(e).lower() for e in emails}
+
+    def experience_bank_mode(self):
+        snap = self._db.collection("config").document("demo").get()
+        mode = (snap.to_dict() or {}).get("experience_bank") if snap.exists else None
+        return "web" if mode == "web" else "bank"
 
     def live_slack_users(self):
         snap = self._db.collection("config").document("demo").get()

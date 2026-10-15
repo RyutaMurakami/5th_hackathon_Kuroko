@@ -81,6 +81,8 @@ def _hint_for(
     s = event.status
     # 体験用でないイベント（本番の幹事）も、参加者は Slack と銀行で操作する
     live = event.ui_mode == "live" or not event.sandbox
+    # 振込を、本物の銀行（sunabar。資金は仮想）で承認するか。審査員の体験も、既定でそうする
+    real_bank = live or event.bank_approval == "bank"
     # 参加者・承認者が操作する場所の言い方
     cards = "Slack の DM" if live else "右の2人の列のカード（Slack の DM でも同じ）"
     where = "slack" if live else "web"
@@ -163,10 +165,12 @@ def _hint_for(
             None, [ASK_APPROVER],
         )  # fmt: skip
     if s is EventStatus.PAYMENT:
-        if live:
+        if real_bank:
             do = (
-                "赤坂 くらお・赤くら 花子の2人に、Slack で振込の承認の依頼が届きました。"
-                "それぞれの口座で sunabar のサービスサイトに入り、10分以内に承認します。"
+                "赤坂 くらお・赤くら 花子の2人の振込の承認が、銀行（sunabar。資金は仮想）で"
+                "求められています。それぞれの口座（くらお＝口座 No.2、花子＝口座 No.3。"
+                "提出文書のログイン情報）で sunabar のサービスサイトに入り、"
+                "「お知らせ」から、10分以内に承認します。"
             )
         else:
             do = (
@@ -175,7 +179,7 @@ def _hint_for(
                 "「承認する」を押します。"
             )
         return _hint(
-            7, "bank" if live else "web", "参加者", "銀行で振込を承認する",
+            7, "bank" if real_bank else "web", "参加者", "銀行で振込を承認する",
             do + "ほかの人の振込は代行され、全員ぶんの入金を確認できると、"
             "1〜2分で自動で完了になり、振り返りが始まります。",
         )  # fmt: skip
