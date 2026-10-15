@@ -282,6 +282,7 @@ def get_dashboard():
         prefs=get_preference_intake(),
         organizer=get_organizer_dm(),
         memory=get_memory(),
+        settle=get_billing().settle_now,
         upload_ttl_seconds=s.upload_url_ttl_seconds,
         ocr=GeminiReceiptModel(project=project) if project else None,
         reservation_reader=GeminiReservationModel(project=project) if project else None,

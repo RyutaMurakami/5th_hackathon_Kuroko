@@ -289,7 +289,7 @@ def press(w, action, value, slack_user):
 
 
 async def test_personas_get_the_bank_request_on_slack_and_on_the_web_in_experience_mode():
-    w = World(slack_users={"kurao": "U_K", "hanako": "U_H"})
+    w = World(slack_users={"kurao": "U_K", "hanako": "U_H"}, experience_bank="web")
     eid, out = await to_payment(w)
     assert out == {"sent": ["hanako", "kurao"]}  # 列のある2人だけ（代行の人には送らない）
     dm = next(d for d in w.slack.dms if d[0] == "U_K" and "銀行で承認" in d[1])
@@ -303,7 +303,7 @@ async def test_personas_get_the_bank_request_on_slack_and_on_the_web_in_experien
 
 
 async def test_the_slack_button_approves_only_the_pressers_own_held_transfer():
-    w = World(slack_users={"kurao": "U_K", "hanako": "U_H"})
+    w = World(slack_users={"kurao": "U_K", "hanako": "U_H"}, experience_bank="web")
     eid, _ = await to_payment(w)
     value = {"k": "bank", "e": eid, "u": "kurao", "s": "U_K"}
     await press(w, Action.BANK, value, "U_H")  # 別の人は、くらおの振込を承認できない
@@ -319,7 +319,7 @@ async def test_the_slack_button_approves_only_the_pressers_own_held_transfer():
 
 
 async def test_the_web_bank_page_and_slack_end_in_the_same_approval():
-    w = World(slack_users={"kurao": "U_K", "hanako": "U_H"})
+    w = World(slack_users={"kurao": "U_K", "hanako": "U_H"}, experience_bank="web")
     eid, _ = await to_payment(w)
     await w.svc.approve_bank_transfer(JUDGE, eid, "hanako")
     assert w.bank.approved == ["tr-h"] and w.cards(eid, "hanako")[-1]["resolved_text"]
@@ -353,7 +353,7 @@ async def test_only_registered_accounts_can_start_a_live_event_from_the_develope
     assert e.value.code == "live_not_allowed" and w.store.events == {}
     live = await w.start(OWNER, mode="live")
     assert w.store.get_event(live).bank_approval == "bank"
-    # 同じアカウントでも、審査員の画面から作れば、体験用（Web だけで進む。銀行は呼ばない）
+    # 同じアカウントでも、審査員の画面から作れば、体験用（体験用のボタンで承認する）
     trial = await w.start(OWNER, mode="experience")
     assert w.store.get_event(trial).bank_approval == "web"
     assert [e["event_id"] for e in w.svc.list_events(OWNER, "live")] == [live]
@@ -381,7 +381,9 @@ async def test_hints_always_offer_a_next_step_and_chat_suggestions_ask_about_the
     for status in EventStatus:
         w.store.save_event(w.store.get_event(eid).model_copy(update={"status": status}))
         h = w.svc.get_event(JUDGE, eid)["hint"]
-        assert h["title"] and h["do"] and h["where"] in ("web", "system")  # Slack・銀行に行かせない
+        # 体験は Web で進める。振込の承認だけは、sunabar（仮想の銀行）のサービスサイト
+        assert h["title"] and h["do"] and h["where"] in ("web", "system", "bank")
+        assert h["where"] != "slack"  # Slack には行かせない
     w.store.save_event(w.store.get_event(eid).model_copy(update={"status": EventStatus.VENUE}))
     chats = w.svc.get_event(JUDGE, eid)["hint"]["example"]["chats"]
     assert any("規程" in c for c in chats)

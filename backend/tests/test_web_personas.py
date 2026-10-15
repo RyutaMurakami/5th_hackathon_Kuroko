@@ -37,10 +37,11 @@ class Bank:
 
 
 class World:
-    def __init__(self, slack_users=None, live_emails=()):
+    def __init__(self, slack_users=None, live_emails=(), experience_bank="web"):
         self.store, self.slack, self.signed = MemoryEventStore(), FakeSlack(), []
         self.store.slack_users = dict(slack_users or {})
         self.store.live_emails = set(live_emails)
+        self.store.experience_bank = experience_bank  # 既定は、体験用のボタン（web）
         self.payments, self.bank = MemoryPaymentReader(), Bank()
         life = Lifecycle(store=self.store, now=lambda: NOW)
 
@@ -254,7 +255,7 @@ async def test_the_approver_persona_approves_on_the_web_and_the_gate_accepts_onl
 
 
 async def test_the_bank_button_approves_only_the_personas_held_transfer_in_web_mode():
-    w = World()
+    w = World(experience_bank="web")
     eid = await w.start()
     assert w.store.get_event(eid).bank_approval == "web"
     w.payments.payments = [
@@ -288,3 +289,30 @@ async def test_a_live_demo_account_uses_the_real_bank_and_gets_no_bank_button():
     with pytest.raises(DashboardError):
         await w.svc.approve_bank_transfer(JUDGE, eid, "kurao")
     assert w.bank.approved == []
+
+
+async def test_an_experience_event_uses_the_web_button_by_default_and_sunabar_only_when_asked():
+    default = World()
+    assert default.store.get_event(await default.start()).bank_approval == "web"
+    real = World(experience_bank="bank")  # `config/demo.experience_bank = bank` で、体験も sunabar
+    eid = await real.start()
+    assert real.store.get_event(eid).bank_approval == "bank"
+    with pytest.raises(DashboardError):  # 体験用のボタンは、使えない
+        await real.svc.approve_bank_transfer(JUDGE, eid, "kurao")
+
+
+async def test_the_web_bank_button_settles_right_away_so_the_follow_up_does_not_wait():
+    w = World()
+    eid = await w.start()
+    w.payments.payments = [
+        {"event_id": eid, "payment_id": "p1", "payer_user_id": "kurao", "amount_yen": 2100,
+         "status": "awaiting_bank_approval", "transfer_id": "tr-1", "updated_at": "t"},
+    ]  # fmt: skip
+    called = []
+
+    async def settle(event_id):
+        called.append(event_id)
+
+    w.svc._settle = settle
+    await w.svc.approve_bank_transfer(JUDGE, eid, "kurao")
+    assert called == [eid]  # 承認の直後に、入金の確認へ進める（定期実行を待たない）

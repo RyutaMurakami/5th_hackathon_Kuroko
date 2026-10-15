@@ -98,13 +98,17 @@ class Lifecycle:
                     update={"slack_user_id": slack.get(p.user_id), "attendance_confirmed": True}
                 ),
             )
-        # 体験用のイベントでは、登場人物の振込を Web のカードで承認する。実演用に登録した
-        # アカウントのイベントだけ、本物の銀行（sunabar）で承認する（SPEC 7.7）
-        # 開発者の実演用の画面で作ったイベント（`ui_mode = live`）で、登録したアカウントのときだけ
-        live = event.ui_mode == "live" and owner_email.lower() in self._store.live_bank_emails()
+        # 実演用は、本物の銀行（sunabar。資金は仮想）で承認する。審査員の体験は、体験用の
+        # ボタンで承認する（取引パスワードが要らない。2026-10-15）。
+        # `config/demo.experience_bank = bank` で、体験も sunabar にできる（SPEC 7.7）
+        experience_web = (
+            event.sandbox
+            and event.ui_mode != "live"
+            and self._store.experience_bank_mode() != "bank"
+        )
         return event.model_copy(
             update={
-                "bank_approval": "web" if event.sandbox and not live else "bank",
+                "bank_approval": "web" if experience_web else "bank",
                 "policy_snapshot": snap,
                 "policy_id": snap.policy_id,
                 "policy_version": snap.version,
