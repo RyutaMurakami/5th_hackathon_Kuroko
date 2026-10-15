@@ -5,7 +5,7 @@
 
 使い方（`bank_adapter/` で。ADC に Secret Manager の読み取りが要る）:
   uv run python scripts/topup_demo_accounts.py                     # 残高を見るだけ
-  uv run python scripts/topup_demo_accounts.py --apply             # 足りない口座へ、補充の振込を依頼
+  uv run python scripts/topup_demo_accounts.py --apply             # 補充の振込を依頼
   uv run python scripts/topup_demo_accounts.py --apply --from acct03 --amount 60000 --to acct02
 
 口座の役: acct01=幹事（受取）、acct02=くらお、acct03=花子（口座 No.1〜3）。
@@ -26,8 +26,8 @@ PER_RUN = {"acct02": 2_100, "acct03": 4_800}
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--from", dest="payer", default="acct03", help="補充の振込元（既定: 花子 acct03）")
-    ap.add_argument("--to", dest="payees", action="append", help="補充する口座（既定: 足りない口座）")
+    ap.add_argument("--from", dest="payer", default="acct03", help="振込元（既定: acct03）")
+    ap.add_argument("--to", dest="payees", action="append", help="補充する口座（既定: 不足分）")
     ap.add_argument("--amount", type=int, default=60_000, help="1口座あたりの補充額（円）")
     ap.add_argument("--min-runs", type=int, default=20, help="最低、何回ぶん残っていてほしいか")
     ap.add_argument("--apply", action="store_true", help="補充の振込を依頼する（既定は見るだけ）")
