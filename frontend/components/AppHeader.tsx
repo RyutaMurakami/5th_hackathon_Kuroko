@@ -40,9 +40,15 @@ export function AppHeader() {
       alive = false;
     };
   }, [user]);
-  // 登録していないアカウントが、実演・一覧・開発資料の URL を直接開いたときは、体験に戻す
+  // 登録していないアカウント（ゲスト）は、ログインしたら、トップではなく体験の画面を直接見せる。
+  // 実演・一覧・開発資料の URL を直接開いたときも、体験に戻す
   useEffect(() => {
-    if (user && checked && !allowed && (pathname.startsWith("/demo") || onEvents || onDev)) {
+    if (
+      user &&
+      checked &&
+      !allowed &&
+      (pathname === "/" || pathname.startsWith("/demo") || onEvents || onDev)
+    ) {
       router.replace("/verify");
     }
   }, [user, checked, allowed, pathname, onEvents, onDev, router]);
